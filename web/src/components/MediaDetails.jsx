@@ -8,7 +8,6 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
   const { id } = useParams();
   const media = mediaItems.find(m => String(m.id) === id);
   const [extras, setExtras] = useState([]);
-  const [existingExtras, setExistingExtras] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [error, setError] = useState('');
   const [modalMsg, setModalMsg] = useState('');
@@ -29,13 +28,6 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
     getExtras({ mediaType, id: media.id })
       .then(res => {
         setExtras(res.extras || []);
-        if (media.path) {
-          let paramName = mediaType === 'tv' ? 'seriesPath' : 'moviePath';
-          fetch(`/api/extras/existing?${paramName}=${encodeURIComponent(media.path)}`)
-            .then(r => r.json())
-            .then(data => setExistingExtras(data.existing || []))
-            .catch(() => setExistingExtras([]));
-        }
       })
       .catch(() => setError('Failed to fetch extras'))
       .finally(() => setSearchLoading(false));
@@ -209,13 +201,11 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
               if (!posterUrl && youtubeID) {
                 posterUrl = `https://img.youtube.com/vi/${youtubeID}/hqdefault.jpg`;
               }
-                // Adjust font size for long titles
-                let titleFontSize = 16;
-                if (displayTitle.length > 22) titleFontSize = 14;
-                if (displayTitle.length > 32) titleFontSize = 12;
-              const match = existingExtras.find(e => e.type === extra.type && e.title === extra.title && e.youtube_id === youtubeID);
-              const status = match?.status || 'Not downloaded';
-              const exists = status === 'downloaded' || status === 'Downloaded';
+              // Adjust font size for long titles
+              let titleFontSize = 16;
+              if (displayTitle.length > 22) titleFontSize = 14;
+              if (displayTitle.length > 32) titleFontSize = 12;
+              const downloaded = extra.downloaded === 'true';
               return (
                 <div key={idx} style={{
                   width: 180,
@@ -229,7 +219,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
                   alignItems: 'center',
                   padding: '0 0 18px 0',
                   position: 'relative',
-                  border: exists ? '2px solid #22c55e' : '2px solid transparent',
+                  border: downloaded ? '2px solid #22c55e' : '2px solid transparent',
                 }}>
                   <div style={{ width: '100%', background: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {posterUrl ? (
@@ -241,16 +231,16 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
                   <div style={{ width: '100%', padding: '12px 10px 0 10px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                     <div style={{ fontWeight: 600, fontSize: titleFontSize, color: darkMode ? '#e5e7eb' : '#222', textAlign: 'center', marginBottom: 4, height: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', width: '100%' }}>{displayTitle}</div>
                     <div style={{ fontSize: 13, color: '#888', marginBottom: 2 }}>{extra.year || ''}</div>
-                    <div style={{ fontSize: 13, color: exists ? '#22c55e' : '#ef4444', fontWeight: 'bold', marginBottom: 6 }}>{status}</div>
+                    <div style={{ fontSize: 13, color: downloaded ? '#22c55e' : '#ef4444', fontWeight: 'bold', marginBottom: 6 }}>{downloaded ? 'Downloaded' : 'Not downloaded'}</div>
                     {extra.url ? (
                       <a href={extra.url} target="_blank" rel="noopener noreferrer" style={{ color: darkMode ? '#e5e7eb' : '#6d28d9', textDecoration: 'underline', fontSize: 13, marginBottom: 8 }}>View</a>
                     ) : null}
                     {extra.url && (extra.url.includes('youtube.com/watch?v=') || extra.url.includes('youtu.be/')) ? (
                       <button
-                        style={{ background: exists ? '#888' : '#a855f7', color: '#fff', border: 'none', borderRadius: 4, padding: '0.25em 0.75em', cursor: exists ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: 13, marginTop: 4 }}
-                        disabled={exists}
+                        style={{ background: downloaded ? '#888' : '#a855f7', color: '#fff', border: 'none', borderRadius: 4, padding: '0.25em 0.75em', cursor: downloaded ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: 13, marginTop: 4 }}
+                        disabled={downloaded}
                         onClick={async () => {
-                          if (exists) return;
+                          if (downloaded) return;
                           try {
                             const res = await fetch(`/api/extras/download`, {
                               method: 'POST',
@@ -263,7 +253,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
                               })
                             });
                             if (res.ok) {
-                              setExistingExtras(prev => [...prev, { type: extra.type, title: extra.title, youtube_id: youtubeID, status: 'downloaded' }]);
+                              // Optionally, update UI to reflect download
                             } else {
                               const data = await res.json();
                               let msg = data?.error || 'Download failed';
