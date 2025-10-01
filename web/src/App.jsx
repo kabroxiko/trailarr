@@ -1,11 +1,13 @@
 
 import { useState, useEffect } from 'react';
 import './App.css';
-import { searchExtras, downloadExtra, fetchPlexItems, getRadarrSettings } from './api';
+import { searchExtras, downloadExtra, fetchPlexItems, getRadarrSettings, getRadarrMovies } from './api';
 
 function App() {
   const [plexItems, setPlexItems] = useState([]);
   const [plexError, setPlexError] = useState('');
+  const [radarrMovies, setRadarrMovies] = useState([]);
+  const [radarrMoviesError, setRadarrMoviesError] = useState('');
   const [selectedSection, setSelectedSection] = useState('Movies');
   const [selectedSettingsSub, setSelectedSettingsSub] = useState('General');
   const [radarrUrl, setRadarrUrl] = useState('');
@@ -26,6 +28,14 @@ function App() {
         setRadarrApiKey('');
       });
   }, []);
+
+  useEffect(() => {
+    if (selectedSection === 'Movies') {
+      getRadarrMovies()
+        .then(res => setRadarrMovies(res.movies || []))
+        .catch(e => setRadarrMoviesError(e.message));
+    }
+  }, [selectedSection]);
 
   return (
     <div style={{ display: 'flex', width: '100vw', height: '100vh', fontFamily: 'sans-serif', background: '#f7f8fa', overflowX: 'hidden', overflowY: 'hidden', position: 'fixed', left: 0, top: 0 }}>
@@ -135,26 +145,53 @@ function App() {
           </div>
         )}
   <div style={{ background: '#fff', borderRadius: 8, boxShadow: '0 1px 4px #e5e7eb', padding: '1em', width: '100%', maxWidth: '100%', flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: '#f3e8ff' }}>
-                <th style={{ textAlign: 'left', padding: '0.5em' }}>Name</th>
-                <th style={{ textAlign: 'left', padding: '0.5em' }}>Language</th>
-                <th style={{ textAlign: 'left', padding: '0.5em' }}>Extras</th>
+    {selectedSection === 'Movies' ? (
+      <>
+        <h3 style={{ color: '#a855f7', marginTop: 0 }}>Radarr Movies</h3>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: '#f3e8ff' }}>
+              <th style={{ textAlign: 'left', padding: '0.5em' }}>Title</th>
+              <th style={{ textAlign: 'left', padding: '0.5em' }}>Year</th>
+              <th style={{ textAlign: 'left', padding: '0.5em' }}>Path</th>
+            </tr>
+          </thead>
+          <tbody>
+            {radarrMovies.map((movie, idx) => (
+              <tr key={idx} style={{ borderBottom: '1px solid #f3e8ff' }}>
+                <td style={{ padding: '0.5em' }}>{movie.title}</td>
+                <td style={{ padding: '0.5em' }}>{movie.year}</td>
+                <td style={{ padding: '0.5em' }}>{movie.path}</td>
               </tr>
-            </thead>
-            <tbody>
-              {plexItems.map((item, idx) => (
-                <tr key={idx} style={{ borderBottom: '1px solid #f3e8ff' }}>
-                  <td style={{ padding: '0.5em' }}>{item.Title}</td>
-                  <td style={{ padding: '0.5em' }}>{item.Language}</td>
-                  <td style={{ padding: '0.5em' }}>{item.Extras.length > 0 ? item.Extras.join(', ') : <span style={{ color: '#bbb' }}>None</span>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {plexError && <div style={{ color: 'red', marginTop: '1em' }}>{plexError}</div>}
-        </div>
+            ))}
+          </tbody>
+        </table>
+        {radarrMoviesError && <div style={{ color: 'red', marginTop: '1em' }}>{radarrMoviesError}</div>}
+      </>
+    ) : (
+      <>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: '#f3e8ff' }}>
+              <th style={{ textAlign: 'left', padding: '0.5em' }}>Name</th>
+              <th style={{ textAlign: 'left', padding: '0.5em' }}>Language</th>
+              <th style={{ textAlign: 'left', padding: '0.5em' }}>Extras</th>
+            </tr>
+          </thead>
+          <tbody>
+            {plexItems.map((item, idx) => (
+              <tr key={idx} style={{ borderBottom: '1px solid #f3e8ff' }}>
+                <td style={{ padding: '0.5em' }}>{item.Title}</td>
+                <td style={{ padding: '0.5em' }}>{item.Language}</td>
+                <td style={{ padding: '0.5em' }}>{item.Extras.length > 0 ? item.Extras.join(', ') : <span style={{ color: '#bbb' }}>None</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {plexError && <div style={{ color: 'red', marginTop: '1em' }}>{plexError}</div>}
+      </>
+    )}
+  </div>
       </main>
     </div>
   );

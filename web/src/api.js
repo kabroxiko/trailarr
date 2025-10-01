@@ -1,3 +1,8 @@
+export async function getRadarrMovies() {
+	const res = await fetch('/api/radarr/movies');
+	if (!res.ok) throw new Error('Failed to fetch Radarr movies');
+	return await res.json();
+}
 // Fetch Plex items from backend
 export async function fetchPlexItems() {
 	const res = await fetch('/api/plex');
