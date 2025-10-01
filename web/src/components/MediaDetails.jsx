@@ -231,7 +231,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
               ? `/mediacover/Series/${media.id}/poster-500.jpg`
               : `/mediacover/Movies/${media.id}/poster-500.jpg`}
             style={{ height: 370, objectFit: 'cover', borderRadius: 4, background: '#222', boxShadow: '0 2px 8px rgba(0,0,0,0.22)' }}
-            onError={e => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/180x270?text=No+Poster'; }}
+            onError={e => { e.target.onerror = null; e.target.src = '/logo.svg'; }}
           />
         </div>
         <div style={{ flex: 1, zIndex: 2, display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', height: '100%', marginLeft: 32, marginTop: 32 }}>

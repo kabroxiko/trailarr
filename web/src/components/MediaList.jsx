@@ -45,27 +45,65 @@ export default function MediaList({ items, darkMode, type }) {
               height: '100%',
             }}
           >
-            <img
-              key={item.id + '-' + type}
-              src={type === 'series'
-                ? `/mediacover/Series/${item.id}/poster-500.jpg`
-                : `/mediacover/Movies/${item.id}/poster-500.jpg`}
-              width={200}
-              height={300}
-              loading="lazy"
-              style={{
-                width: 200,
-                height: 300,
-                objectFit: 'cover',
-                borderRadius: 8,
-                background: '#222',
-                boxShadow: '0 2px 8px rgba(14, 9, 9, 0.18)',
-                marginBottom: 10,
-                display: 'block',
-              }}
-              onError={e => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/200x300?text=No+Poster'; }}
-              alt={item.title}
-            />
+            <div style={{
+              width: 200,
+              height: 300,
+              position: 'relative',
+              marginBottom: 10,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: darkMode ? '#222' : '#fff',
+              borderRadius: 8,
+              overflow: 'hidden',
+              border: darkMode ? '1px solid #333' : '1px solid #eee',
+            }}>
+              <img
+                key={item.id + '-' + type}
+                src={type === 'series'
+                  ? `/mediacover/Series/${item.id}/poster-500.jpg`
+                  : `/mediacover/Movies/${item.id}/poster-500.jpg`}
+                width={200}
+                height={300}
+                loading="lazy"
+                style={{
+                  width: 200,
+                  height: 300,
+                  objectFit: 'cover',
+                  borderRadius: 8,
+                  display: 'block',
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  zIndex: 1,
+                }}
+                onError={e => {
+                  e.target.onerror = null;
+                  e.target.src = '';
+                  const parent = e.target.parentNode;
+                  if (parent && !parent.querySelector('.fallback-logo')) {
+                    const logo = document.createElement('img');
+                    logo.src = '/logo.svg';
+                    logo.width = 80;
+                    logo.height = 80;
+                    logo.alt = 'No Poster';
+                    logo.className = 'fallback-logo';
+                    logo.style.position = 'relative';
+                    logo.style.zIndex = 2;
+                    logo.style.display = 'block';
+                    logo.style.margin = 'auto';
+                    logo.style.top = '0';
+                    logo.style.left = '0';
+                    logo.style.right = '0';
+                    logo.style.bottom = '0';
+                    logo.style.transform = 'none';
+                    parent.appendChild(logo);
+                  }
+                  e.target.style.visibility = 'hidden';
+                }}
+                alt={item.title}
+              />
+            </div>
             <div style={{ color: darkMode ? '#e5e7eb' : '#222', fontSize: 14, marginBottom: 2, opacity: 0.85 }}>{item.year ? item.year : (item.airDate || '')}</div>
             <div style={{ flex: 1 }} />
             <div
