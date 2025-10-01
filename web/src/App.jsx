@@ -397,7 +397,7 @@ function App() {
                   ) : (
                     <Link
                       to={name === 'Movies' ? '/movies' : '/'}
-                      style={{ textDecoration: 'none', background: selectedSection === name ? (darkMode ? '#d6b4f7' : '#f3e8ff') : 'none', border: 'none', color: selectedSection === name ? (darkMode ? '#6d28d9' : '#e5e7eb') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSection === name ? 'bold' : 'normal', width: '100%', textAlign: 'left', padding: '0.5em 1em', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75em' }}
+                      style={{ textDecoration: 'none', background: 'none', border: 'none', color: selectedSection === name ? (darkMode ? '#a855f7' : '#6d28d9') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSection === name ? 'bold' : 'normal', width: '100%', textAlign: 'left', padding: '0.5em 1em', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75em' }}
                       onClick={() => setSelectedSection(name)}
                     >
                       <span style={{ fontSize: 18, display: 'flex', alignItems: 'center' }}>{icon}</span>
@@ -407,7 +407,7 @@ function App() {
                   {name === 'Settings' && selectedSection === 'Settings' && (
                     <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0 0', background: darkMode ? '#23232a' : '#f3f4f6', borderRadius: 6, color: darkMode ? '#e5e7eb' : '#222', textAlign: 'left' }}>
                       {['General', 'Languages', 'Providers', 'Subtitles', 'Sonarr', 'Radarr', 'Plex', 'Notifications', 'Scheduler', 'UI'].map((submenu, idx) => (
-                        <li key={submenu} style={{ padding: '0.5em 1em', borderLeft: selectedSettingsSub === submenu ? '3px solid #d6b4f7' : '3px solid transparent', background: selectedSettingsSub === submenu ? (darkMode ? '#d6b4f7' : '#fff') : 'none', color: selectedSettingsSub === submenu ? (darkMode ? '#6d28d9' : '#e5e7eb') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSettingsSub === submenu ? 'bold' : 'normal', cursor: 'pointer', textAlign: 'left' }}>
+                        <li key={submenu} style={{ padding: '0.5em 1em', borderLeft: selectedSettingsSub === submenu ? '3px solid #a855f7' : '3px solid transparent', background: 'none', color: selectedSettingsSub === submenu ? (darkMode ? '#a855f7' : '#6d28d9') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSettingsSub === submenu ? 'bold' : 'normal', cursor: 'pointer', textAlign: 'left' }}>
                           <Link
                             to={`/settings/${submenu.toLowerCase()}`}
                             style={{ color: 'inherit', textDecoration: 'none', display: 'block', width: '100%', textAlign: 'left' }}
