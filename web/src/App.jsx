@@ -1,7 +1,33 @@
 
 import { useState, useEffect } from 'react';
+import { Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import './App.css';
 import { searchExtras, downloadExtra, fetchPlexItems, getRadarrSettings, getRadarrMovies } from './api';
+
+function MovieDetails({ movies }) {
+  const { id } = useParams();
+  const movie = movies.find(m => String(m.id) === id);
+  const navigate = useNavigate();
+  if (!movie) return <div>Movie not found</div>;
+  return (
+    <div style={{ display: 'flex', gap: 32 }}>
+      <div style={{ minWidth: 300 }}>
+        <img
+          src={`/mediacover/${movie.id}/poster-500.jpg`}
+          alt={movie.title}
+          style={{ width: 300, height: 450, objectFit: 'cover', borderRadius: 12, marginBottom: 16, background: '#222' }}
+          onError={e => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/300x450?text=No+Poster'; }}
+        />
+        <button style={{ marginTop: 8, background: '#eee', border: 'none', borderRadius: 6, padding: '0.5em 1em', cursor: 'pointer' }} onClick={() => navigate('/movies')}>Back to list</button>
+      </div>
+      <div style={{ flex: 1 }}>
+        <h2 style={{ color: '#a855f7', margin: 0 }}>{movie.title}</h2>
+        <div style={{ marginBottom: 8, color: '#888', textAlign: 'left' }}>{movie.year} &bull; {movie.path}</div>
+        <div style={{ marginBottom: 16, color: '#333' }}>Movie extras would be listed here.</div>
+      </div>
+    </div>
+  );
+}
 
 function App() {
   const [selectedMovie, setSelectedMovie] = useState(null);
@@ -31,23 +57,21 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (selectedSection === 'Movies') {
-      getRadarrMovies()
-        .then(res => {
-          const sorted = (res.movies || []).slice().sort((a, b) => {
-            if (!a.title) return 1;
-            if (!b.title) return -1;
-            return a.title.localeCompare(b.title);
-          });
-          setRadarrMovies(sorted);
-        })
-        .catch(e => setRadarrMoviesError(e.message));
-    }
-  }, [selectedSection]);
+    getRadarrMovies()
+      .then(res => {
+        const sorted = (res.movies || []).slice().sort((a, b) => {
+          if (!a.title) return 1;
+          if (!b.title) return -1;
+          return a.title.localeCompare(b.title);
+        });
+        setRadarrMovies(sorted);
+      })
+      .catch(e => setRadarrMoviesError(e.message));
+  }, []);
 
   return (
     <div style={{ display: 'flex', width: '100vw', height: '100vh', fontFamily: 'sans-serif', background: '#f7f8fa', overflowX: 'hidden', overflowY: 'hidden', position: 'fixed', left: 0, top: 0 }}>
-      {/* Sidebar */}
+    {/* Sidebar */}
   <aside style={{ width: 220, background: '#fff', borderRight: '1px solid #e5e7eb', padding: '1em 0', height: '100vh', boxSizing: 'border-box' }}>
         <div style={{ textAlign: 'center', marginBottom: '2em' }}>
           <span style={{ fontWeight: 'bold', color: '#d6b4f7', fontSize: 18 }}>EXTRAZARR</span>
@@ -64,8 +88,10 @@ function App() {
               { name: 'System', icon: '🖥️' }
             ].map(({ name, icon }) => (
               <li key={name} style={{ marginBottom: 16 }}>
-                <button
+                <Link
+                  to={name === 'Movies' ? '/movies' : name === 'Settings' ? '/settings' : '/'}
                   style={{
+                    textDecoration: 'none',
                     background: selectedSection === name ? '#f3e8ff' : 'none',
                     border: 'none',
                     color: selectedSection === name ? '#a855f7' : '#333',
@@ -83,7 +109,7 @@ function App() {
                 >
                   <span style={{ fontSize: 18 }}>{icon}</span>
                   {name}
-                </button>
+                </Link>
                 {/* Settings submenu */}
                 {name === 'Settings' && selectedSection === 'Settings' && (
                   <ul style={{
@@ -153,10 +179,10 @@ function App() {
           </div>
         )}
   <div style={{ background: '#fff', borderRadius: 8, boxShadow: '0 1px 4px #e5e7eb', padding: '1em', width: '100%', maxWidth: '100%', flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
-    {selectedSection === 'Movies' ? (
-      <>
-        <h3 style={{ color: '#a855f7', marginTop: 0 }}>Radarr Movies</h3>
-        {!selectedMovie ? (
+    <Routes>
+      <Route path="/movies" element={
+        <>
+          <h3 style={{ color: '#a855f7', marginTop: 0 }}>Radarr Movies</h3>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#f3e8ff' }}>
@@ -169,14 +195,10 @@ function App() {
               {radarrMovies.map((movie, idx) => (
                 <tr key={idx} style={{ borderBottom: '1px solid #f3e8ff' }}>
                   <td style={{ padding: '0.5em', textAlign: 'left' }}>
-                    <a
-                      href="#"
+                    <Link
+                      to={`/movies/${movie.id}`}
                       style={{ color: '#a855f7', textDecoration: 'underline', cursor: 'pointer', fontWeight: 'bold', textAlign: 'left', display: 'block' }}
-                      onClick={e => {
-                        e.preventDefault();
-                        setSelectedMovie(movie);
-                      }}
-                    >{movie.title}</a>
+                    >{movie.title}</Link>
                   </td>
                   <td style={{ padding: '0.5em', textAlign: 'left' }}>{movie.year}</td>
                   <td style={{ padding: '0.5em', textAlign: 'left' }}>{movie.path}</td>
@@ -184,29 +206,11 @@ function App() {
               ))}
             </tbody>
           </table>
-        ) : (
-          <div style={{ display: 'flex', gap: 32 }}>
-            <div style={{ minWidth: 300 }}>
-              {/* Movie poster from Radarr cache */}
-              <img
-                src={`/mediacover/${selectedMovie.id}/poster-500.jpg`}
-                alt={selectedMovie.title}
-                style={{ width: 300, height: 450, objectFit: 'cover', borderRadius: 12, marginBottom: 16, background: '#222' }}
-                onError={e => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/300x450?text=No+Poster'; }}
-              />
-              <button style={{ marginTop: 8, background: '#eee', border: 'none', borderRadius: 6, padding: '0.5em 1em', cursor: 'pointer' }} onClick={() => setSelectedMovie(null)}>Back to list</button>
-            </div>
-            <div style={{ flex: 1 }}>
-              <h2 style={{ color: '#a855f7', margin: 0 }}>{selectedMovie.title}</h2>
-              <div style={{ marginBottom: 8, color: '#888', textAlign: 'left' }}>{selectedMovie.year} &bull; {selectedMovie.path}</div>
-              <div style={{ marginBottom: 16, color: '#333' }}>Movie extras would be listed here.</div>
-              {/* TODO: Integrate actual extras data here */}
-            </div>
-          </div>
-        )}
-        {radarrMoviesError && <div style={{ color: 'red', marginTop: '1em' }}>{radarrMoviesError}</div>}
-      </>
-    ) : (
+          {radarrMoviesError && <div style={{ color: 'red', marginTop: '1em' }}>{radarrMoviesError}</div>}
+        </>
+      } />
+      <Route path="/movies/:id" element={<MovieDetails movies={radarrMovies} />} />
+      <Route path="/settings" element={
       <>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
@@ -228,7 +232,9 @@ function App() {
         </table>
         {plexError && <div style={{ color: 'red', marginTop: '1em' }}>{plexError}</div>}
       </>
-    )}
+      } />
+      <Route path="/" element={<div>Welcome to Extrazarr</div>} />
+    </Routes>
   </div>
       </main>
     </div>
