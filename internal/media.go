@@ -52,10 +52,15 @@ func DownloadMissingExtras(mediaType string, cachePath string) error {
 		}
 		fmt.Printf("[DEBUG] mediaPath=%s\n", mediaPath)
 		MarkDownloadedExtras(extras, mediaPath, "type", "title")
+		// Type filtering logic (copied from tasks.go)
+		config, _ := GetExtraTypesConfig()
 		for _, extra := range extras {
-			fmt.Printf("[DEBUG] Checking extra: %v\n", extra)
 			if extra["downloaded"] == "false" && extra["url"] != "" {
-				fmt.Printf("[DEBUG] Downloading extra: type=%s, title=%s, url=%s\n", extra["type"], extra["title"], extra["url"])
+				typeName := extra["type"]
+				canonical := canonicalizeExtraType(typeName, "")
+				if !isExtraTypeEnabled(config, canonical) {
+					continue
+				}
 				_, err := DownloadYouTubeExtra(mediaPath, extra["type"], extra["title"], extra["url"])
 				if err != nil {
 					fmt.Printf("[DownloadMissingExtras] Failed to download: %v\n", err)

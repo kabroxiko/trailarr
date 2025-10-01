@@ -9,6 +9,7 @@ import HistoryPage from './components/HistoryPage';
 import Wanted from './components/Wanted';
 import SettingsPage from './components/SettingsPage';
 import { Routes, Route } from 'react-router-dom';
+import ExtrasSettings from './components/ExtrasSettings';
 import './App.css';
 // Removed static import of api.js
 // Refactored to use dynamic imports
@@ -231,6 +232,7 @@ function App() {
               <Route path="/system/tasks" element={<Tasks />} />
               <Route path="/wanted/movies" element={<Wanted darkMode={darkMode} type="movie" />} />
               <Route path="/wanted/series" element={<Wanted darkMode={darkMode} type="series" />} />
+              <Route path="/settings/extras" element={<ExtrasSettings />} />
             </Routes>
           </div>
         </main>

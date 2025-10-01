@@ -21,6 +21,113 @@ type SearchExtrasConfig struct {
 	AutoDownloadExtras bool `yaml:"autoDownloadExtras" json:"autoDownloadExtras"`
 }
 
+// ExtraTypesConfig holds config for enabling/disabling specific extra types
+type ExtraTypesConfig struct {
+	Trailers        bool `yaml:"trailers" json:"trailers"`
+	Scenes          bool `yaml:"scenes" json:"scenes"`
+	BehindTheScenes bool `yaml:"behindTheScenes" json:"behindTheScenes"`
+	Interviews      bool `yaml:"interviews" json:"interviews"`
+	Featurettes     bool `yaml:"featurettes" json:"featurettes"`
+	DeletedScenes   bool `yaml:"deletedScenes" json:"deletedScenes"`
+	Other           bool `yaml:"other" json:"other"`
+}
+
+// GetExtraTypesConfig loads extra types config from config.yml
+func GetExtraTypesConfig() (ExtraTypesConfig, error) {
+	data, err := os.ReadFile(ConfigPath)
+	if err != nil {
+		return ExtraTypesConfig{Trailers: true, Scenes: true, BehindTheScenes: true, Interviews: true, Featurettes: true, DeletedScenes: true, Other: true}, err
+	}
+	var config map[string]interface{}
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return ExtraTypesConfig{Trailers: true, Scenes: true, BehindTheScenes: true, Interviews: true, Featurettes: true, DeletedScenes: true, Other: true}, err
+	}
+	sec, ok := config["extraTypes"].(map[string]interface{})
+	cfg := ExtraTypesConfig{}
+	if !ok {
+		// Default: all enabled
+		return ExtraTypesConfig{Trailers: true, Scenes: true, BehindTheScenes: true, Interviews: true, Featurettes: true, DeletedScenes: true, Other: true}, nil
+	}
+	if v, ok := sec["trailers"].(bool); ok {
+		cfg.Trailers = v
+	} else {
+		cfg.Trailers = true
+	}
+	if v, ok := sec["scenes"].(bool); ok {
+		cfg.Scenes = v
+	} else {
+		cfg.Scenes = true
+	}
+	if v, ok := sec["behindTheScenes"].(bool); ok {
+		cfg.BehindTheScenes = v
+	} else {
+		cfg.BehindTheScenes = true
+	}
+	if v, ok := sec["interviews"].(bool); ok {
+		cfg.Interviews = v
+	} else {
+		cfg.Interviews = true
+	}
+	if v, ok := sec["featurettes"].(bool); ok {
+		cfg.Featurettes = v
+	} else {
+		cfg.Featurettes = true
+	}
+	if v, ok := sec["deletedScenes"].(bool); ok {
+		cfg.DeletedScenes = v
+	} else {
+		cfg.DeletedScenes = true
+	}
+	if v, ok := sec["other"].(bool); ok {
+		cfg.Other = v
+	} else {
+		cfg.Other = true
+	}
+	return cfg, nil
+}
+
+// SaveExtraTypesConfig saves extra types config to config.yml
+func SaveExtraTypesConfig(cfg ExtraTypesConfig) error {
+	data, _ := os.ReadFile(ConfigPath)
+	var config map[string]interface{}
+	_ = yaml.Unmarshal(data, &config)
+	config["extraTypes"] = map[string]interface{}{
+		"trailers":        cfg.Trailers,
+		"scenes":          cfg.Scenes,
+		"behindTheScenes": cfg.BehindTheScenes,
+		"interviews":      cfg.Interviews,
+		"featurettes":     cfg.Featurettes,
+		"deletedScenes":   cfg.DeletedScenes,
+		"other":           cfg.Other,
+	}
+	out, _ := yaml.Marshal(config)
+	return os.WriteFile(ConfigPath, out, 0644)
+}
+
+// Handler to get extra types config
+func GetExtraTypesConfigHandler(c *gin.Context) {
+	cfg, err := GetExtraTypesConfig()
+	if err != nil {
+		c.JSON(http.StatusOK, cfg)
+		return
+	}
+	c.JSON(http.StatusOK, cfg)
+}
+
+// Handler to save extra types config
+func SaveExtraTypesConfigHandler(c *gin.Context) {
+	var req ExtraTypesConfig
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": ErrInvalidRequest})
+		return
+	}
+	if err := SaveExtraTypesConfig(req); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "saved"})
+}
+
 // GetAutoDownloadExtras reads the autoDownloadExtras flag from config.yml (general section)
 func GetAutoDownloadExtras() bool {
 	data, err := os.ReadFile(ConfigPath)

@@ -167,13 +167,17 @@ func StartExtrasDownloadTask() {
 				interval = v
 			}
 			if cfg.AutoDownloadExtras {
+				extraTypesCfg, err := GetExtraTypesConfig()
+				if err != nil {
+					fmt.Printf("[WARN] Could not load extra types config: %v\n", err)
+				}
 				if cfg.SearchMoviesExtras {
 					fmt.Println("[TASK] Searching for missing movie extras...")
-					DownloadMissingMoviesExtras()
+					DownloadMissingMoviesExtrasWithTypeFilter(extraTypesCfg)
 				}
 				if cfg.SearchSeriesExtras {
 					fmt.Println("[TASK] Searching for missing series extras...")
-					DownloadMissingSeriesExtras()
+					DownloadMissingSeriesExtrasWithTypeFilter(extraTypesCfg)
 				}
 			} else {
 				fmt.Println("[TASK] Auto download of extras is disabled by searchExtras config.")
@@ -192,5 +196,83 @@ func StopExtrasDownloadTask() {
 	if extrasTaskCancel != nil {
 		extrasTaskCancel()
 		extrasTaskCancel = nil
+	}
+}
+
+// Download missing movie extras, filtering by enabled types
+func DownloadMissingMoviesExtrasWithTypeFilter(cfg ExtraTypesConfig) {
+	// Example: get all movies, for each, get extras, filter by type, download only enabled types
+	downloadMissingExtrasWithTypeFilter(cfg, "movie", TrailarrRoot+"/movies_wanted.json")
+}
+
+// Download missing series extras, filtering by enabled types
+func DownloadMissingSeriesExtrasWithTypeFilter(cfg ExtraTypesConfig) {
+	downloadMissingExtrasWithTypeFilter(cfg, "tv", TrailarrRoot+"/series_wanted.json")
+}
+
+// Shared logic for type-filtered extras download
+func downloadMissingExtrasWithTypeFilter(cfg ExtraTypesConfig, mediaType, cachePath string) {
+	items, err := loadCache(cachePath)
+	if err != nil {
+		fmt.Printf("[DEBUG] Failed to load cache: %v\n", err)
+		return
+	}
+	for _, m := range items {
+		id, ok := m["id"]
+		if !ok {
+			continue
+		}
+		var idInt int
+		switch v := id.(type) {
+		case int:
+			idInt = v
+		case float64:
+			idInt = int(v)
+		case string:
+			fmt.Sscanf(v, "%d", &idInt)
+		}
+		extras, err := SearchExtras(mediaType, idInt)
+		if err != nil {
+			continue
+		}
+		mediaPath, err := FindMediaPathByID(cachePath, fmt.Sprintf("%v", id))
+		if err != nil || mediaPath == "" {
+			continue
+		}
+		MarkDownloadedExtras(extras, mediaPath, "type", "title")
+		for _, extra := range extras {
+			typ := canonicalizeExtraType(extra["type"], extra["type"])
+			if !isExtraTypeEnabled(cfg, typ) {
+				continue
+			}
+			if extra["downloaded"] == "false" && extra["url"] != "" {
+				_, err := DownloadYouTubeExtra(mediaPath, extra["type"], extra["title"], extra["url"])
+				if err != nil {
+					fmt.Printf("[DownloadMissingExtrasWithTypeFilter] Failed to download: %v\n", err)
+				}
+			}
+		}
+	}
+}
+
+// Helper: check if extra type is enabled in config
+func isExtraTypeEnabled(cfg ExtraTypesConfig, typ string) bool {
+	switch typ {
+	case "Trailers":
+		return cfg.Trailers
+	case "Scenes":
+		return cfg.Scenes
+	case "Behind The Scenes":
+		return cfg.BehindTheScenes
+	case "Interviews":
+		return cfg.Interviews
+	case "Featurettes":
+		return cfg.Featurettes
+	case "Deleted Scenes":
+		return cfg.DeletedScenes
+	case "Others", "Other":
+		return cfg.Other
+	default:
+		return false
 	}
 }
