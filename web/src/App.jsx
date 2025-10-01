@@ -406,81 +406,7 @@ function App() {
         </aside>
         <main style={{ flex: 1, padding: '0em', height: '100%', boxSizing: 'border-box', overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'stretch', maxWidth: 'calc(100vw - 220px)', background: darkMode ? '#18181b' : '#fff', color: darkMode ? '#e5e7eb' : '#222' }}>
           {/* Removed content title (Movies, Settings, etc) */}
-          {selectedSection === 'Settings' && selectedSettingsSub === 'Radarr' && (
-            <div style={{
-              background: darkMode ? '#23232a' : '#fff',
-              borderRadius: 8,
-              boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb',
-              padding: '0em',
-              width: 400,
-              marginBottom: '0em',
-              color: darkMode ? '#e5e7eb' : '#222',
-              border: darkMode ? '1px solid #333' : 'none',
-            }}>
-              <h3 style={{ color: '#e5e7eb', marginTop: 0 }}>Radarr Connection</h3>
-              <div style={{ marginBottom: '1em' }}>
-                <label style={{ display: 'block', marginBottom: 4, color: darkMode ? '#e5e7eb' : '#222' }}>Radarr URL</label>
-                <input
-                  type="text"
-                  value={radarrUrl}
-                  onChange={e => setRadarrUrl(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '0.5em',
-                    borderRadius: 6,
-                    border: darkMode ? '1px solid #333' : '1px solid #e5e7eb',
-                    background: darkMode ? '#18181b' : '#fff',
-                    color: darkMode ? '#e5e7eb' : '#222',
-                  }}
-                  placeholder="http://localhost:7878"
-                />
-              </div>
-              <div style={{ marginBottom: '1em' }}>
-                <label style={{ display: 'block', marginBottom: 4, color: darkMode ? '#e5e7eb' : '#222' }}>API Key</label>
-                <input
-                  type="text"
-                  value={radarrApiKey}
-                  onChange={e => setRadarrApiKey(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '0.5em',
-                    borderRadius: 6,
-                    border: darkMode ? '1px solid #333' : '1px solid #e5e7eb',
-                    background: darkMode ? '#18181b' : '#fff',
-                    color: darkMode ? '#e5e7eb' : '#222',
-                  }}
-                  placeholder="Your Radarr API Key"
-                />
-              </div>
-              <button
-                style={{
-                  background: '#a855f7',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: 6,
-                  padding: '0.5em 1em',
-                  cursor: 'pointer',
-                  fontWeight: 'bold',
-                  boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb',
-                }}
-                onClick={async () => {
-                  setRadarrStatus('');
-                  try {
-                    const res = await fetch('/api/settings/radarr', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ url: radarrUrl, apiKey: radarrApiKey })
-                    });
-                    if (!res.ok) throw new Error('Failed to save');
-                    setRadarrStatus('Saved!');
-                  } catch {
-                    setRadarrStatus('Error saving');
-                  }
-                }}
-              >Save</button>
-              {radarrStatus && <div style={{ marginTop: '1em', color: '#22c55e' }}>{radarrStatus}</div>}
-            </div>
-          )}
+          {/* Radarr Connection block is now rendered via a dedicated route below */}
           <div style={{ background: darkMode ? '#23232a' : '#fff', borderRadius: 8, boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb', padding: '0em', width: '100%', maxWidth: '100%', flex: 1, overflowY: 'auto', overflowX: 'hidden', color: darkMode ? '#e5e7eb' : '#222' }}>
             <Routes>
               <Route path="/movies" element={
@@ -509,6 +435,81 @@ function App() {
                 </>
               } />
               <Route path="/movies/:id" element={<MovieDetails movies={radarrMovies} loading={radarrMoviesLoading} />} />
+              <Route path="/settings/radarr" element={
+                <div style={{
+                  background: darkMode ? '#23232a' : '#fff',
+                  borderRadius: 8,
+                  boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb',
+                  padding: '0em',
+                  width: 400,
+                  marginBottom: '0em',
+                  color: darkMode ? '#e5e7eb' : '#222',
+                  border: darkMode ? '1px solid #333' : 'none',
+                }}>
+                  <h3 style={{ color: '#e5e7eb', marginTop: 0 }}>Radarr Connection</h3>
+                  <div style={{ marginBottom: '1em' }}>
+                    <label style={{ display: 'block', marginBottom: 4, color: darkMode ? '#e5e7eb' : '#222' }}>Radarr URL</label>
+                    <input
+                      type="text"
+                      value={radarrUrl}
+                      onChange={e => setRadarrUrl(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.5em',
+                        borderRadius: 6,
+                        border: darkMode ? '1px solid #333' : '1px solid #e5e7eb',
+                        background: darkMode ? '#18181b' : '#fff',
+                        color: darkMode ? '#e5e7eb' : '#222',
+                      }}
+                      placeholder="http://localhost:7878"
+                    />
+                  </div>
+                  <div style={{ marginBottom: '1em' }}>
+                    <label style={{ display: 'block', marginBottom: 4, color: darkMode ? '#e5e7eb' : '#222' }}>API Key</label>
+                    <input
+                      type="text"
+                      value={radarrApiKey}
+                      onChange={e => setRadarrApiKey(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.5em',
+                        borderRadius: 6,
+                        border: darkMode ? '1px solid #333' : '1px solid #e5e7eb',
+                        background: darkMode ? '#18181b' : '#fff',
+                        color: darkMode ? '#e5e7eb' : '#222',
+                      }}
+                      placeholder="Your Radarr API Key"
+                    />
+                  </div>
+                  <button
+                    style={{
+                      background: '#a855f7',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 6,
+                      padding: '0.5em 1em',
+                      cursor: 'pointer',
+                      fontWeight: 'bold',
+                      boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb',
+                    }}
+                    onClick={async () => {
+                      setRadarrStatus('');
+                      try {
+                        const res = await fetch('/api/settings/radarr', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ url: radarrUrl, apiKey: radarrApiKey })
+                        });
+                        if (!res.ok) throw new Error('Failed to save');
+                        setRadarrStatus('Saved!');
+                      } catch {
+                        setRadarrStatus('Error saving');
+                      }
+                    }}
+                  >Save</button>
+                  {radarrStatus && <div style={{ marginTop: '1em', color: '#22c55e' }}>{radarrStatus}</div>}
+                </div>
+              } />
               <Route path="/settings" element={
                 selectedSettingsSub === 'Radarr' ? null : (
                   <>
