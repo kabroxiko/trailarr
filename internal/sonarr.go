@@ -19,7 +19,7 @@ func getSonarrHandler(c *gin.Context) {
 	cachePath := SeriesCachePath
 	series, err := loadCache(cachePath)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "Series cache not found"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Series cache not found"})
 		return
 	}
 	// If id query param is present, filter for that series only
@@ -67,43 +67,91 @@ func getSonarrSettingsHandler(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"url": "", "apiKey": ""})
 		return
 	}
-	var allSettings struct {
-		Sonarr struct {
-			URL    string `yaml:"url"`
-			APIKey string `yaml:"apiKey"`
-		} `yaml:"sonarr"`
-	}
-	if err := yaml.Unmarshal(data, &allSettings); err != nil {
-		c.JSON(http.StatusOK, gin.H{"url": "", "apiKey": ""})
+	var config map[string]interface{}
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		c.JSON(http.StatusOK, gin.H{"url": "", "apiKey": "", "pathMappings": []interface{}{}})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"url": allSettings.Sonarr.URL, "apiKey": allSettings.Sonarr.APIKey})
+	sonarrSection, _ := config["sonarr"].(map[string]interface{})
+	// Convert PathMappings keys to lowercase for frontend compatibility
+	var mappings []map[string]string
+	mappingSet := map[string]bool{}
+	var pathMappings []map[string]interface{}
+	if sonarrSection != nil {
+		if pm, ok := sonarrSection["pathMappings"].([]interface{}); ok {
+			for _, m := range pm {
+				if mMap, ok := m.(map[string]interface{}); ok {
+					from := ""
+					to := ""
+					if v, ok := mMap["from"].(string); ok {
+						from = v
+					}
+					if v, ok := mMap["to"].(string); ok {
+						to = v
+					}
+					mappings = append(mappings, map[string]string{"from": from, "to": to})
+					mappingSet[from] = true
+					pathMappings = append(pathMappings, map[string]interface{}{"from": from, "to": to})
+				}
+			}
+		}
+	}
+
+	// Add any root folder from Sonarr API response to settings if missing
+	folders, err := FetchRootFolders(sonarrSection["url"].(string), sonarrSection["apiKey"].(string))
+	fmt.Printf("[DEBUG] Sonarr root folders response: %+v\n", folders)
+	updated := false
+	for _, f := range folders {
+		if path, ok := f["path"].(string); ok {
+			if !mappingSet[path] {
+				fmt.Printf("[INFO] Adding missing root folder to settings: %s\n", path)
+				pathMappings = append(pathMappings, map[string]interface{}{"from": path, "to": ""})
+				mappings = append(mappings, map[string]string{"from": path, "to": ""})
+				updated = true
+			}
+		}
+	}
+	if updated {
+		// Save only Sonarr section
+		sonarrSection["pathMappings"] = pathMappings
+		config["sonarr"] = sonarrSection
+		out, _ := yaml.Marshal(config)
+		err := os.WriteFile(ConfigPath, out, 0644)
+		if err != nil {
+			fmt.Printf("[ERROR] Failed to save updated config: %v\n", err)
+		} else {
+			fmt.Printf("[INFO] Updated config with new root folders\n")
+		}
+	}
+	fmt.Printf("[DEBUG] Returning Sonarr settings: url=%v, apiKey=%v, pathMappings=%+v\n", sonarrSection["url"], sonarrSection["apiKey"], mappings)
+	c.JSON(http.StatusOK, gin.H{"url": sonarrSection["url"], "apiKey": sonarrSection["apiKey"], "pathMappings": mappings})
 }
 
 func saveSonarrSettingsHandler(c *gin.Context) {
 	var req struct {
-		URL    string `yaml:"url"`
-		APIKey string `yaml:"apiKey"`
+		URL          string `yaml:"url"`
+		APIKey       string `yaml:"apiKey"`
+		PathMappings []struct {
+			From string `yaml:"from"`
+			To   string `yaml:"to"`
+		} `yaml:"pathMappings"`
 	}
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": ErrInvalidRequest})
 		return
 	}
-	var allSettings struct {
-		Sonarr struct {
-			URL    string `yaml:"url"`
-			APIKey string `yaml:"apiKey"`
-		} `yaml:"sonarr"`
-		Radarr struct {
-			URL    string `yaml:"url"`
-			APIKey string `yaml:"apiKey"`
-		} `yaml:"radarr"`
-	}
+	// Read existing config as map[string]interface{} to preserve all keys
 	data, _ := os.ReadFile(ConfigPath)
-	_ = yaml.Unmarshal(data, &allSettings)
-	allSettings.Sonarr.URL = req.URL
-	allSettings.Sonarr.APIKey = req.APIKey
-	out, _ := yaml.Marshal(allSettings)
+	var config map[string]interface{}
+	_ = yaml.Unmarshal(data, &config)
+	// Update only sonarr section
+	sonarr := map[string]interface{}{
+		"url":          req.URL,
+		"apiKey":       req.APIKey,
+		"pathMappings": req.PathMappings,
+	}
+	config["sonarr"] = sonarr
+	out, _ := yaml.Marshal(config)
 	err := os.WriteFile(ConfigPath, out, 0644)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -261,7 +309,28 @@ func GetSeriesWithoutTrailerExtraHandler(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "Series cache not found"})
 		return
 	}
-	trailerSet := findMediaWithTrailers("/mnt/unionfs/Media/TV")
+	// Load Sonarr settings to get pathMappings
+	data, err := os.ReadFile(ConfigPath)
+	var config map[string]interface{}
+	_ = yaml.Unmarshal(data, &config)
+	sonarrSection, _ := config["sonarr"].(map[string]interface{})
+	var trailerPaths []string
+	if sonarrSection != nil {
+		if pm, ok := sonarrSection["pathMappings"].([]interface{}); ok {
+			for _, m := range pm {
+				if mMap, ok := m.(map[string]interface{}); ok {
+					if to, ok := mMap["to"].(string); ok && to != "" {
+						trailerPaths = append(trailerPaths, to)
+					}
+				}
+			}
+		}
+	}
+	if len(trailerPaths) == 0 {
+		// fallback to default if no mappings
+		trailerPaths = append(trailerPaths, "/mnt/unionfs/Media/TV")
+	}
+	trailerSet := findMediaWithTrailers(trailerPaths...)
 	var result []map[string]interface{}
 	for _, s := range series {
 		path, ok := s["path"].(string)
@@ -271,4 +340,30 @@ func GetSeriesWithoutTrailerExtraHandler(c *gin.Context) {
 		result = append(result, s)
 	}
 	c.JSON(200, gin.H{"series": result})
+}
+
+// Example usage for Sonarr
+func getSonarrRootFoldersHandler(c *gin.Context) {
+	// Load Sonarr settings
+	data, err := os.ReadFile(ConfigPath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Config not found"})
+		return
+	}
+	var allSettings struct {
+		Sonarr struct {
+			URL    string `yaml:"url"`
+			APIKey string `yaml:"apiKey"`
+		} `yaml:"sonarr"`
+	}
+	if err := yaml.Unmarshal(data, &allSettings); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Config parse error"})
+		return
+	}
+	folders, err := FetchRootFolders(allSettings.Sonarr.URL, allSettings.Sonarr.APIKey)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"rootFolders": folders})
 }

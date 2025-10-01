@@ -270,26 +270,28 @@ func downloadExtraHandler(c *gin.Context) {
 }
 
 // Utility: Recursively find all media paths with Trailers containing video files (with debug logging)
-func findMediaWithTrailers(baseDir string) map[string]bool {
+func findMediaWithTrailers(baseDirs ...string) map[string]bool {
 	found := make(map[string]bool)
-	_ = filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-		if !info.IsDir() {
-			return nil
-		}
-		if filepath.Base(path) == "Trailers" {
-			entries, _ := os.ReadDir(path)
-			for _, entry := range entries {
-				if !entry.IsDir() && (strings.HasSuffix(entry.Name(), ".mp4") || strings.HasSuffix(entry.Name(), ".mkv") || strings.HasSuffix(entry.Name(), ".avi")) {
-					parent := filepath.Dir(path)
-					found[parent] = true
-					break
+	for _, baseDir := range baseDirs {
+		_ = filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil
+			}
+			if !info.IsDir() {
+				return nil
+			}
+			if filepath.Base(path) == "Trailers" {
+				entries, _ := os.ReadDir(path)
+				for _, entry := range entries {
+					if !entry.IsDir() && (strings.HasSuffix(entry.Name(), ".mp4") || strings.HasSuffix(entry.Name(), ".mkv") || strings.HasSuffix(entry.Name(), ".avi")) {
+						parent := filepath.Dir(path)
+						found[parent] = true
+						break
+					}
 				}
 			}
-		}
-		return nil
-	})
+			return nil
+		})
+	}
 	return found
 }

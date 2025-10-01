@@ -7,6 +7,8 @@ import GeneralSettings from './components/GeneralSettings';
 import Tasks from './components/Tasks';
 import HistoryPage from './components/HistoryPage';
 import Wanted from './components/Wanted';
+import SonarrSettings from './components/SonarrSettings';
+import RadarrSettings from './components/RadarrSettings';
 import { Routes, Route } from 'react-router-dom';
 import { Navigate } from 'react-router-dom';
 import './App.css';
@@ -208,156 +210,8 @@ function App() {
               <Route path="/movies/:id" element={<MediaDetails mediaItems={radarrMovies} loading={radarrMoviesLoading} mediaType="movie" />} />
               <Route path="/series/:id" element={<MediaDetails mediaItems={sonarrSeries} loading={sonarrSeriesLoading} mediaType="tv" />} />
               <Route path="/history" element={<HistoryPage />} />
-              <Route path="/settings/radarr" element={
-                <div style={{
-                  background: darkMode ? '#23232a' : '#fff',
-                  borderRadius: 8,
-                  boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb',
-                  padding: '0em',
-                  width: 400,
-                  marginBottom: '0em',
-                  color: darkMode ? '#e5e7eb' : '#222',
-                  border: darkMode ? '1px solid #333' : 'none',
-                }}>
-                  <h3 style={{ color: '#e5e7eb', marginTop: 0 }}>Radarr Connection</h3>
-                  <div style={{ marginBottom: '1em' }}>
-                    <label style={{ display: 'block', marginBottom: 4, color: darkMode ? '#e5e7eb' : '#222' }}>Radarr URL</label>
-                    <input
-                      type="text"
-                      value={radarrUrl}
-                      onChange={e => setRadarrUrl(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '0.5em',
-                        borderRadius: 6,
-                        border: darkMode ? '1px solid #333' : '1px solid #e5e7eb',
-                        background: darkMode ? '#18181b' : '#fff',
-                        color: darkMode ? '#e5e7eb' : '#222',
-                      }}
-                      placeholder="http://localhost:7878"
-                    />
-                  </div>
-                  <div style={{ marginBottom: '1em' }}>
-                    <label style={{ display: 'block', marginBottom: 4, color: darkMode ? '#e5e7eb' : '#222' }}>API Key</label>
-                    <input
-                      type="text"
-                      value={radarrApiKey}
-                      onChange={e => setRadarrApiKey(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '0.5em',
-                        borderRadius: 6,
-                        border: darkMode ? '1px solid #333' : '1px solid #e5e7eb',
-                        background: darkMode ? '#18181b' : '#fff',
-                        color: darkMode ? '#e5e7eb' : '#222',
-                      }}
-                      placeholder="Your Radarr API Key"
-                    />
-                  </div>
-                  <button
-                    style={{
-                      background: '#a855f7',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: 6,
-                      padding: '0.5em 1em',
-                      cursor: 'pointer',
-                      fontWeight: 'bold',
-                      boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb',
-                    }}
-                    onClick={async () => {
-                      setRadarrStatus('');
-                      try {
-                        const res = await fetch('/api/settings/radarr', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ url: radarrUrl, apiKey: radarrApiKey })
-                        });
-                        if (!res.ok) throw new Error('Failed to save');
-                        setRadarrStatus('Saved!');
-                      } catch {
-                        setRadarrStatus('Error saving');
-                      }
-                    }}
-                  >Save</button>
-                  {radarrStatus && <div style={{ marginTop: '1em', color: '#22c55e' }}>{radarrStatus}</div>}
-                </div>
-              } />
-              <Route path="/settings/sonarr" element={
-                <div style={{
-                  background: darkMode ? '#23232a' : '#fff',
-                  borderRadius: 8,
-                  boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb',
-                  padding: '0em',
-                  width: 400,
-                  marginBottom: '0em',
-                  color: darkMode ? '#e5e7eb' : '#222',
-                  border: darkMode ? '1px solid #333' : 'none',
-                }}>
-                  <h3 style={{ color: '#e5e7eb', marginTop: 0 }}>Sonarr Connection</h3>
-                  <div style={{ marginBottom: '1em' }}>
-                    <label style={{ display: 'block', marginBottom: 4, color: darkMode ? '#e5e7eb' : '#222' }}>Sonarr URL</label>
-                    <input
-                      type="text"
-                      value={sonarrUrl}
-                      onChange={e => setSonarrUrl(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '0.5em',
-                        borderRadius: 6,
-                        border: darkMode ? '1px solid #333' : '1px solid #e5e7eb',
-                        background: darkMode ? '#18181b' : '#fff',
-                        color: darkMode ? '#e5e7eb' : '#222',
-                      }}
-                      placeholder="http://localhost:8989"
-                    />
-                  </div>
-                  <div style={{ marginBottom: '1em' }}>
-                    <label style={{ display: 'block', marginBottom: 4, color: darkMode ? '#e5e7eb' : '#222' }}>API Key</label>
-                    <input
-                      type="text"
-                      value={sonarrApiKey}
-                      onChange={e => setSonarrApiKey(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '0.5em',
-                        borderRadius: 6,
-                        border: darkMode ? '1px solid #333' : '1px solid #e5e7eb',
-                        background: darkMode ? '#18181b' : '#fff',
-                        color: darkMode ? '#e5e7eb' : '#222',
-                      }}
-                      placeholder="Your Sonarr API Key"
-                    />
-                  </div>
-                  <button
-                    style={{
-                      background: '#a855f7',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: 6,
-                      padding: '0.5em 1em',
-                      cursor: 'pointer',
-                      fontWeight: 'bold',
-                      boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb',
-                    }}
-                    onClick={async () => {
-                      setSonarrStatus('');
-                      try {
-                        const res = await fetch('/api/settings/sonarr', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ url: sonarrUrl, apiKey: sonarrApiKey })
-                        });
-                        if (!res.ok) throw new Error('Failed to save');
-                        setSonarrStatus('Saved!');
-                      } catch {
-                        setSonarrStatus('Error saving');
-                      }
-                    }}
-                  >Save</button>
-                  {sonarrStatus && <div style={{ marginTop: '1em', color: '#22c55e' }}>{sonarrStatus}</div>}
-                </div>
-              } />
+              <Route path="/settings/radarr" element={<RadarrSettings />} />
+              <Route path="/settings/sonarr" element={<SonarrSettings />} />
               <Route path="/settings/general" element={<GeneralSettings />} />
               <Route path="/" element={<Navigate to="/movies" replace />} />
               <Route path="/system/tasks" element={<Tasks />} />
