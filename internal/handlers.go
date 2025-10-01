@@ -1,12 +1,13 @@
 package internal
 
 import (
-	"github.com/gin-gonic/gin"
-	"gopkg.in/yaml.v3"
 	"io"
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/gin-gonic/gin"
+	"gopkg.in/yaml.v3"
 )
 
 func getGeneralSettingsHandler(c *gin.Context) {
@@ -58,7 +59,7 @@ func saveGeneralSettingsHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "saved"})
 }
 
-func HandleRadarrPoster(c *gin.Context) {
+func getRadarrPosterHandler(c *gin.Context) {
 	movieId := c.Param("movieId")
 	// Load Radarr settings
 	data, err := os.ReadFile(ConfigPath)
@@ -104,7 +105,7 @@ func HandleRadarrPoster(c *gin.Context) {
 	io.Copy(c.Writer, resp.Body)
 }
 
-func HandleRadarrBanner(c *gin.Context) {
+func getRadarrBannerHandler(c *gin.Context) {
 	movieId := c.Param("movieId")
 	// Load Radarr settings
 	data, err := os.ReadFile(ConfigPath)

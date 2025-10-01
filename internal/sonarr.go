@@ -14,7 +14,7 @@ import (
 )
 
 // Handler for /api/sonarr/banner/:seriesId
-func HandleSonarrBanner(c *gin.Context) {
+func getSonarrBannerHandler(c *gin.Context) {
 	seriesId := c.Param("seriesId")
 	// Load Sonarr settings
 	data, err := os.ReadFile(ConfigPath)
@@ -61,7 +61,7 @@ func HandleSonarrBanner(c *gin.Context) {
 }
 
 // Handler for /api/sonarr/poster/:seriesId
-func HandleSonarrPoster(c *gin.Context) {
+func getSonarrPosterHandler(c *gin.Context) {
 	seriesId := c.Param("seriesId")
 	sonarrSettings, err := getSonarrSettings()
 	if err != nil {
@@ -184,7 +184,7 @@ func proxyImage(c *gin.Context, imageUrl, apiBase, apiKey string) error {
 }
 
 // Handler for /api/sonarr/series
-func HandleSonarrSeries(c *gin.Context) {
+func getSonarrSeriesHandler(c *gin.Context) {
 	cachePath := SeriesCachePath
 	if series, ok := loadSonarrSeriesFromCache(cachePath); ok {
 		c.JSON(http.StatusOK, gin.H{"series": series})
@@ -193,7 +193,7 @@ func HandleSonarrSeries(c *gin.Context) {
 
 	sonarrSettings, err := getSonarrSettingsFromConfig()
 	if err != nil {
-		fmt.Println("[HandleSonarrSeries] Sonarr settings not found or invalid:", err)
+		fmt.Println("[getSonarrSeriesHandler] Sonarr settings not found or invalid:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Sonarr settings not found"})
 		return
 	}
@@ -201,7 +201,7 @@ func HandleSonarrSeries(c *gin.Context) {
 	apiBase := trimTrailingSlash(sonarrSettings.URL)
 	series, err := fetchAndFilterSonarrSeries(apiBase, sonarrSettings.APIKey)
 	if err != nil {
-		fmt.Println("[HandleSonarrSeries] Error fetching or decoding series:", err)
+		fmt.Println("[getSonarrSeriesHandler] Error fetching or decoding series:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -268,7 +268,7 @@ func fetchAndFilterSonarrSeries(apiBase, apiKey string) ([]SonarrSeries, error) 
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	fmt.Printf("[HandleSonarrSeries] Raw response body: %s\n", string(body))
+	fmt.Printf("[getSonarrSeriesHandler] Raw response body: %s\n", string(body))
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("Sonarr API error: %d", resp.StatusCode)
 	}
