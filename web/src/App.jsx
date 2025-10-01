@@ -281,7 +281,6 @@ function App() {
     <Routes>
       <Route path="/movies" element={
         <>
-          <h3 style={{ color: '#a855f7', marginTop: 0 }}>Radarr Movies</h3>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#f3e8ff' }}>
