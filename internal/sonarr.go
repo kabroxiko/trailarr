@@ -3,11 +3,9 @@ package internal
 import (
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"gopkg.in/yaml.v3"
 	// adjust to actual module path if needed
 )
 
@@ -61,105 +59,6 @@ func getSeriesExtrasHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"extras": results})
 }
 
-func getSonarrSettingsHandler(c *gin.Context) {
-	data, err := os.ReadFile(ConfigPath)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"url": "", "apiKey": ""})
-		return
-	}
-	var config map[string]interface{}
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		c.JSON(http.StatusOK, gin.H{"url": "", "apiKey": "", "pathMappings": []interface{}{}})
-		return
-	}
-	sonarrSection, _ := config["sonarr"].(map[string]interface{})
-	// Convert PathMappings keys to lowercase for frontend compatibility
-	var mappings []map[string]string
-	mappingSet := map[string]bool{}
-	var pathMappings []map[string]interface{}
-	if sonarrSection != nil {
-		if pm, ok := sonarrSection["pathMappings"].([]interface{}); ok {
-			for _, m := range pm {
-				if mMap, ok := m.(map[string]interface{}); ok {
-					from := ""
-					to := ""
-					if v, ok := mMap["from"].(string); ok {
-						from = v
-					}
-					if v, ok := mMap["to"].(string); ok {
-						to = v
-					}
-					mappings = append(mappings, map[string]string{"from": from, "to": to})
-					mappingSet[from] = true
-					pathMappings = append(pathMappings, map[string]interface{}{"from": from, "to": to})
-				}
-			}
-		}
-	}
-
-	// Add any root folder from Sonarr API response to settings if missing
-	folders, err := FetchRootFolders(sonarrSection["url"].(string), sonarrSection["apiKey"].(string))
-	updated := false
-	for _, f := range folders {
-		if path, ok := f["path"].(string); ok {
-			if !mappingSet[path] {
-				fmt.Printf("[INFO] Adding missing root folder to settings: %s\n", path)
-				pathMappings = append(pathMappings, map[string]interface{}{"from": path, "to": ""})
-				mappings = append(mappings, map[string]string{"from": path, "to": ""})
-				updated = true
-			}
-		}
-	}
-	if updated {
-		// Save only Sonarr section
-		sonarrSection["pathMappings"] = pathMappings
-		config["sonarr"] = sonarrSection
-		out, _ := yaml.Marshal(config)
-		err := os.WriteFile(ConfigPath, out, 0644)
-		if err != nil {
-			fmt.Printf("[ERROR] Failed to save updated config: %v\n", err)
-		} else {
-			fmt.Printf("[INFO] Updated config with new root folders\n")
-		}
-	}
-	c.JSON(http.StatusOK, gin.H{"url": sonarrSection["url"], "apiKey": sonarrSection["apiKey"], "pathMappings": mappings})
-}
-
-func saveSonarrSettingsHandler(c *gin.Context) {
-	var req struct {
-		URL          string `yaml:"url"`
-		APIKey       string `yaml:"apiKey"`
-		PathMappings []struct {
-			From string `yaml:"from"`
-			To   string `yaml:"to"`
-		} `yaml:"pathMappings"`
-	}
-	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": ErrInvalidRequest})
-		return
-	}
-	// Read existing config as map[string]interface{} to preserve all keys
-	data, _ := os.ReadFile(ConfigPath)
-	var config map[string]interface{}
-	_ = yaml.Unmarshal(data, &config)
-	// Update only sonarr section
-	sonarr := map[string]interface{}{
-		"url":          req.URL,
-		"apiKey":       req.APIKey,
-		"pathMappings": req.PathMappings,
-	}
-	config["sonarr"] = sonarr
-	out, _ := yaml.Marshal(config)
-	err := os.WriteFile(ConfigPath, out, 0644)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"status": "saved"})
-}
-
-// Sync queue item and status for Sonarr
-
 // SyncSonarrQueueItem tracks a Sonarr sync operation
 type SyncSonarrQueueItem struct {
 	Queued   time.Time
@@ -209,7 +108,8 @@ func ForceSyncSonarr() {
 	}
 	syncSonarrStatus.LastExecution = item.Ended
 	syncSonarrStatus.LastDuration = item.Duration
-	syncSonarrStatus.NextExecution = item.Ended.Add(15 * time.Minute)
+	interval := Timings["sonarr"]
+	syncSonarrStatus.NextExecution = item.Ended.Add(time.Duration(interval) * time.Minute)
 	if len(syncSonarrStatus.Queue) > 10 {
 		syncSonarrStatus.Queue = syncSonarrStatus.Queue[len(syncSonarrStatus.Queue)-10:]
 	}
@@ -217,8 +117,9 @@ func ForceSyncSonarr() {
 
 // Background sync for Sonarr
 func BackgroundSyncSonarr() {
+	interval := Timings["sonarr"]
 	BackgroundSync(
-		15*time.Minute,
+		time.Duration(interval)*time.Minute,
 		SyncSonarrImages,
 		func(item interface{}) {
 			syncSonarrStatus.Queue = append(syncSonarrStatus.Queue, *item.(*SyncSonarrQueueItem))
@@ -238,7 +139,7 @@ func BackgroundSyncSonarr() {
 			}
 			syncSonarrStatus.LastExecution = ended
 			syncSonarrStatus.LastDuration = duration
-			syncSonarrStatus.NextExecution = ended.Add(15 * time.Minute)
+			syncSonarrStatus.NextExecution = ended.Add(time.Duration(interval) * time.Minute)
 		},
 		func() {
 			if len(syncSonarrStatus.Queue) > 10 {
@@ -258,10 +159,11 @@ func SonarrQueue() []SyncSonarrQueueItem { return syncSonarrStatus.Queue }
 // Exported handler for Sonarr status
 func GetSonarrStatusHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		interval := Timings["sonarr"]
 		c.JSON(http.StatusOK, gin.H{
 			"scheduled": gin.H{
 				"name":          "Sync with Sonarr",
-				"interval":      "15 minutes",
+				"interval":      fmt.Sprintf("%d minutes", interval),
 				"lastExecution": SonarrLastExecution(),
 				"lastDuration":  SonarrLastDuration().String(),
 				"nextExecution": SonarrNextExecution(),
@@ -297,71 +199,4 @@ func SyncSonarrImages() error {
 		true, // debug
 	)
 	return nil
-}
-
-// Lists series without any downloaded trailer extra
-func GetSeriesWithoutTrailerExtraHandler(c *gin.Context) {
-	cachePath := SeriesCachePath
-	series, err := loadCache(cachePath)
-	if err != nil {
-		c.JSON(500, gin.H{"error": "Series cache not found"})
-		return
-	}
-	// Load Sonarr settings to get pathMappings
-	data, err := os.ReadFile(ConfigPath)
-	var config map[string]interface{}
-	_ = yaml.Unmarshal(data, &config)
-	sonarrSection, _ := config["sonarr"].(map[string]interface{})
-	var trailerPaths []string
-	if sonarrSection != nil {
-		if pm, ok := sonarrSection["pathMappings"].([]interface{}); ok {
-			for _, m := range pm {
-				if mMap, ok := m.(map[string]interface{}); ok {
-					if to, ok := mMap["to"].(string); ok && to != "" {
-						trailerPaths = append(trailerPaths, to)
-					}
-				}
-			}
-		}
-	}
-	if len(trailerPaths) == 0 {
-		// fallback to default if no mappings
-		trailerPaths = append(trailerPaths, "/mnt/unionfs/Media/TV")
-	}
-	trailerSet := findMediaWithTrailers(trailerPaths...)
-	var result []map[string]interface{}
-	for _, s := range series {
-		path, ok := s["path"].(string)
-		if !ok || trailerSet[path] {
-			continue
-		}
-		result = append(result, s)
-	}
-	c.JSON(200, gin.H{"series": result})
-}
-
-// Example usage for Sonarr
-func getSonarrRootFoldersHandler(c *gin.Context) {
-	// Load Sonarr settings
-	data, err := os.ReadFile(ConfigPath)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Config not found"})
-		return
-	}
-	var allSettings struct {
-		Sonarr struct {
-			URL    string `yaml:"url"`
-			APIKey string `yaml:"apiKey"`
-		} `yaml:"sonarr"`
-	}
-	if err := yaml.Unmarshal(data, &allSettings); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Config parse error"})
-		return
-	}
-	folders, err := FetchRootFolders(allSettings.Sonarr.URL, allSettings.Sonarr.APIKey)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"rootFolders": folders})
 }
