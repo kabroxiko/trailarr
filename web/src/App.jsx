@@ -176,7 +176,7 @@ function App() {
                       {search.trim() ? (
                         <>
                           <MediaList items={titleMatches} darkMode={darkMode} type="series" />
-                          <div style={{ margin: '1.5em 0 0.5em 1em', fontWeight: 600, fontSize: 18, textAlign: 'left', width: '100%' }}>Other Results</div>
+                          <div style={{ margin: '1.5em 0 0.5em 1em', fontWeight: 700, fontSize: 26, textAlign: 'left', width: '100%', letterSpacing: 0.5 }}>Other Results</div>
                           <MediaList items={overviewMatches} darkMode={darkMode} type="series" />
                         </>
                       ) : (
@@ -195,7 +195,7 @@ function App() {
                       {search.trim() ? (
                         <>
                           <MediaList items={titleMatches} darkMode={darkMode} type="movie" />
-                          <div style={{ margin: '1.5em 0 0.5em 1em', fontWeight: 600, fontSize: 18, textAlign: 'left', width: '100%' }}>Other Results</div>
+                          <div style={{ margin: '1.5em 0 0.5em 1em', fontWeight: 700, fontSize: 26, textAlign: 'left', width: '100%', letterSpacing: 0.5 }}>Other Results</div>
                           <MediaList items={overviewMatches} darkMode={darkMode} type="movie" />
                         </>
                       ) : (
