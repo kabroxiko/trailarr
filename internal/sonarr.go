@@ -299,10 +299,10 @@ func filterDownloadedSonarrSeries(allSeries []map[string]interface{}) []SonarrSe
 		path, _ := s["path"].(string)
 		overview, _ := s["overview"].(string)
 		series = append(series, SonarrSeries{
-			ID:      int(id),
-			Title:   title,
-			Year:    int(year),
-			Path:    path,
+			ID:       int(id),
+			Title:    title,
+			Year:     int(year),
+			Path:     path,
 			Overview: overview,
 		})
 	}
