@@ -5,9 +5,9 @@ export default function Header({ darkMode, search, setSearch }) {
     <header style={{ width: '100%', height: 64, background: darkMode ? '#23232a' : '#fff', display: 'flex', alignItems: 'center', boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb', padding: '0 24px', position: 'relative', zIndex: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1 }}>
         <img src="/logo.svg" alt="Logo" style={{ width: 40, height: 40, marginRight: 12 }} />
-        <span style={{ fontWeight: 'bold', fontSize: 22, color: '#e5e7eb', letterSpacing: 0.5 }}>Trailarr</span>
+        <span style={{ fontWeight: 'bold', fontSize: 22, color: darkMode ? '#e5e7eb' : '#23232a', letterSpacing: 0.5 }}>Trailarr</span>
       </div>
-  <div style={{ position: 'absolute', right: 0, top: 0, height: '100%', display: 'flex', alignItems: 'center', paddingRight: 72 }}>
+      <div style={{ position: 'absolute', right: 0, top: 0, height: '100%', display: 'flex', alignItems: 'center', paddingRight: 72 }}>
         <div style={{ position: 'relative', width: 200 }}>
           <input
             type="search"
