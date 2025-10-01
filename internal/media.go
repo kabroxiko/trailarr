@@ -14,6 +14,67 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Finds the media path for a given id in a cache file
+func FindMediaPathByID(cachePath string, idStr string) (string, error) {
+	items, err := loadCache(cachePath)
+	if err != nil {
+		return "", err
+	}
+	for _, m := range items {
+		if mid, ok := m["id"]; ok && fmt.Sprintf("%v", mid) == idStr {
+			if p, ok := m["path"].(string); ok {
+				return p, nil
+			}
+			break
+		}
+	}
+	return "", nil
+}
+
+// Scans a media path and returns a map of existing extras (type|title)
+func ScanExistingExtras(mediaPath string) map[string]bool {
+	existing := map[string]bool{}
+	if mediaPath == "" {
+		return existing
+	}
+	entries, err := os.ReadDir(mediaPath)
+	if err != nil {
+		return existing
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		subdir := mediaPath + "/" + entry.Name()
+		files, _ := os.ReadDir(subdir)
+		for _, f := range files {
+			if !f.IsDir() && strings.HasSuffix(f.Name(), ".mp4") {
+				title := strings.TrimSuffix(f.Name(), ".mp4")
+				key := entry.Name() + "|" + title
+				existing[key] = true
+			}
+		}
+	}
+	return existing
+}
+
+// Checks which extras are downloaded in the given media path and marks them in the extras list
+// extras: slice of map[string]string (from TMDB), mediaPath: path to the movie/series folder
+// typeKey: the key in the extra map for the type (usually "type"), titleKey: the key for the title (usually "title")
+func MarkDownloadedExtras(extras []map[string]string, mediaPath string, typeKey, titleKey string) {
+	existing := ScanExistingExtras(mediaPath)
+	for _, extra := range extras {
+		typeStr := canonicalizeExtraType(extra[typeKey], extra[titleKey])
+		title := SanitizeFilename(extra[titleKey])
+		key := typeStr + "|" + title
+		if existing[key] {
+			extra["downloaded"] = "true"
+		} else {
+			extra["downloaded"] = "false"
+		}
+	}
+}
+
 // Generic poster handler for Radarr and Sonarr
 func getImageHandler(section string, idParam string, fileSuffix string) gin.HandlerFunc {
 	return func(c *gin.Context) {

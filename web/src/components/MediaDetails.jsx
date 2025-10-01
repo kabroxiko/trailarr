@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faBookmark } from '@fortawesome/free-solid-svg-icons';
 import { useParams } from 'react-router-dom';
-import { searchExtras } from '../api';
+import { getExtras } from '../api';
 
 export default function MediaDetails({ mediaItems, loading, mediaType }) {
   const { id } = useParams();
@@ -23,9 +23,10 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
 
   useEffect(() => {
     if (!media) return;
+    console.log('[MediaDetails] mediaType:', mediaType, 'id:', media.id);
     setSearchLoading(true);
     setError('');
-    searchExtras({ mediaType, id: media.id })
+    getExtras({ mediaType, id: media.id })
       .then(res => {
         setExtras(res.extras || []);
         if (media.path) {
@@ -36,7 +37,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
             .catch(() => setExistingExtras([]));
         }
       })
-      .catch(() => setError('Failed to search extras'))
+      .catch(() => setError('Failed to fetch extras'))
       .finally(() => setSearchLoading(false));
   }, [media, mediaType]);
 
@@ -69,10 +70,10 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
     setSearchLoading(true);
     setError('');
     try {
-      const res = await searchExtras({ mediaType, id: media.id });
+      const res = await getExtras({ mediaType, id: media.id });
       setExtras(res.extras || []);
     } catch (e) {
-      setError('Failed to search extras');
+      setError('Failed to fetch extras');
     } finally {
       setSearchLoading(false);
     }

@@ -1,12 +1,12 @@
-export async function getRadarrMovies() {
-	const res = await fetch('/api/radarr/movies');
-	if (!res.ok) throw new Error('Failed to fetch Radarr movies');
+export async function getSeries() {
+	const res = await fetch('/api/series');
+	if (!res.ok) throw new Error('Failed to fetch Sonarr series');
 	return await res.json();
 }
-// Fetch Plex items from backend
-export async function fetchPlexItems() {
-	const res = await fetch('/api/plex');
-	if (!res.ok) throw new Error('Failed to fetch Plex items');
+
+export async function getMovies() {
+	const res = await fetch('/api/movies');
+	if (!res.ok) throw new Error('Failed to fetch Radarr movies');
 	return await res.json();
 }
 
@@ -18,9 +18,19 @@ export async function getRadarrSettings() {
 	return await res.json();
 }
 
-export async function searchExtras({ mediaType, id }) {
-	const res = await fetch(`/api/extras/search?mediaType=${encodeURIComponent(mediaType)}&id=${encodeURIComponent(id)}`);
-	if (!res.ok) throw new Error('Failed to search extras');
+
+// New: get extras for a movie or series by id
+export async function getExtras({ mediaType, id }) {
+	let url;
+	if (mediaType === 'movie') {
+		url = `/api/movies/${encodeURIComponent(id)}/extras`;
+	} else if (mediaType === 'tv') {
+		url = `/api/series/${encodeURIComponent(id)}/extras`;
+	} else {
+		throw new Error('Unknown mediaType: ' + mediaType);
+	}
+	const res = await fetch(url);
+	if (!res.ok) throw new Error('Failed to fetch extras');
 	return await res.json();
 }
 

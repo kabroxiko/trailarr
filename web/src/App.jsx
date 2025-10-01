@@ -5,10 +5,10 @@ import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import GeneralSettings from './components/GeneralSettings';
 import Tasks from './components/Tasks';
-import { Routes, Route, Link, useParams } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import { Navigate } from 'react-router-dom';
 import './App.css';
-import { fetchPlexItems, getRadarrSettings, getRadarrMovies } from './api';
+import { getRadarrSettings, getMovies, getSeries } from './api';
 
 function App() {
   const [search, setSearch] = useState('');
@@ -55,11 +55,7 @@ function App() {
   // Sonarr series fetch from backend
   useEffect(() => {
     setSonarrSeriesLoading(true);
-    fetch('/api/sonarr/series')
-      .then(r => {
-        if (!r.ok) throw new Error('Failed to fetch Sonarr series');
-        return r.json();
-      })
+    getSeries()
       .then(data => {
         const sorted = (data.series || []).slice().sort((a, b) => {
           if (!a.title) return 1;
@@ -77,8 +73,6 @@ function App() {
       });
   }, []);
 
-  const [plexItems, setPlexItems] = useState([]);
-  const [plexError, setPlexError] = useState('');
   const [radarrMovies, setRadarrMovies] = useState([]);
   const [radarrMoviesError, setRadarrMoviesError] = useState('');
   const [radarrMoviesLoading, setRadarrMoviesLoading] = useState(true);
@@ -90,9 +84,6 @@ function App() {
   const [sonarrStatus, setSonarrStatus] = useState('');
 
   useEffect(() => {
-    fetchPlexItems()
-      .then(res => setPlexItems(res.items || []))
-      .catch(e => setPlexError(e.message));
     getRadarrSettings()
       .then(res => {
         setRadarrUrl(res.url || '');
@@ -130,7 +121,7 @@ function App() {
 
   useEffect(() => {
     setRadarrMoviesLoading(true);
-    getRadarrMovies()
+    getMovies()
       .then(res => {
         const sorted = (res.movies || []).slice().sort((a, b) => {
           if (!a.title) return 1;
