@@ -253,7 +253,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
                               })
                             });
                             if (res.ok) {
-                              // Optionally, update UI to reflect download
+                              setExtras(prev => prev.map((e, i) => i === idx ? { ...e, downloaded: 'true' } : e));
                             } else {
                               const data = await res.json();
                               let msg = data?.error || 'Download failed';
