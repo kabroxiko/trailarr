@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"gopkg.in/yaml.v3"
 )
 
 // ListServerFoldersHandler handles GET /api/files/list and returns subfolders for a given path
@@ -98,105 +97,6 @@ func getMovieExtrasHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"extras": results})
 }
 
-func getRadarrSettingsHandler(c *gin.Context) {
-	data, err := os.ReadFile(ConfigPath)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"url": "", "apiKey": ""})
-		return
-	}
-	var config map[string]interface{}
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		c.JSON(http.StatusOK, gin.H{"url": "", "apiKey": "", "pathMappings": []interface{}{}})
-		return
-	}
-	radarrSection, _ := config["radarr"].(map[string]interface{})
-	// Convert PathMappings keys to lowercase for frontend compatibility
-	var mappings []map[string]string
-	mappingSet := map[string]bool{}
-	var pathMappings []map[string]interface{}
-	if radarrSection != nil {
-		if pm, ok := radarrSection["pathMappings"].([]interface{}); ok {
-			for _, m := range pm {
-				if mMap, ok := m.(map[string]interface{}); ok {
-					from := ""
-					to := ""
-					if v, ok := mMap["from"].(string); ok {
-						from = v
-					}
-					if v, ok := mMap["to"].(string); ok {
-						to = v
-					}
-					mappings = append(mappings, map[string]string{"from": from, "to": to})
-					mappingSet[from] = true
-					pathMappings = append(pathMappings, map[string]interface{}{"from": from, "to": to})
-				}
-			}
-		}
-	}
-
-	// Add any root folder from Radarr API response to settings if missing
-	folders, err := FetchRootFolders(radarrSection["url"].(string), radarrSection["apiKey"].(string))
-	updated := false
-	for _, f := range folders {
-		if path, ok := f["path"].(string); ok {
-			if !mappingSet[path] {
-				fmt.Printf("[INFO] Adding missing root folder to settings: %s\n", path)
-				pathMappings = append(pathMappings, map[string]interface{}{"from": path, "to": ""})
-				mappings = append(mappings, map[string]string{"from": path, "to": ""})
-				updated = true
-			}
-		}
-	}
-	if updated {
-		// Save only Radarr section
-		radarrSection["pathMappings"] = pathMappings
-		config["radarr"] = radarrSection
-		out, _ := yaml.Marshal(config)
-		err := os.WriteFile(ConfigPath, out, 0644)
-		if err != nil {
-			fmt.Printf("[ERROR] Failed to save updated config: %v\n", err)
-		} else {
-			fmt.Printf("[INFO] Updated config with new root folders\n")
-		}
-	}
-	c.JSON(http.StatusOK, gin.H{"url": radarrSection["url"], "apiKey": radarrSection["apiKey"], "pathMappings": mappings})
-}
-
-func saveRadarrSettingsHandler(c *gin.Context) {
-	var req struct {
-		URL          string `yaml:"url"`
-		APIKey       string `yaml:"apiKey"`
-		PathMappings []struct {
-			From string `yaml:"from"`
-			To   string `yaml:"to"`
-		} `yaml:"pathMappings"`
-	}
-	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": ErrInvalidRequest})
-		return
-	}
-	// Read existing config as map[string]interface{} to preserve all keys
-	data, _ := os.ReadFile(ConfigPath)
-	var config map[string]interface{}
-	_ = yaml.Unmarshal(data, &config)
-	// Update only radarr section
-	radarr := map[string]interface{}{
-		"url":          req.URL,
-		"apiKey":       req.APIKey,
-		"pathMappings": req.PathMappings,
-	}
-	config["radarr"] = radarr
-	out, _ := yaml.Marshal(config)
-	err := os.WriteFile(ConfigPath, out, 0644)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"status": "saved"})
-}
-
-// Sync queue item and status for Radarr
-
 // SyncRadarrQueueItem tracks a Radarr sync operation
 type SyncRadarrQueueItem struct {
 	Queued   time.Time
@@ -242,7 +142,8 @@ func ForceSyncRadarr() {
 	}
 	syncRadarrStatus.LastExecution = item.Ended
 	syncRadarrStatus.LastDuration = item.Duration
-	syncRadarrStatus.NextExecution = item.Ended.Add(15 * time.Minute)
+	interval := Timings["radarr"]
+	syncRadarrStatus.NextExecution = item.Ended.Add(time.Duration(interval) * time.Minute)
 	if len(syncRadarrStatus.Queue) > 10 {
 		syncRadarrStatus.Queue = syncRadarrStatus.Queue[len(syncRadarrStatus.Queue)-10:]
 	}
@@ -250,8 +151,9 @@ func ForceSyncRadarr() {
 
 // Background sync for Radarr
 func BackgroundSyncRadarr() {
+	interval := Timings["radarr"]
 	BackgroundSync(
-		15*time.Minute,
+		time.Duration(interval)*time.Minute,
 		SyncRadarrImages,
 		func(item interface{}) {
 			syncRadarrStatus.Queue = append(syncRadarrStatus.Queue, *item.(*SyncRadarrQueueItem))
@@ -271,7 +173,7 @@ func BackgroundSyncRadarr() {
 			}
 			syncRadarrStatus.LastExecution = ended
 			syncRadarrStatus.LastDuration = duration
-			syncRadarrStatus.NextExecution = ended.Add(15 * time.Minute)
+			syncRadarrStatus.NextExecution = ended.Add(time.Duration(interval) * time.Minute)
 		},
 		func() {
 			if len(syncRadarrStatus.Queue) > 10 {
@@ -291,10 +193,11 @@ func RadarrQueue() []SyncRadarrQueueItem { return syncRadarrStatus.Queue }
 // Exported handler for Radarr status
 func GetRadarrStatusHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		interval := Timings["radarr"]
 		c.JSON(http.StatusOK, gin.H{
 			"scheduled": gin.H{
 				"name":          "Sync with Radarr",
-				"interval":      "15 minutes",
+				"interval":      fmt.Sprintf("%d minutes", interval),
 				"lastExecution": RadarrLastExecution(),
 				"lastDuration":  RadarrLastDuration().String(),
 				"nextExecution": RadarrNextExecution(),
@@ -326,71 +229,4 @@ func SyncRadarrImages() error {
 		true, // debug
 	)
 	return nil
-}
-
-// Lists movies without any downloaded trailer extra
-func GetMoviesWithoutTrailerExtraHandler(c *gin.Context) {
-	cachePath := MoviesCachePath
-	movies, err := loadCache(cachePath)
-	if err != nil {
-		c.JSON(500, gin.H{"error": "Movie cache not found"})
-		return
-	}
-	// Load Radarr settings to get pathMappings
-	data, err := os.ReadFile(ConfigPath)
-	var config map[string]interface{}
-	_ = yaml.Unmarshal(data, &config)
-	radarrSection, _ := config["radarr"].(map[string]interface{})
-	var trailerPaths []string
-	if radarrSection != nil {
-		if pm, ok := radarrSection["pathMappings"].([]interface{}); ok {
-			for _, m := range pm {
-				if mMap, ok := m.(map[string]interface{}); ok {
-					if to, ok := mMap["to"].(string); ok && to != "" {
-						trailerPaths = append(trailerPaths, to)
-					}
-				}
-			}
-		}
-	}
-	if len(trailerPaths) == 0 {
-		// fallback to default if no mappings
-		trailerPaths = append(trailerPaths, "/mnt/unionfs/Media/Movies")
-	}
-	trailerSet := findMediaWithTrailers(trailerPaths...)
-	var result []map[string]interface{}
-	for _, m := range movies {
-		path, ok := m["path"].(string)
-		if !ok || trailerSet[path] {
-			continue
-		}
-		result = append(result, m)
-	}
-	c.JSON(200, gin.H{"movies": result})
-}
-
-// Example usage for Radarr
-func getRadarrRootFoldersHandler(c *gin.Context) {
-	// Load Radarr settings
-	data, err := os.ReadFile(ConfigPath)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Config not found"})
-		return
-	}
-	var allSettings struct {
-		Radarr struct {
-			URL    string `yaml:"url"`
-			APIKey string `yaml:"apiKey"`
-		} `yaml:"radarr"`
-	}
-	if err := yaml.Unmarshal(data, &allSettings); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Config parse error"})
-		return
-	}
-	folders, err := FetchRootFolders(allSettings.Radarr.URL, allSettings.Radarr.APIKey)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"rootFolders": folders})
 }

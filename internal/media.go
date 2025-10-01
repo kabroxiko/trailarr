@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"gopkg.in/yaml.v3"
 )
 
 // Helper to fetch and cache poster image
@@ -174,23 +173,6 @@ type MediaSettings struct {
 	APIKey string `yaml:"apiKey"`
 }
 
-// Loads settings for a given section ("radarr" or "sonarr")
-func loadMediaSettings(section string) (MediaSettings, error) {
-	data, err := os.ReadFile(ConfigPath)
-	if err != nil {
-		return MediaSettings{}, fmt.Errorf("settings not found: %w", err)
-	}
-	var allSettings map[string]map[string]string
-	if err := yaml.Unmarshal(data, &allSettings); err != nil {
-		return MediaSettings{}, fmt.Errorf("invalid settings: %w", err)
-	}
-	sec, ok := allSettings[section]
-	if !ok {
-		return MediaSettings{}, fmt.Errorf("section %s not found", section)
-	}
-	return MediaSettings{URL: sec["url"], APIKey: sec["apiKey"]}, nil
-}
-
 // Trims trailing slash from a URL
 func trimTrailingSlash(url string) string {
 	if strings.HasSuffix(url, "/") {
@@ -239,36 +221,17 @@ func loadCache(path string) ([]map[string]interface{}, error) {
 		section = "sonarr"
 	}
 	if section != "" {
-		data, err := os.ReadFile(ConfigPath)
+		mappings, err := GetPathMappings(section)
 		if err == nil {
-			var config map[string]interface{}
-			if yaml.Unmarshal(data, &config) == nil {
-				sec, _ := config[section].(map[string]interface{})
-				var mappings [][2]string
-				if sec != nil {
-					if pm, ok := sec["pathMappings"].([]interface{}); ok {
-						for _, m := range pm {
-							if mMap, ok := m.(map[string]interface{}); ok {
-								from, _ := mMap["from"].(string)
-								to, _ := mMap["to"].(string)
-								if from != "" && to != "" {
-									mappings = append(mappings, [2]string{from, to})
-								}
-							}
-						}
-					}
+			for _, item := range items {
+				p, ok := item["path"].(string)
+				if !ok || p == "" {
+					continue
 				}
-				// For each item, convert root folder part of path
-				for _, item := range items {
-					p, ok := item["path"].(string)
-					if !ok || p == "" {
-						continue
-					}
-					for _, m := range mappings {
-						if strings.HasPrefix(p, m[0]) {
-							item["path"] = m[1] + p[len(m[0]):]
-							break
-						}
+				for _, m := range mappings {
+					if strings.HasPrefix(p, m[0]) {
+						item["path"] = m[1] + p[len(m[0]):]
+						break
 					}
 				}
 			}
@@ -291,20 +254,10 @@ func writeCache(items []map[string]interface{}, path string) error {
 // Syncs only the JSON cache for Radarr/Sonarr, not the media files themselves
 // Pass section ("radarr" or "sonarr"), apiPath (e.g. "/api/v3/movie"), cachePath, and a filter function for items
 func SyncMediaCacheJson(section, apiPath, cachePath string, filter func(map[string]interface{}) bool) error {
-	data, err := os.ReadFile(ConfigPath)
+	url, apiKey, err := GetSectionUrlAndApiKey(section)
 	if err != nil {
 		return fmt.Errorf("%s settings not found: %w", section, err)
 	}
-	var allSettings map[string]map[string]string
-	if err := yaml.Unmarshal(data, &allSettings); err != nil {
-		return fmt.Errorf("invalid %s settings: %w", section, err)
-	}
-	settings, ok := allSettings[section]
-	if !ok {
-		return fmt.Errorf("section %s not found in config", section)
-	}
-	url := settings["url"]
-	apiKey := settings["apiKey"]
 	req, err := http.NewRequest("GET", url+apiPath, nil)
 	if err != nil {
 		return fmt.Errorf("error creating request: %w", err)
@@ -363,5 +316,36 @@ func BackgroundSync(
 		itemUpdate(item, started, ended, duration, status, errStr)
 		queueTrim()
 		<-ticker.C
+	}
+}
+
+// Returns a Gin handler to list media (movies/series) without any downloaded trailer extra
+func GetMediaWithoutTrailerExtraHandler(section, cachePath, defaultPath string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		items, err := loadCache(cachePath)
+		if err != nil {
+			c.JSON(500, gin.H{"error": section + " cache not found"})
+			return
+		}
+		mappings, err := GetPathMappings(section)
+		var trailerPaths []string
+		for _, m := range mappings {
+			if m[1] != "" {
+				trailerPaths = append(trailerPaths, m[1])
+			}
+		}
+		if len(trailerPaths) == 0 {
+			trailerPaths = append(trailerPaths, defaultPath)
+		}
+		trailerSet := findMediaWithTrailers(trailerPaths...)
+		var result []map[string]interface{}
+		for _, item := range items {
+			path, ok := item["path"].(string)
+			if !ok || trailerSet[path] {
+				continue
+			}
+			result = append(result, item)
+		}
+		c.JSON(200, gin.H{section: result})
 	}
 }

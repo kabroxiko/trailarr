@@ -1,27 +1,32 @@
 package main
 
 import (
-	"gozarr/internal"
+	"fmt"
 	"net/http"
+	"time"
+
+	"gozarr/internal"
 
 	"github.com/gin-gonic/gin"
 )
 
 const (
-	TaskSyncWithRadarr         = "Sync with Radarr"
-	TaskSyncWithRadarrInterval = "15 minutes"
-	TaskSyncWithSonarr         = "Sync with Sonarr"
-	TaskSyncWithSonarrInterval = "15 minutes"
+	TaskSyncWithRadarr = "Sync with Radarr"
+	TaskSyncWithSonarr = "Sync with Sonarr"
 )
+
+var timings map[string]int
 
 func getAllTasksStatus() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Build schedules array
+		radarrInterval := fmt.Sprintf("%d minutes", internal.Timings["radarr"])
+		sonarrInterval := fmt.Sprintf("%d minutes", internal.Timings["sonarr"])
 		schedules := []gin.H{
 			{
 				"type":          TaskSyncWithRadarr,
 				"name":          TaskSyncWithRadarr,
-				"interval":      TaskSyncWithRadarrInterval,
+				"interval":      radarrInterval,
 				"lastExecution": internal.RadarrLastExecution(),
 				"lastDuration":  internal.RadarrLastDuration().String(),
 				"nextExecution": internal.RadarrNextExecution(),
@@ -30,7 +35,7 @@ func getAllTasksStatus() gin.HandlerFunc {
 			{
 				"type":          TaskSyncWithSonarr,
 				"name":          TaskSyncWithSonarr,
-				"interval":      TaskSyncWithSonarrInterval,
+				"interval":      sonarrInterval,
 				"lastExecution": internal.SonarrLastExecution(),
 				"lastDuration":  internal.SonarrLastDuration().String(),
 				"nextExecution": internal.SonarrNextExecution(),
@@ -69,6 +74,13 @@ func getAllTasksStatus() gin.HandlerFunc {
 }
 
 func main() {
+	var err error
+	timings, err = internal.EnsureSyncTimingsConfig()
+	if err != nil {
+		fmt.Printf("[WARN] Could not load sync timings: %v\n", err)
+	}
+	internal.Timings = timings
+	fmt.Printf("[INFO] Sync timings: %v\n", timings)
 	r := gin.Default()
 	registerRoutes(r)
 	startBackgroundTasks()
@@ -120,6 +132,18 @@ func forceTaskHandler() gin.HandlerFunc {
 }
 
 func startBackgroundTasks() {
-	go internal.BackgroundSyncRadarr()
-	go internal.BackgroundSyncSonarr()
+	go func() {
+		interval := internal.Timings["radarr"]
+		for {
+			internal.ForceSyncRadarr()
+			time.Sleep(time.Duration(interval) * time.Minute)
+		}
+	}()
+	go func() {
+		interval := internal.Timings["sonarr"]
+		for {
+			internal.ForceSyncSonarr()
+			time.Sleep(time.Duration(interval) * time.Minute)
+		}
+	}()
 }

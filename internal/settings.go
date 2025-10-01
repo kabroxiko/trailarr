@@ -12,6 +12,253 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var Timings map[string]int
+
+// EnsureSyncTimingsConfig creates config.yml with sync timings if not present, or loads timings if present
+func EnsureSyncTimingsConfig() (map[string]int, error) {
+	defaultTimings := map[string]int{
+		"radarr": 15,
+		"sonarr": 15,
+	}
+	// Check if config file exists
+	if _, err := os.Stat(ConfigPath); os.IsNotExist(err) {
+		// Create config with only syncTimings
+		cfg := map[string]interface{}{"syncTimings": defaultTimings}
+		out, err := yaml.Marshal(cfg)
+		if err != nil {
+			return defaultTimings, err
+		}
+		// Ensure parent dir exists
+		if err := os.MkdirAll(TrailarrRoot+"/config", 0775); err != nil {
+			return defaultTimings, err
+		}
+		if err := os.WriteFile(ConfigPath, out, 0644); err != nil {
+			return defaultTimings, err
+		}
+		return defaultTimings, nil
+	}
+	// Load config
+	data, err := os.ReadFile(ConfigPath)
+	if err != nil {
+		return defaultTimings, err
+	}
+	var cfg map[string]interface{}
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return defaultTimings, err
+	}
+	timings, ok := cfg["syncTimings"].(map[string]interface{})
+	if !ok || len(timings) == 0 {
+		// Add syncTimings without touching other config
+		cfg["syncTimings"] = defaultTimings
+		out, err := yaml.Marshal(cfg)
+		if err == nil {
+			_ = os.WriteFile(ConfigPath, out, 0644)
+		}
+		return defaultTimings, nil
+	}
+	// Convert loaded timings to map[string]int (robust for all numeric types)
+	result := map[string]int{}
+	for k, v := range timings {
+		switch val := v.(type) {
+		case int:
+			result[k] = val
+		case int64:
+			result[k] = int(val)
+		case float64:
+			result[k] = int(val)
+		case uint64:
+			result[k] = int(val)
+		case uint:
+			result[k] = int(val)
+		case string:
+			var parsed int
+			_, err := fmt.Sscanf(val, "%d", &parsed)
+			if err == nil {
+				result[k] = parsed
+			}
+		default:
+			var parsed int
+			_, err := fmt.Sscanf(fmt.Sprintf("%v", val), "%d", &parsed)
+			if err == nil {
+				result[k] = parsed
+			}
+		}
+	}
+	return result, nil
+}
+
+// Loads settings for a given section ("radarr" or "sonarr")
+func loadMediaSettings(section string) (MediaSettings, error) {
+	data, err := os.ReadFile(ConfigPath)
+	if err != nil {
+		return MediaSettings{}, fmt.Errorf("settings not found: %w", err)
+	}
+	var allSettings map[string]map[string]string
+	if err := yaml.Unmarshal(data, &allSettings); err != nil {
+		return MediaSettings{}, fmt.Errorf("invalid settings: %w", err)
+	}
+	sec, ok := allSettings[section]
+	if !ok {
+		return MediaSettings{}, fmt.Errorf("section %s not found", section)
+	}
+	return MediaSettings{URL: sec["url"], APIKey: sec["apiKey"]}, nil
+}
+
+// GetPathMappings reads pathMappings for a section ("radarr" or "sonarr") from config.yml and returns as [][2]string
+func GetPathMappings(section string) ([][2]string, error) {
+	data, err := os.ReadFile(ConfigPath)
+	if err != nil {
+		return nil, err
+	}
+	var config map[string]interface{}
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, err
+	}
+	sec, _ := config[section].(map[string]interface{})
+	var mappings [][2]string
+	if sec != nil {
+		if pm, ok := sec["pathMappings"].([]interface{}); ok {
+			for _, m := range pm {
+				if mMap, ok := m.(map[string]interface{}); ok {
+					from, _ := mMap["from"].(string)
+					to, _ := mMap["to"].(string)
+					if from != "" && to != "" {
+						mappings = append(mappings, [2]string{from, to})
+					}
+				}
+			}
+		}
+	}
+	return mappings, nil
+}
+
+// Returns a Gin handler for settings (url, apiKey, pathMappings) for a given section ("radarr" or "sonarr")
+// Returns url and apiKey for a given section (radarr/sonarr) from config.yml
+func GetSectionUrlAndApiKey(section string) (string, string, error) {
+	data, err := os.ReadFile(ConfigPath)
+	if err != nil {
+		return "", "", err
+	}
+	var config map[string]interface{}
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return "", "", err
+	}
+	sec, ok := config[section].(map[string]interface{})
+	if !ok {
+		return "", "", fmt.Errorf("section %s not found in config", section)
+	}
+	url, _ := sec["url"].(string)
+	apiKey, _ := sec["apiKey"].(string)
+	return url, apiKey, nil
+}
+func GetSettingsHandler(section string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		data, err := os.ReadFile(ConfigPath)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{"url": "", "apiKey": ""})
+			return
+		}
+		var config map[string]interface{}
+		if err := yaml.Unmarshal(data, &config); err != nil {
+			c.JSON(http.StatusOK, gin.H{"url": "", "apiKey": "", "pathMappings": []interface{}{}})
+			return
+		}
+		sectionData, _ := config[section].(map[string]interface{})
+		var mappings []map[string]string
+		mappingSet := map[string]bool{}
+		var pathMappings []map[string]interface{}
+		if sectionData != nil {
+			if pm, ok := sectionData["pathMappings"].([]interface{}); ok {
+				for _, m := range pm {
+					if mMap, ok := m.(map[string]interface{}); ok {
+						from := ""
+						to := ""
+						if v, ok := mMap["from"].(string); ok {
+							from = v
+						}
+						if v, ok := mMap["to"].(string); ok {
+							to = v
+						}
+						mappings = append(mappings, map[string]string{"from": from, "to": to})
+						mappingSet[from] = true
+						pathMappings = append(pathMappings, map[string]interface{}{"from": from, "to": to})
+					}
+				}
+			}
+		}
+		// Add any root folder from API response to settings if missing
+		var folders []map[string]interface{}
+		var url, apiKey string
+		if sectionData != nil {
+			url, _ = sectionData["url"].(string)
+			apiKey, _ = sectionData["apiKey"].(string)
+			if section == "radarr" {
+				folders, _ = FetchRootFolders(url, apiKey)
+			} else if section == "sonarr" {
+				folders, _ = FetchRootFolders(url, apiKey)
+			}
+		}
+		updated := false
+		for _, f := range folders {
+			if path, ok := f["path"].(string); ok {
+				if !mappingSet[path] {
+					pathMappings = append(pathMappings, map[string]interface{}{"from": path, "to": ""})
+					mappings = append(mappings, map[string]string{"from": path, "to": ""})
+					updated = true
+				}
+			}
+		}
+		if updated && sectionData != nil {
+			sectionData["pathMappings"] = pathMappings
+			config[section] = sectionData
+			out, _ := yaml.Marshal(config)
+			err := os.WriteFile(ConfigPath, out, 0644)
+			if err != nil {
+				fmt.Printf("[ERROR] Failed to save updated config: %v\n", err)
+			} else {
+				fmt.Printf("[INFO] Updated config with new root folders\n")
+			}
+		}
+		c.JSON(http.StatusOK, gin.H{"url": url, "apiKey": apiKey, "pathMappings": mappings})
+	}
+}
+
+// Returns a Gin handler to save settings (url, apiKey, pathMappings) for a given section ("radarr" or "sonarr")
+func SaveSettingsHandler(section string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			URL          string `yaml:"url"`
+			APIKey       string `yaml:"apiKey"`
+			PathMappings []struct {
+				From string `yaml:"from"`
+				To   string `yaml:"to"`
+			} `yaml:"pathMappings"`
+		}
+		if err := c.BindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": ErrInvalidRequest})
+			return
+		}
+		// Read existing config as map[string]interface{} to preserve all keys
+		data, _ := os.ReadFile(ConfigPath)
+		var config map[string]interface{}
+		_ = yaml.Unmarshal(data, &config)
+		// Update only the specified section
+		sectionData := map[string]interface{}{
+			"url":          req.URL,
+			"apiKey":       req.APIKey,
+			"pathMappings": req.PathMappings,
+		}
+		config[section] = sectionData
+		out, _ := yaml.Marshal(config)
+		err := os.WriteFile(ConfigPath, out, 0644)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "saved"})
+	}
+}
+
 func getGeneralSettingsHandler(c *gin.Context) {
 	data, err := os.ReadFile(ConfigPath)
 	if err != nil {
