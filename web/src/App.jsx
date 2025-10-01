@@ -387,12 +387,12 @@ function App() {
                     </Link>
                   )}
                   {name === 'Settings' && selectedSection === 'Settings' && (
-                    <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0 0', background: darkMode ? '#23232a' : '#f3f4f6', borderRadius: 6, color: darkMode ? '#e5e7eb' : '#222' }}>
+                    <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0 0', background: darkMode ? '#23232a' : '#f3f4f6', borderRadius: 6, color: darkMode ? '#e5e7eb' : '#222', textAlign: 'left' }}>
                       {['General', 'Languages', 'Providers', 'Subtitles', 'Sonarr', 'Radarr', 'Plex', 'Notifications', 'Scheduler', 'UI'].map((submenu, idx) => (
-                        <li key={submenu} style={{ padding: '0.5em 1em', borderLeft: selectedSettingsSub === submenu ? '3px solid #d6b4f7' : '3px solid transparent', background: selectedSettingsSub === submenu ? (darkMode ? '#d6b4f7' : '#fff') : 'none', color: selectedSettingsSub === submenu ? (darkMode ? '#6d28d9' : '#e5e7eb') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSettingsSub === submenu ? 'bold' : 'normal', cursor: 'pointer' }}>
+                        <li key={submenu} style={{ padding: '0.5em 1em', borderLeft: selectedSettingsSub === submenu ? '3px solid #d6b4f7' : '3px solid transparent', background: selectedSettingsSub === submenu ? (darkMode ? '#d6b4f7' : '#fff') : 'none', color: selectedSettingsSub === submenu ? (darkMode ? '#6d28d9' : '#e5e7eb') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSettingsSub === submenu ? 'bold' : 'normal', cursor: 'pointer', textAlign: 'left' }}>
                           <Link
                             to={`/settings/${submenu.toLowerCase()}`}
-                            style={{ color: 'inherit', textDecoration: 'none', display: 'block', width: '100%' }}
+                            style={{ color: 'inherit', textDecoration: 'none', display: 'block', width: '100%', textAlign: 'left' }}
                             onClick={() => setSelectedSettingsSub(submenu)}
                           >{submenu}</Link>
                         </li>
