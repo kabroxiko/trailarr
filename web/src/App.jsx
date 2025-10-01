@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import MediaTable from './components/MediaTable';
-import SeriesTable from './components/SeriesTable';
+import MediaList from './components/MediaList';
 import MediaDetails from './components/MediaDetails';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
@@ -159,13 +158,13 @@ function App() {
             <Routes>
               <Route path="/series" element={
                 <>
-                  <SeriesTable series={sonarrSeries} darkMode={darkMode} />
+                  <MediaList items={sonarrSeries} darkMode={darkMode} type="series" />
                   {sonarrSeriesError && <div style={{ color: 'red', marginTop: '1em' }}>{sonarrSeriesError}</div>}
                 </>
               } />
               <Route path="/movies" element={
                 <>
-                  <MediaTable media={radarrMovies} darkMode={darkMode} />
+                  <MediaList items={radarrMovies} darkMode={darkMode} type="movie" />
                   {radarrMoviesError && <div style={{ color: 'red', marginTop: '1em' }}>{radarrMoviesError}</div>}
                 </>
               } />
