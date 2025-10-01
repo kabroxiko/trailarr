@@ -23,7 +23,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
     if (!media) return;
     setSearchLoading(true);
     setError('');
-    searchExtras(media.title)
+    searchExtras(encodeURIComponent(media.title))
       .then(res => {
         setExtras(res.extras || []);
         if (media.path) {
