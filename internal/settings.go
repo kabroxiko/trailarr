@@ -295,15 +295,26 @@ func loadMediaSettings(section string) (MediaSettings, error) {
 	if err != nil {
 		return MediaSettings{}, fmt.Errorf("settings not found: %w", err)
 	}
-	var allSettings map[string]map[string]string
+	var allSettings map[string]interface{}
 	if err := yaml.Unmarshal(data, &allSettings); err != nil {
 		return MediaSettings{}, fmt.Errorf("invalid settings: %w", err)
 	}
-	sec, ok := allSettings[section]
+	secRaw, ok := allSettings[section]
 	if !ok {
 		return MediaSettings{}, fmt.Errorf("section %s not found", section)
 	}
-	return MediaSettings{URL: sec["url"], APIKey: sec["apiKey"]}, nil
+	sec, ok := secRaw.(map[string]interface{})
+	if !ok {
+		return MediaSettings{}, fmt.Errorf("section %s is not a map", section)
+	}
+	var url, apiKey string
+	if v, ok := sec["url"].(string); ok {
+		url = v
+	}
+	if v, ok := sec["apiKey"].(string); ok {
+		apiKey = v
+	}
+	return MediaSettings{URL: url, APIKey: apiKey}, nil
 }
 
 // GetPathMappings reads pathMappings for a section ("radarr" or "sonarr") from config.yml and returns as [][]string

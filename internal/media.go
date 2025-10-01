@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -24,33 +25,33 @@ const (
 // DownloadMissingExtras downloads missing extras for a given media type ("movie" or "tv")
 func DownloadMissingExtras(mediaType string, cachePath string) error {
 	if !GetAutoDownloadExtras() {
-		fmt.Println("[DownloadMissingExtras] Auto download of extras is disabled by general settings.")
+		log.Println("[DownloadMissingExtras] Auto download of extras is disabled by general settings.")
 		return nil
 	}
-	fmt.Printf("[DEBUG] DownloadMissingExtras: mediaType=%s, cachePath=%s\n", mediaType, cachePath)
+	log.Printf("[DEBUG] DownloadMissingExtras: mediaType=%s, cachePath=%s\n", mediaType, cachePath)
 	items, err := loadCache(cachePath)
 	if err != nil {
-		fmt.Printf("[DEBUG] Failed to load cache: %v\n", err)
+		log.Printf("[DEBUG] Failed to load cache: %v\n", err)
 		return err
 	}
 	for _, m := range items {
 		idInt, ok := parseMediaID(m["id"])
 		if !ok {
-			fmt.Printf("[DEBUG] Missing or invalid id in item: %v\n", m)
+			log.Printf("[DEBUG] Missing or invalid id in item: %v\n", m)
 			continue
 		}
-		fmt.Printf("[DEBUG] Item idInt=%d\n", idInt)
+		log.Printf("[DEBUG] Item idInt=%d\n", idInt)
 		extras, err := SearchExtras(mediaType, idInt)
 		if err != nil {
-			fmt.Printf("[DEBUG] SearchExtras error: %v\n", err)
+			log.Printf("[DEBUG] SearchExtras error: %v\n", err)
 			continue
 		}
 		mediaPath, err := FindMediaPathByID(cachePath, fmt.Sprintf("%v", m["id"]))
 		if err != nil || mediaPath == "" {
-			fmt.Printf("[DEBUG] FindMediaPathByID error or empty: %v, mediaPath=%s\n", err, mediaPath)
+			log.Printf("[DEBUG] FindMediaPathByID error or empty: %v, mediaPath=%s\n", err, mediaPath)
 			continue
 		}
-		fmt.Printf("[DEBUG] mediaPath=%s\n", mediaPath)
+		log.Printf("[DEBUG] mediaPath=%s\n", mediaPath)
 		MarkDownloadedExtras(extras, mediaPath, "type", "title")
 		config, _ := GetExtraTypesConfig()
 		filterAndDownloadExtras(mediaType, mediaPath, extras, config)
@@ -81,7 +82,7 @@ func filterAndDownloadExtras(mediaType, mediaPath string, extras []map[string]st
 		if shouldDownloadExtra(extra, config) {
 			err := handleExtraDownload(mediaType, mediaPath, extra)
 			if err != nil {
-				fmt.Printf("[DownloadMissingExtras] Failed to download: %v\n", err)
+				log.Printf("[DownloadMissingExtras] Failed to download: %v\n", err)
 			}
 		}
 	}
@@ -122,22 +123,9 @@ type SyncQueueItem struct {
 	Error    string
 }
 
-func loadQueue() {
-	f, err := os.Open(queueFile)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	var q []SyncQueueItem
-	if err := json.NewDecoder(f).Decode(&q); err == nil {
-		GlobalSyncQueue = q
-	}
-}
-
 func saveQueue() {
 	// Only save if queue is non-empty
 	if len(GlobalSyncQueue) == 0 {
-		// Do not overwrite existing file with empty queue
 		return
 	}
 	f, err := os.Create(queueFile)
@@ -161,67 +149,33 @@ func saveQueue() {
 		var durationPtr *time.Duration
 		if !item.Started.IsZero() {
 			startedPtr = &item.Started
+			if !item.Ended.IsZero() {
+				endedPtr = &item.Ended
+			}
+			// Duration is only valid if Started and Ended are set
+			if endedPtr != nil && item.Duration > 0 {
+				durationPtr = &item.Duration
+			}
+			out = append(out, queueItemOut{
+				TaskName: item.TaskName,
+				Queued:   item.Queued,
+				Started:  startedPtr,
+				Ended:    endedPtr,
+				Duration: durationPtr,
+				Status:   item.Status,
+				Error:    item.Error,
+			})
 		}
-		if !item.Ended.IsZero() {
-			endedPtr = &item.Ended
-		}
-		// Duration is only valid if Started and Ended are set
-		if startedPtr != nil && endedPtr != nil && item.Duration > 0 {
-			durationPtr = &item.Duration
-		}
-		out = append(out, queueItemOut{
-			TaskName: item.TaskName,
-			Queued:   item.Queued,
-			Started:  startedPtr,
-			Ended:    endedPtr,
-			Duration: durationPtr,
-			Status:   item.Status,
-			Error:    item.Error,
-		})
+		_ = json.NewEncoder(f).Encode(out)
 	}
-	_ = json.NewEncoder(f).Encode(out)
 }
 
-func init() {
-	loadQueue()
-	// Remove queued items with null Started/Ended
-	filtered := make([]SyncQueueItem, 0, len(GlobalSyncQueue))
-	for _, item := range GlobalSyncQueue {
-		if item.Status == "queued" && item.Started.IsZero() && item.Ended.IsZero() {
-			continue
-		}
-		filtered = append(filtered, item)
-	}
-	GlobalSyncQueue = filtered
-
-	// Call extras download tasks at startup
-	go func() {
-		fmt.Println("[DEBUG] Running DownloadMissingMoviesExtras at startup...")
-		_ = DownloadMissingMoviesExtras()
-		fmt.Println("[DEBUG] Running DownloadMissingSeriesExtras at startup...")
-		_ = DownloadMissingSeriesExtras()
-	}()
-
-	// Schedule every 6 hours
-	go func() {
-		ticker := time.NewTicker(6 * time.Hour)
-		defer ticker.Stop()
-		for {
-			<-ticker.C
-			fmt.Println("[DEBUG] Running DownloadMissingMoviesExtras (scheduled)...")
-			_ = DownloadMissingMoviesExtras()
-			fmt.Println("[DEBUG] Running DownloadMissingSeriesExtras (scheduled)...")
-			_ = DownloadMissingSeriesExtras()
-		}
-	}()
-}
-
-// ForceSyncMedia executes a sync for the given section ("radarr" or "sonarr")
+// SyncMedia executes a sync for the given section ("radarr" or "sonarr")
 // syncFunc: function to perform the sync (e.g. SyncRadarrImages or SyncSonarrImages)
 // timings: map of intervals (e.g. Timings)
 // queue: pointer to a slice of SyncQueueItem
 // lastError, lastExecution, lastDuration, nextExecution: pointers to status fields
-func ForceSyncMedia(
+func SyncMedia(
 	section string,
 	syncFunc func() error,
 	timings map[string]int,
@@ -231,6 +185,7 @@ func ForceSyncMedia(
 	nextExecution *time.Time,
 ) {
 	println("[FORCE] Executing Sync", section, "...")
+	log.Printf("[SYNC] Starting sync for section: %s", section)
 	// Truncate queue before adding new item to avoid idx out of range
 	if len(GlobalSyncQueue) >= 10 {
 		GlobalSyncQueue = GlobalSyncQueue[len(GlobalSyncQueue)-9:]
@@ -260,6 +215,7 @@ func ForceSyncMedia(
 	GlobalSyncQueue[idx].Status = "running"
 	saveQueue()
 
+	log.Printf("[SYNC] Invoking syncFunc for section: %s", section)
 	err := syncFunc()
 	GlobalSyncQueue[idx].Ended = time.Now()
 	GlobalSyncQueue[idx].Duration = GlobalSyncQueue[idx].Ended.Sub(GlobalSyncQueue[idx].Started)
@@ -268,12 +224,13 @@ func ForceSyncMedia(
 		GlobalSyncQueue[idx].Error = err.Error()
 		GlobalSyncQueue[idx].Status = "failed"
 		saveQueue()
-		println("[FORCE] Sync", section, "error:", err.Error())
+		log.Printf("[SYNC] Sync %s error: %s", section, err.Error())
 	} else {
 		GlobalSyncQueue[idx].Status = "success"
 		saveQueue()
-		println("[FORCE] Sync", section, "completed successfully.")
+		log.Printf("[Sync%s] Synced cache.\n", section)
 	}
+	log.Printf("[SYNC] Finished sync for section: %s", section)
 	*lastExecution = GlobalSyncQueue[idx].Ended
 	*lastDuration = GlobalSyncQueue[idx].Duration
 	interval := timings[section]
@@ -287,12 +244,12 @@ func fetchAndCachePoster(localPath, posterUrl, section string) error {
 		if resp != nil {
 			resp.Body.Close()
 		}
-		return fmt.Errorf("Failed to fetch poster image from %s", section)
+		return fmt.Errorf("failed to fetch poster image from %s", section)
 	}
 	defer resp.Body.Close()
 	out, err := os.Create(localPath)
 	if err != nil {
-		return fmt.Errorf("Failed to cache poster image for %s", section)
+		return fmt.Errorf("failed to cache poster image for %s", section)
 	}
 	_, _ = io.Copy(out, resp.Body)
 	out.Close()
@@ -308,26 +265,35 @@ func CacheMediaPosters(
 	posterSuffixes []string, // ["/poster-500.jpg", "/fanart-1280.jpg"]
 	debug bool, // enable debug output
 ) {
+	log.Printf("[CacheMediaPosters] Starting poster caching for section: %s, baseDir: %s, items: %d", section, baseDir, len(idList))
 	for _, item := range idList {
 		id := fmt.Sprintf("%v", item[idKey])
 		for _, suffix := range posterSuffixes {
 			idDir := baseDir + "/" + id
 			if err := os.MkdirAll(idDir, 0775); err != nil {
+				log.Printf("[CacheMediaPosters] Failed to create dir %s: %v", idDir, err)
 				continue
 			}
 			localPath := idDir + suffix
 			if _, err := os.Stat(localPath); err == nil {
+				log.Printf("[CacheMediaPosters] Poster already exists: %s", localPath)
 				continue
 			}
 			settings, err := loadMediaSettings(section)
 			if err != nil {
+				log.Printf("[CacheMediaPosters] Failed to load settings for %s: %v", section, err)
 				continue
 			}
 			apiBase := trimTrailingSlash(settings.URL)
 			posterUrl := apiBase + RemoteMediaCoverPath + id + suffix
-			_ = fetchAndCachePoster(localPath, posterUrl, section)
+			log.Printf("[CacheMediaPosters] Attempting to cache poster for %s id=%s: %s -> %s", section, id, posterUrl, localPath)
+			if err := fetchAndCachePoster(localPath, posterUrl, section); err != nil {
+				log.Printf("[CacheMediaPosters] Failed to cache poster for %s id=%s: %v", section, id, err)
+			}
+			log.Printf("[CacheMediaPosters] Successfully cached poster for %s id=%s: %s", section, id, localPath)
 		}
 	}
+	log.Printf("[CacheMediaPosters] Finished poster caching for section: %s", section)
 }
 
 // Finds the media path for a given id in a cache file
@@ -393,47 +359,6 @@ func MarkDownloadedExtras(extras []map[string]string, mediaPath string, typeKey,
 	}
 }
 
-// Generic poster handler for Radarr and Sonarr
-func getImageHandler(section string, idParam string, fileSuffix string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		id := c.Param(idParam)
-		settings, err := loadMediaSettings(section)
-		if err != nil {
-			c.String(500, "Invalid %s settings", section)
-			return
-		}
-		apiBase := trimTrailingSlash(settings.URL)
-		var localPath string
-		switch section {
-		case "radarr":
-			localPath = MediaCoverPath + "Movies/" + id + fileSuffix
-		case "sonarr":
-			localPath = MediaCoverPath + "Series/" + id + fileSuffix
-		default:
-			localPath = MediaCoverPath + id + fileSuffix
-		}
-		if _, err := os.Stat(localPath); err == nil {
-			c.File(localPath)
-			return
-		}
-		posterUrl := apiBase + RemoteMediaCoverPath + id + fileSuffix
-		if err := fetchAndCachePoster(localPath, posterUrl, section); err == nil {
-			c.File(localPath)
-			return
-		}
-		// If can't cache, just proxy
-		resp, err := http.Get(posterUrl)
-		if err != nil || resp.StatusCode != 200 {
-			c.String(502, "Failed to fetch poster image from %s", section)
-			return
-		}
-		defer resp.Body.Close()
-		c.Header(HeaderContentType, resp.Header.Get(HeaderContentType))
-		c.Status(http.StatusOK)
-		_, _ = io.Copy(c.Writer, resp.Body)
-	}
-}
-
 // Common settings struct for both Radarr and Sonarr
 // Use this for loading settings generically
 type MediaSettings struct {
@@ -447,27 +372,6 @@ func trimTrailingSlash(url string) string {
 		return strings.TrimRight(url, "/")
 	}
 	return url
-}
-
-// Proxies an image from a remote API, optionally setting API key header
-func proxyImage(c *gin.Context, imageUrl, apiBase, apiKey string) error {
-	req, err := http.NewRequest("GET", imageUrl, nil)
-	if err != nil {
-		return fmt.Errorf("Error creating image request")
-	}
-	if strings.HasPrefix(imageUrl, apiBase) {
-		req.Header.Set(HeaderApiKey, apiKey)
-	}
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil || resp.StatusCode != 200 {
-		return fmt.Errorf("Failed to fetch image")
-	}
-	defer resp.Body.Close()
-	c.Header(HeaderContentType, resp.Header.Get(HeaderContentType))
-	c.Status(http.StatusOK)
-	_, copyErr := io.Copy(c.Writer, resp.Body)
-	return copyErr
 }
 
 // Loads a JSON cache file into a generic slice
@@ -556,15 +460,6 @@ func updateItemTitle(item map[string]interface{}, titleMap map[string]string) {
 	} else if title, ok := item["title"].(string); ok {
 		item["title"] = title
 	}
-}
-
-// Writes a generic slice to a JSON cache file
-func writeCache(items []map[string]interface{}, path string) error {
-	cacheData, err := json.MarshalIndent(items, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, cacheData, 0644)
 }
 
 // Writes the wanted (no trailer) media to a JSON file
