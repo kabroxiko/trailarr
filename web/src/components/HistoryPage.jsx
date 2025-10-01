@@ -93,7 +93,6 @@ const HistoryPage = () => {
   }, []);
   return (
     <div className="history-page" style={{ padding: '32px', width: '100vw', margin: '0', boxSizing: 'border-box' }}>
-      <h2 style={{ fontSize: 32, fontWeight: 700, marginBottom: 24, color: '#7c3aed', letterSpacing: 0.5 }}>History</h2>
       {content}
     </div>
   );
