@@ -33,7 +33,14 @@ function App() {
   useEffect(() => {
     if (selectedSection === 'Movies') {
       getRadarrMovies()
-        .then(res => setRadarrMovies(res.movies || []))
+        .then(res => {
+          const sorted = (res.movies || []).slice().sort((a, b) => {
+            if (!a.title) return 1;
+            if (!b.title) return -1;
+            return a.title.localeCompare(b.title);
+          });
+          setRadarrMovies(sorted);
+        })
         .catch(e => setRadarrMoviesError(e.message));
     }
   }, [selectedSection]);
