@@ -13,7 +13,7 @@ var getSonarrPosterHandler = getImageHandler("sonarr", "id", "/poster-500.jpg")
 var getSonarrBannerHandler = getImageHandler("sonarr", "id", "/fanart-1280.jpg")
 
 func getSonarrHandler(c *gin.Context) {
-	cachePath := SeriesCachePath
+	cachePath := TrailarrRoot + "/series.json"
 	series, err := loadCache(cachePath)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Series cache not found"})
@@ -46,7 +46,7 @@ func getSeriesExtrasHandler(c *gin.Context) {
 		return
 	}
 
-	seriesPath, err := FindMediaPathByID(SeriesCachePath, idStr)
+	seriesPath, err := FindMediaPathByID(TrailarrRoot+"/series.json", idStr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Series cache not found"})
 		return
@@ -133,7 +133,7 @@ func GetSonarrStatusHandler() gin.HandlerFunc {
 }
 
 func SyncSonarrImages() error {
-	err := SyncMediaCacheJson("sonarr", "/api/v3/series", SeriesCachePath, func(m map[string]interface{}) bool {
+	err := SyncMediaCacheJson("sonarr", "/api/v3/series", TrailarrRoot+"/series.json", func(m map[string]interface{}) bool {
 		stats, ok := m["statistics"].(map[string]interface{})
 		if !ok {
 			return false
@@ -144,7 +144,7 @@ func SyncSonarrImages() error {
 	if err != nil {
 		return err
 	}
-	series, err := loadCache(SeriesCachePath)
+	series, err := loadCache(TrailarrRoot + "/series.json")
 	if err != nil {
 		return err
 	}

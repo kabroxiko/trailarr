@@ -42,7 +42,7 @@ func GetTMDBId(mediaType string, id int, tmdbKey string) (int, error) {
 }
 
 func GetMovieTMDBId(id int) (int, error) {
-	radarrCache := MoviesCachePath
+	radarrCache := TrailarrRoot + "/movies.json"
 	cacheData, err := os.ReadFile(radarrCache)
 	if err != nil {
 		return 0, fmt.Errorf("Failed to read Radarr cache: %w", err)
@@ -63,7 +63,7 @@ func GetMovieTMDBId(id int) (int, error) {
 }
 
 func GetTVTMDBId(id int, tmdbKey string) (int, error) {
-	sonarrCache := SeriesCachePath
+	sonarrCache := TrailarrRoot + "/series.json"
 	cacheData, err := os.ReadFile(sonarrCache)
 	if err != nil {
 		return 0, fmt.Errorf("Failed to read Sonarr cache: %w", err)

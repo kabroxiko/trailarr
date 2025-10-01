@@ -28,9 +28,9 @@ func deleteExtraHandler(c *gin.Context) {
 	// Resolve media path from mediaType and mediaId
 	var cachePath string
 	if req.MediaType == "movie" {
-		cachePath = MoviesCachePath
+		cachePath = TrailarrRoot + "/movies.json"
 	} else if req.MediaType == "tv" {
-		cachePath = SeriesCachePath
+		cachePath = TrailarrRoot + "/series.json"
 	} else {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid mediaType"})
 		return
@@ -240,9 +240,9 @@ func downloadExtraHandler(c *gin.Context) {
 	// Try to resolve title from cache
 	var cachePath string
 	if strings.Contains(req.MoviePath, "/Movies/") {
-		cachePath = MoviesCachePath
+		cachePath = TrailarrRoot + "/movies.json"
 	} else if strings.Contains(req.MoviePath, "/Series/") {
-		cachePath = SeriesCachePath
+		cachePath = TrailarrRoot + "/series.json"
 	}
 	if cachePath != "" {
 		items, err := loadCache(cachePath)

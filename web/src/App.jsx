@@ -7,10 +7,8 @@ import GeneralSettings from './components/GeneralSettings';
 import Tasks from './components/Tasks';
 import HistoryPage from './components/HistoryPage';
 import Wanted from './components/Wanted';
-import SonarrSettings from './components/SonarrSettings';
-import RadarrSettings from './components/RadarrSettings';
+import SettingsPage from './components/SettingsPage';
 import { Routes, Route } from 'react-router-dom';
-import { Navigate } from 'react-router-dom';
 import './App.css';
 // Removed static import of api.js
 // Refactored to use dynamic imports
@@ -34,9 +32,9 @@ function App() {
   const [selectedSettingsSub, setSelectedSettingsSub] = useState('General');
 
   // Sonarr series state
-  const [sonarrSeries, setSonarrSeries] = useState([]);
-  const [sonarrSeriesError, setSonarrSeriesError] = useState('');
-  const [sonarrSeriesLoading, setSonarrSeriesLoading] = useState(true);
+  const [series, setSeries] = useState([]);
+  const [seriesError, setSeriesError] = useState('');
+  const [seriesLoading, setSeriesLoading] = useState(true);
 
   // Sync sidebar state with route on mount/refresh
   useEffect(() => {
@@ -70,7 +68,7 @@ function App() {
 
   // Sonarr series fetch from backend
   useEffect(() => {
-    setSonarrSeriesLoading(true);
+    setSeriesLoading(true);
     import('./api').then(({ getSeries }) => {
       getSeries()
         .then(data => {
@@ -79,27 +77,25 @@ function App() {
             if (!b.title) return -1;
             return a.title.localeCompare(b.title);
           });
-          setSonarrSeries(sorted);
-          setSonarrSeriesLoading(false);
-          setSonarrSeriesError('');
+          setSeries(sorted);
+          setSeriesLoading(false);
+          setSeriesError('');
         })
         .catch(e => {
-          setSonarrSeries([]);
-          setSonarrSeriesLoading(false);
-          setSonarrSeriesError(e.message || 'Sonarr series API not available');
+          setSeries([]);
+          setSeriesLoading(false);
+          setSeriesError(e.message || 'Sonarr series API not available');
         });
     });
   }, []);
 
-  const [radarrMovies, setRadarrMovies] = useState([]);
-  const [radarrMoviesError, setRadarrMoviesError] = useState('');
-  const [radarrMoviesLoading, setRadarrMoviesLoading] = useState(true);
+  const [movies, setMovies] = useState([]);
+  const [moviesError, setMoviesError] = useState('');
+  const [moviesLoading, setMoviesLoading] = useState(true);
   const [radarrUrl, setRadarrUrl] = useState('');
   const [radarrApiKey, setRadarrApiKey] = useState('');
-  const [radarrStatus, setRadarrStatus] = useState('');
   const [sonarrUrl, setSonarrUrl] = useState('');
   const [sonarrApiKey, setSonarrApiKey] = useState('');
-  const [sonarrStatus, setSonarrStatus] = useState('');
 
   useEffect(() => {
     import('./api').then(({ getRadarrSettings }) => {
@@ -140,7 +136,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    setRadarrMoviesLoading(true);
+    setMoviesLoading(true);
     import('./api').then(({ getMovies }) => {
       getMovies()
         .then(res => {
@@ -149,12 +145,12 @@ function App() {
             if (!b.title) return -1;
             return a.title.localeCompare(b.title);
           });
-          setRadarrMovies(sorted);
-          setRadarrMoviesLoading(false);
+          setMovies(sorted);
+          setMoviesLoading(false);
         })
         .catch(e => {
-          setRadarrMoviesError(e.message);
-          setRadarrMoviesLoading(false);
+          setMoviesError(e.message);
+          setMoviesLoading(false);
         });
     });
   }, []);
@@ -163,9 +159,9 @@ function App() {
   const getSearchSections = (items) => {
     if (!search.trim()) return { titleMatches: items, overviewMatches: [] };
     const q = search.trim().toLowerCase();
-    const titleMatches = items.filter(item => item.title && item.title.toLowerCase().includes(q));
+    const titleMatches = items.filter(item => item.title?.toLowerCase().includes(q));
     const overviewMatches = items.filter(item =>
-      !titleMatches.includes(item) && item.overview && item.overview.toLowerCase().includes(q)
+      !titleMatches.includes(item) && item.overview?.toLowerCase().includes(q)
     );
     return { titleMatches, overviewMatches };
   };
@@ -190,7 +186,7 @@ function App() {
             <Routes>
               <Route path="/series" element={
                 (() => {
-                  const { titleMatches, overviewMatches } = getSearchSections(sonarrSeries);
+                  const { titleMatches, overviewMatches } = getSearchSections(series);
                   return (
                     <>
                       {search.trim() ? (
@@ -200,16 +196,16 @@ function App() {
                           <MediaList items={overviewMatches} darkMode={darkMode} type="series" />
                         </>
                       ) : (
-                        <MediaList items={sonarrSeries} darkMode={darkMode} type="series" />
+                        <MediaList items={series} darkMode={darkMode} type="series" />
                       )}
-                      {sonarrSeriesError && <div style={{ color: 'red', marginTop: '1em' }}>{sonarrSeriesError}</div>}
+                      {seriesError && <div style={{ color: 'red', marginTop: '1em' }}>{seriesError}</div>}
                     </>
                   );
                 })()
               } />
               <Route path="/movies" element={
                 (() => {
-                  const { titleMatches, overviewMatches } = getSearchSections(radarrMovies);
+                  const { titleMatches, overviewMatches } = getSearchSections(movies);
                   return (
                     <>
                       {search.trim() ? (
@@ -219,18 +215,18 @@ function App() {
                           <MediaList items={overviewMatches} darkMode={darkMode} type="movie" />
                         </>
                       ) : (
-                        <MediaList items={radarrMovies} darkMode={darkMode} type="movie" />
+                        <MediaList items={movies} darkMode={darkMode} type="movie" />
                       )}
-                      {radarrMoviesError && <div style={{ color: 'red', marginTop: '1em' }}>{radarrMoviesError}</div>}
+                      {moviesError && <div style={{ color: 'red', marginTop: '1em' }}>{moviesError}</div>}
                     </>
                   );
                 })()
               } />
-              <Route path="/movies/:id" element={<MediaDetails mediaItems={radarrMovies} loading={radarrMoviesLoading} mediaType="movie" />} />
-              <Route path="/series/:id" element={<MediaDetails mediaItems={sonarrSeries} loading={sonarrSeriesLoading} mediaType="tv" />} />
+              <Route path="/movies/:id" element={<MediaDetails mediaItems={movies} loading={moviesLoading} mediaType="movie" />} />
+              <Route path="/series/:id" element={<MediaDetails mediaItems={series} loading={seriesLoading} mediaType="tv" />} />
               <Route path="/history" element={<HistoryPage />} />
-              <Route path="/settings/radarr" element={<RadarrSettings />} />
-              <Route path="/settings/sonarr" element={<SonarrSettings />} />
+              <Route path="/settings/radarr" element={<SettingsPage type="radarr"/>} />
+              <Route path="/settings/sonarr" element={<SettingsPage type="sonarr"/>} />
               <Route path="/settings/general" element={<GeneralSettings />} />
               <Route path="/system/tasks" element={<Tasks />} />
               <Route path="/wanted/movies" element={<Wanted darkMode={darkMode} type="movie" />} />
