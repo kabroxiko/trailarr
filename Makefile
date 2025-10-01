@@ -5,8 +5,8 @@ SRC_DIR=cmd/trailarr
 .PHONY: build clean run
 
 build:
-# 	go mod download
-# 	go mod vendor
+	go mod download
+	go mod vendor
 	go build -mod=vendor -o $(BIN_DIR)/$(APP_NAME) $(SRC_DIR)/main.go
 
 run: build
