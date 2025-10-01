@@ -297,11 +297,13 @@ func filterDownloadedSonarrSeries(allSeries []map[string]interface{}) []SonarrSe
 		title, _ := s["title"].(string)
 		year, _ := s["year"].(float64)
 		path, _ := s["path"].(string)
+		overview, _ := s["overview"].(string)
 		series = append(series, SonarrSeries{
-			ID:    int(id),
-			Title: title,
-			Year:  int(year),
-			Path:  path,
+			ID:      int(id),
+			Title:   title,
+			Year:    int(year),
+			Path:    path,
+			Overview: overview,
 		})
 	}
 	return series
