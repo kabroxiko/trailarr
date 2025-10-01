@@ -11,6 +11,7 @@ import './App.css';
 import { fetchPlexItems, getRadarrSettings, getRadarrMovies } from './api';
 
 function App() {
+  const [search, setSearch] = useState('');
   const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   const [darkMode, setDarkMode] = useState(prefersDark);
   useEffect(() => {
@@ -140,9 +141,19 @@ function App() {
       });
   }, []);
 
+  // Filter logic for movies and series
+  const filterItems = (items) => {
+    if (!search.trim()) return items;
+    const q = search.trim().toLowerCase();
+    return items.filter(item =>
+      (item.title && item.title.toLowerCase().includes(q)) ||
+      (item.overview && item.overview.toLowerCase().includes(q))
+    );
+  };
+
   return (
     <div className="app-container">
-      <Header darkMode={darkMode} />
+      <Header darkMode={darkMode} search={search} setSearch={setSearch} />
       <div style={{ display: 'flex', width: '100%', height: 'calc(100vh - 64px)' }}>
         <Sidebar
           selectedSection={selectedSection}
@@ -158,13 +169,13 @@ function App() {
             <Routes>
               <Route path="/series" element={
                 <>
-                  <MediaList items={sonarrSeries} darkMode={darkMode} type="series" />
+                  <MediaList items={filterItems(sonarrSeries)} darkMode={darkMode} type="series" />
                   {sonarrSeriesError && <div style={{ color: 'red', marginTop: '1em' }}>{sonarrSeriesError}</div>}
                 </>
               } />
               <Route path="/movies" element={
                 <>
-                  <MediaList items={radarrMovies} darkMode={darkMode} type="movie" />
+                  <MediaList items={filterItems(radarrMovies)} darkMode={darkMode} type="movie" />
                   {radarrMoviesError && <div style={{ color: 'red', marginTop: '1em' }}>{radarrMoviesError}</div>}
                 </>
               } />
