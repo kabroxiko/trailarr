@@ -166,6 +166,11 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
             <FontAwesomeIcon icon={faBookmark} color="#eee" style={{ marginRight: 8 }} />
             {media.title}
           </h2>
+          {media.overview && (
+            <div style={{ color: '#e5e7eb', fontSize: 15, margin: '10px 0 6px 0', textShadow: '0 1px 2px #000', textAlign: 'left', lineHeight: 1.5, maxWidth: 700 }}>
+              {media.overview}
+            </div>
+          )}
           <div style={{ marginBottom: 6, color: '#e5e7eb', textAlign: 'left', fontSize: 13, textShadow: '0 1px 2px #000' }}>{media.year} &bull; {media.path}</div>
           {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
         </div>
