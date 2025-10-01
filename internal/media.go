@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -25,33 +24,33 @@ const (
 // DownloadMissingExtras downloads missing extras for a given media type ("movie" or "tv")
 func DownloadMissingExtras(mediaType string, cachePath string) error {
 	if !GetAutoDownloadExtras() {
-		log.Println("[DownloadMissingExtras] Auto download of extras is disabled by general settings.")
+		TrailarrLog("Info", "DownloadMissingExtras", "Auto download of extras is disabled by general settings.")
 		return nil
 	}
-	log.Printf("[DEBUG] DownloadMissingExtras: mediaType=%s, cachePath=%s\n", mediaType, cachePath)
+	TrailarrLog("Info", "DownloadMissingExtras", "DownloadMissingExtras: mediaType=%s, cachePath=%s", mediaType, cachePath)
 	items, err := loadCache(cachePath)
 	if err != nil {
-		log.Printf("[DEBUG] Failed to load cache: %v\n", err)
+		TrailarrLog("Warn", "DownloadMissingExtras", "Failed to load cache: %v", err)
 		return err
 	}
 	for _, m := range items {
 		idInt, ok := parseMediaID(m["id"])
 		if !ok {
-			log.Printf("[DEBUG] Missing or invalid id in item: %v\n", m)
+			TrailarrLog("Warn", "DownloadMissingExtras", "Missing or invalid id in item: %v", m)
 			continue
 		}
-		log.Printf("[DEBUG] Item idInt=%d\n", idInt)
+		TrailarrLog("Debug", "DownloadMissingExtras", "Item idInt=%d", idInt)
 		extras, err := SearchExtras(mediaType, idInt)
 		if err != nil {
-			log.Printf("[DEBUG] SearchExtras error: %v\n", err)
+			TrailarrLog("Warn", "DownloadMissingExtras", "SearchExtras error: %v", err)
 			continue
 		}
 		mediaPath, err := FindMediaPathByID(cachePath, fmt.Sprintf("%v", m["id"]))
 		if err != nil || mediaPath == "" {
-			log.Printf("[DEBUG] FindMediaPathByID error or empty: %v, mediaPath=%s\n", err, mediaPath)
+			TrailarrLog("Warn", "DownloadMissingExtras", "FindMediaPathByID error or empty: %v, mediaPath=%s", err, mediaPath)
 			continue
 		}
-		log.Printf("[DEBUG] mediaPath=%s\n", mediaPath)
+		TrailarrLog("Debug", "DownloadMissingExtras", "mediaPath=%s", mediaPath)
 		MarkDownloadedExtras(extras, mediaPath, "type", "title")
 		config, _ := GetExtraTypesConfig()
 		filterAndDownloadExtras(mediaType, mediaPath, extras, config)
@@ -82,7 +81,7 @@ func filterAndDownloadExtras(mediaType, mediaPath string, extras []map[string]st
 		if shouldDownloadExtra(extra, config) {
 			err := handleExtraDownload(mediaType, mediaPath, extra)
 			if err != nil {
-				log.Printf("[DownloadMissingExtras] Failed to download: %v\n", err)
+				TrailarrLog("Warn", "DownloadMissingExtras", "Failed to download: %v", err)
 			}
 		}
 	}
@@ -185,7 +184,7 @@ func SyncMedia(
 	nextExecution *time.Time,
 ) {
 	println("[FORCE] Executing Sync", section, "...")
-	log.Printf("[SYNC] Starting sync for section: %s", section)
+	TrailarrLog("Info", "SyncService", "Starting sync for section: %s", section)
 	// Truncate queue before adding new item to avoid idx out of range
 	if len(GlobalSyncQueue) >= 10 {
 		GlobalSyncQueue = GlobalSyncQueue[len(GlobalSyncQueue)-9:]
@@ -215,7 +214,7 @@ func SyncMedia(
 	GlobalSyncQueue[idx].Status = "running"
 	saveQueue()
 
-	log.Printf("[SYNC] Invoking syncFunc for section: %s", section)
+	TrailarrLog("Debug", "SyncService", "Invoking syncFunc for section: %s", section)
 	err := syncFunc()
 	GlobalSyncQueue[idx].Ended = time.Now()
 	GlobalSyncQueue[idx].Duration = GlobalSyncQueue[idx].Ended.Sub(GlobalSyncQueue[idx].Started)
@@ -224,13 +223,13 @@ func SyncMedia(
 		GlobalSyncQueue[idx].Error = err.Error()
 		GlobalSyncQueue[idx].Status = "failed"
 		saveQueue()
-		log.Printf("[SYNC] Sync %s error: %s", section, err.Error())
+		TrailarrLog("Error", "SyncService", "Sync %s error: %s", section, err.Error())
 	} else {
 		GlobalSyncQueue[idx].Status = "success"
 		saveQueue()
-		log.Printf("[Sync%s] Synced cache.\n", section)
+		TrailarrLog("Info", "SyncService", "Synced cache for %s.", section)
 	}
-	log.Printf("[SYNC] Finished sync for section: %s", section)
+	TrailarrLog("Info", "SyncService", "Finished sync for section: %s", section)
 	*lastExecution = GlobalSyncQueue[idx].Ended
 	*lastDuration = GlobalSyncQueue[idx].Duration
 	interval := timings[section]
@@ -265,35 +264,35 @@ func CacheMediaPosters(
 	posterSuffixes []string, // ["/poster-500.jpg", "/fanart-1280.jpg"]
 	debug bool, // enable debug output
 ) {
-	log.Printf("[CacheMediaPosters] Starting poster caching for section: %s, baseDir: %s, items: %d", section, baseDir, len(idList))
+	TrailarrLog("Info", "CacheMediaPosters", "Starting poster caching for section: %s, baseDir: %s, items: %d", section, baseDir, len(idList))
 	for _, item := range idList {
 		id := fmt.Sprintf("%v", item[idKey])
 		for _, suffix := range posterSuffixes {
 			idDir := baseDir + "/" + id
 			if err := os.MkdirAll(idDir, 0775); err != nil {
-				log.Printf("[CacheMediaPosters] Failed to create dir %s: %v", idDir, err)
+				TrailarrLog("Warn", "CacheMediaPosters", "Failed to create dir %s: %v", idDir, err)
 				continue
 			}
 			localPath := idDir + suffix
 			if _, err := os.Stat(localPath); err == nil {
-				log.Printf("[CacheMediaPosters] Poster already exists: %s", localPath)
+				TrailarrLog("Debug", "CacheMediaPosters", "Poster already exists: %s", localPath)
 				continue
 			}
 			settings, err := loadMediaSettings(section)
 			if err != nil {
-				log.Printf("[CacheMediaPosters] Failed to load settings for %s: %v", section, err)
+				TrailarrLog("Warn", "CacheMediaPosters", "Failed to load settings for %s: %v", section, err)
 				continue
 			}
 			apiBase := trimTrailingSlash(settings.URL)
 			posterUrl := apiBase + RemoteMediaCoverPath + id + suffix
-			log.Printf("[CacheMediaPosters] Attempting to cache poster for %s id=%s: %s -> %s", section, id, posterUrl, localPath)
+			TrailarrLog("Info", "CacheMediaPosters", "Attempting to cache poster for %s id=%s: %s -> %s", section, id, posterUrl, localPath)
 			if err := fetchAndCachePoster(localPath, posterUrl, section); err != nil {
-				log.Printf("[CacheMediaPosters] Failed to cache poster for %s id=%s: %v", section, id, err)
+				TrailarrLog("Warn", "CacheMediaPosters", "Failed to cache poster for %s id=%s: %v", section, id, err)
 			}
-			log.Printf("[CacheMediaPosters] Successfully cached poster for %s id=%s: %s", section, id, localPath)
+			TrailarrLog("Info", "CacheMediaPosters", "Successfully cached poster for %s id=%s: %s", section, id, localPath)
 		}
 	}
-	log.Printf("[CacheMediaPosters] Finished poster caching for section: %s", section)
+	TrailarrLog("Info", "CacheMediaPosters", "Finished poster caching for section: %s", section)
 }
 
 // Finds the media path for a given id in a cache file
