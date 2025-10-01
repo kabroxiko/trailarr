@@ -11,6 +11,8 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
   const [existingExtras, setExistingExtras] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [error, setError] = useState('');
+  const [modalMsg, setModalMsg] = useState('');
+  const [showModal, setShowModal] = useState(false);
   const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   const [darkMode, setDarkMode] = useState(prefersDark);
   useEffect(() => {
@@ -37,6 +39,16 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
       .catch(() => setError('Failed to search extras'))
       .finally(() => setSearchLoading(false));
   }, [media, mediaType]);
+
+  useEffect(() => {
+    if (showModal && modalMsg) {
+      const timer = setTimeout(() => {
+        setShowModal(false);
+        setModalMsg('');
+      }, 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [showModal, modalMsg]);
 
   if (loading) return <div>Loading media details...</div>;
   if (!media) {
@@ -85,6 +97,27 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
       width: '100%',
       boxSizing: 'border-box',
     }}>
+      {/* Floating Modal for Download Error */}
+      {showModal && (
+        <div style={{
+          position: 'fixed',
+          top: 24,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: '#ef4444',
+          color: '#fff',
+          padding: '12px 32px',
+          borderRadius: 8,
+          boxShadow: '0 2px 12px rgba(0,0,0,0.18)',
+          zIndex: 9999,
+          fontWeight: 500,
+          fontSize: 16,
+          minWidth: 260,
+          textAlign: 'center',
+        }}>
+          {modalMsg}
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', margin: '0px 0 0 0', padding: 0, width: '100%' }}>
         <div
           style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 'bold', color: '#e5e7eb', fontSize: 18 }}
@@ -193,10 +226,21 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
                               if (res.ok) {
                                 setExistingExtras(prev => [...prev, { type: extra.type, title: extra.title, youtube_id: youtubeID }]);
                               } else {
-                                alert('Download failed');
+                                const data = await res.json();
+                                let msg = data?.error || 'Download failed';
+                                if (msg.includes('UNPLAYABLE') || msg.includes('no se encuentra disponible')) {
+                                  msg = 'This YouTube video is unavailable and cannot be downloaded.';
+                                }
+                                setModalMsg(msg);
+                                setShowModal(true);
                               }
                             } catch (e) {
-                              alert('Download failed: ' + (e.message || e));
+                              let msg = (e.message || e);
+                              if (msg.includes('UNPLAYABLE') || msg.includes('no se encuentra disponible')) {
+                                msg = 'This YouTube video is unavailable and cannot be downloaded.';
+                              }
+                              setModalMsg(msg);
+                              setShowModal(true);
                             }
                           }}
                         >Download</button>
