@@ -13,9 +13,9 @@ const (
 )
 
 type SonarrSeries struct {
-	ID      int    `json:"id"`
-	Title   string `json:"title"`
-	Year    int    `json:"year"`
-	Path    string `json:"path"`
+	ID       int    `json:"id"`
+	Title    string `json:"title"`
+	Year     int    `json:"year"`
+	Path     string `json:"path"`
 	Overview string `json:"overview"`
 }
