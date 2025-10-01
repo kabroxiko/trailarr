@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faFilm, faHistory, faStar, faBan, faCog, faServer, faBookmark } from '@fortawesome/free-solid-svg-icons';
@@ -10,6 +9,18 @@ import { searchExtras, downloadExtra, fetchPlexItems, getRadarrSettings, getRada
 function MovieDetails({ movies, loading }) {
   const { id } = useParams();
   const movie = movies.find(m => String(m.id) === id);
+  // Get Sonarr poster and background URLs if available
+  let posterUrl = '';
+  let backgroundUrl = '';
+  if (movie && Array.isArray(movie.images)) {
+    const poster = movie.images.find(img => img.coverType === 'poster');
+    const fanart = movie.images.find(img => img.coverType === 'fanart');
+    posterUrl = poster ? poster.url : '';
+    backgroundUrl = fanart ? fanart.url : '';
+    // Sonarr returns relative URLs, prepend /mediacover if needed
+    if (posterUrl && !posterUrl.startsWith('http')) posterUrl = '/mediacover' + posterUrl;
+    if (backgroundUrl && !backgroundUrl.startsWith('http')) backgroundUrl = '/mediacover' + backgroundUrl;
+  }
   const [extras, setExtras] = useState([]);
   const [existingExtras, setExistingExtras] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -70,6 +81,9 @@ function MovieDetails({ movies, loading }) {
   const [radarrUrl, setRadarrUrl] = useState('');
   const [radarrApiKey, setRadarrApiKey] = useState('');
   const [radarrStatus, setRadarrStatus] = useState('');
+  const [sonarrUrl, setSonarrUrl] = useState('');
+  const [sonarrApiKey, setSonarrApiKey] = useState('');
+  const [sonarrStatus, setSonarrStatus] = useState('');
 
   useEffect(() => {
     fetchPlexItems()
@@ -83,6 +97,30 @@ function MovieDetails({ movies, loading }) {
       .catch(() => {
         setRadarrUrl('');
         setRadarrApiKey('');
+      });
+    // Sonarr settings fetch fallback
+    async function getSonarrSettings() {
+      try {
+        const res = await fetch('/api/settings/sonarr');
+        if (!res.ok) throw new Error('Failed to fetch Sonarr settings');
+        return await res.json();
+      } catch {
+        return { url: '', apiKey: '' };
+      }
+    }
+    getSonarrSettings()
+      .then(res => {
+        setSonarrUrl(res.url || '');
+        setSonarrApiKey(res.apiKey || '');
+        // Record Sonarr settings in localStorage
+        localStorage.setItem('sonarrUrl', res.url || '');
+        localStorage.setItem('sonarrApiKey', res.apiKey || '');
+      })
+      .catch(() => {
+        setSonarrUrl('');
+        setSonarrApiKey('');
+        localStorage.setItem('sonarrUrl', '');
+        localStorage.setItem('sonarrApiKey', '');
       });
   }, []);
 
@@ -140,7 +178,7 @@ function MovieDetails({ movies, loading }) {
       <div style={{
         width: '100%',
         position: 'relative',
-        background: `url(/mediacover/${movie.id}/fanart-1280.jpg) center center/cover no-repeat`,
+        background: backgroundUrl ? `url(${backgroundUrl}) center center/cover no-repeat` : undefined,
         minHeight: 210,
         display: 'flex',
         flexDirection: 'row',
@@ -159,9 +197,10 @@ function MovieDetails({ movies, loading }) {
         }} />
         <div style={{ minWidth: 150, zIndex: 2, display: 'flex', justifyContent: 'flex-start', alignItems: 'center', height: '100%', padding: '0 0 0 32px' }}>
           <img
-            src={`/mediacover/${movie.id}/poster-500.jpg`}
+            src={posterUrl || 'https://via.placeholder.com/120x180?text=No+Poster'}
             style={{ width: 120, height: 180, objectFit: 'cover', borderRadius: 2, background: '#222', boxShadow: '0 1px 4px rgba(0,0,0,0.18)' }}
             onError={e => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/120x180?text=No+Poster'; }}
+            alt={movie.title}
           />
         </div>
         <div style={{ flex: 1, zIndex: 2, display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', marginLeft: 32 }}>
@@ -253,6 +292,11 @@ function App() {
   const [selectedSection, setSelectedSection] = useState('Movies');
   const [selectedSettingsSub, setSelectedSettingsSub] = useState('General');
 
+  // Sonarr series state
+  const [sonarrSeries, setSonarrSeries] = useState([]);
+  const [sonarrSeriesError, setSonarrSeriesError] = useState('');
+  const [sonarrSeriesLoading, setSonarrSeriesLoading] = useState(true);
+
   // Sync sidebar state with route on mount/refresh
   useEffect(() => {
     const path = window.location.pathname;
@@ -268,8 +312,36 @@ function App() {
       setSelectedSettingsSub('General');
     } else if (path.startsWith('/movies')) {
       setSelectedSection('Movies');
+    } else if (path.startsWith('/series')) {
+      setSelectedSection('Series');
     }
   }, []);
+
+  // Sonarr series fetch from backend
+  useEffect(() => {
+    setSonarrSeriesLoading(true);
+    fetch('/api/sonarr/series')
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to fetch Sonarr series');
+        return r.json();
+      })
+      .then(data => {
+        const sorted = (data.series || []).slice().sort((a, b) => {
+          if (!a.title) return 1;
+          if (!b.title) return -1;
+          return a.title.localeCompare(b.title);
+        });
+        setSonarrSeries(sorted);
+        setSonarrSeriesLoading(false);
+        setSonarrSeriesError('');
+      })
+      .catch(e => {
+        setSonarrSeries([]);
+        setSonarrSeriesLoading(false);
+        setSonarrSeriesError(e.message || 'Sonarr series API not available');
+      });
+  }, []);
+
   const [plexItems, setPlexItems] = useState([]);
   const [plexError, setPlexError] = useState('');
   const [radarrMovies, setRadarrMovies] = useState([]);
@@ -278,6 +350,9 @@ function App() {
   const [radarrUrl, setRadarrUrl] = useState('');
   const [radarrApiKey, setRadarrApiKey] = useState('');
   const [radarrStatus, setRadarrStatus] = useState('');
+  const [sonarrUrl, setSonarrUrl] = useState('');
+  const [sonarrApiKey, setSonarrApiKey] = useState('');
+  const [sonarrStatus, setSonarrStatus] = useState('');
 
   useEffect(() => {
     fetchPlexItems()
@@ -291,6 +366,30 @@ function App() {
       .catch(() => {
         setRadarrUrl('');
         setRadarrApiKey('');
+      });
+    // Sonarr settings fetch fallback
+    async function getSonarrSettings() {
+      try {
+        const res = await fetch('/api/settings/sonarr');
+        if (!res.ok) throw new Error('Failed to fetch Sonarr settings');
+        return await res.json();
+      } catch {
+        return { url: '', apiKey: '' };
+      }
+    }
+    getSonarrSettings()
+      .then(res => {
+        setSonarrUrl(res.url || '');
+        setSonarrApiKey(res.apiKey || '');
+        // Record Sonarr settings in localStorage
+        localStorage.setItem('sonarrUrl', res.url || '');
+        localStorage.setItem('sonarrApiKey', res.apiKey || '');
+      })
+      .catch(() => {
+        setSonarrUrl('');
+        setSonarrApiKey('');
+        localStorage.setItem('sonarrUrl', '');
+        localStorage.setItem('sonarrApiKey', '');
       });
   }, []);
 
@@ -334,14 +433,14 @@ function App() {
           <nav>
             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
               {[
-                { name: 'Series', icon: <FontAwesomeIcon icon={faCog} color={darkMode ? '#e5e7eb' : '#333'} /> },
-                { name: 'Movies', icon: <FontAwesomeIcon icon={faFilm} color={darkMode ? '#e5e7eb' : '#333'} /> },
-                { name: 'History', icon: <FontAwesomeIcon icon={faHistory} color={darkMode ? '#e5e7eb' : '#333'} /> },
-                { name: 'Wanted', icon: <FontAwesomeIcon icon={faStar} color={darkMode ? '#e5e7eb' : '#333'} /> },
-                { name: 'Blacklist', icon: <FontAwesomeIcon icon={faBan} color={darkMode ? '#e5e7eb' : '#333'} /> },
-                { name: 'Settings', icon: <FontAwesomeIcon icon={faCog} color={darkMode ? '#e5e7eb' : '#333'} /> },
-                { name: 'System', icon: <FontAwesomeIcon icon={faServer} color={darkMode ? '#e5e7eb' : '#333'} /> }
-              ].map(({ name, icon }) => (
+                { name: 'Series', icon: <FontAwesomeIcon icon={faCog} color={darkMode ? '#e5e7eb' : '#333'} />, route: '/series' },
+                { name: 'Movies', icon: <FontAwesomeIcon icon={faFilm} color={darkMode ? '#e5e7eb' : '#333'} />, route: '/movies' },
+                { name: 'History', icon: <FontAwesomeIcon icon={faHistory} color={darkMode ? '#e5e7eb' : '#333'} />, route: '/' },
+                { name: 'Wanted', icon: <FontAwesomeIcon icon={faStar} color={darkMode ? '#e5e7eb' : '#333'} />, route: '/' },
+                { name: 'Blacklist', icon: <FontAwesomeIcon icon={faBan} color={darkMode ? '#e5e7eb' : '#333'} />, route: '/' },
+                { name: 'Settings', icon: <FontAwesomeIcon icon={faCog} color={darkMode ? '#e5e7eb' : '#333'} />, route: '/settings' },
+                { name: 'System', icon: <FontAwesomeIcon icon={faServer} color={darkMode ? '#e5e7eb' : '#333'} />, route: '/' }
+              ].map(({ name, icon, route }) => (
                 <li key={name} style={{ marginBottom: 16 }}>
                   {name === 'Settings' ? (
                     <div
@@ -367,7 +466,7 @@ function App() {
                     </div>
                   ) : (
                     <Link
-                      to={name === 'Movies' ? '/movies' : '/'}
+                      to={route}
                       style={{ textDecoration: 'none', background: 'none', border: 'none', color: selectedSection === name ? (darkMode ? '#a855f7' : '#6d28d9') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSection === name ? 'bold' : 'normal', width: '100%', textAlign: 'left', padding: '0.5em 1em', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75em' }}
                       onClick={() => setSelectedSection(name)}
                     >
@@ -398,6 +497,31 @@ function App() {
           {/* Radarr Connection block is now rendered via a dedicated route below */}
           <div style={{ background: darkMode ? '#23232a' : '#fff', borderRadius: 8, boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb', padding: '0em', width: '100%', maxWidth: '100%', flex: 1, overflowY: 'auto', overflowX: 'hidden', color: darkMode ? '#e5e7eb' : '#222' }}>
             <Routes>
+              <Route path="/series" element={
+                <>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: darkMode ? '#23232a' : '#f3e8ff' }}>
+                        <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Title</th>
+                        <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Year</th>
+                        <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Path</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sonarrSeries.map((series, idx) => (
+                        <tr key={idx} style={{ borderBottom: '1px solid #f3e8ff' }}>
+                          <td style={{ padding: '0.5em', textAlign: 'left' }}>
+                            <Link to={`/series/${series.id}`} style={{ color: '#a855f7', textDecoration: 'underline', cursor: 'pointer', fontWeight: 'bold', textAlign: 'left', display: 'block' }}>{series.title}</Link>
+                          </td>
+                          <td style={{ padding: '0.5em', textAlign: 'left' }}>{series.year}</td>
+                          <td style={{ padding: '0.5em', textAlign: 'left' }}>{series.path}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {sonarrSeriesError && <div style={{ color: 'red', marginTop: '1em' }}>{sonarrSeriesError}</div>}
+                </>
+              } />
               <Route path="/movies" element={
                 <>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -424,6 +548,7 @@ function App() {
                 </>
               } />
               <Route path="/movies/:id" element={<MovieDetails movies={radarrMovies} loading={radarrMoviesLoading} />} />
+              <Route path="/series/:id" element={<MovieDetails movies={sonarrSeries} loading={sonarrSeriesLoading} />} />
               <Route path="/settings/radarr" element={
                 <div style={{
                   background: darkMode ? '#23232a' : '#fff',
@@ -497,6 +622,81 @@ function App() {
                     }}
                   >Save</button>
                   {radarrStatus && <div style={{ marginTop: '1em', color: '#22c55e' }}>{radarrStatus}</div>}
+                </div>
+              } />
+              <Route path="/settings/sonarr" element={
+                <div style={{
+                  background: darkMode ? '#23232a' : '#fff',
+                  borderRadius: 8,
+                  boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb',
+                  padding: '0em',
+                  width: 400,
+                  marginBottom: '0em',
+                  color: darkMode ? '#e5e7eb' : '#222',
+                  border: darkMode ? '1px solid #333' : 'none',
+                }}>
+                  <h3 style={{ color: '#e5e7eb', marginTop: 0 }}>Sonarr Connection</h3>
+                  <div style={{ marginBottom: '1em' }}>
+                    <label style={{ display: 'block', marginBottom: 4, color: darkMode ? '#e5e7eb' : '#222' }}>Sonarr URL</label>
+                    <input
+                      type="text"
+                      value={sonarrUrl}
+                      onChange={e => setSonarrUrl(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.5em',
+                        borderRadius: 6,
+                        border: darkMode ? '1px solid #333' : '1px solid #e5e7eb',
+                        background: darkMode ? '#18181b' : '#fff',
+                        color: darkMode ? '#e5e7eb' : '#222',
+                      }}
+                      placeholder="http://localhost:8989"
+                    />
+                  </div>
+                  <div style={{ marginBottom: '1em' }}>
+                    <label style={{ display: 'block', marginBottom: 4, color: darkMode ? '#e5e7eb' : '#222' }}>API Key</label>
+                    <input
+                      type="text"
+                      value={sonarrApiKey}
+                      onChange={e => setSonarrApiKey(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.5em',
+                        borderRadius: 6,
+                        border: darkMode ? '1px solid #333' : '1px solid #e5e7eb',
+                        background: darkMode ? '#18181b' : '#fff',
+                        color: darkMode ? '#e5e7eb' : '#222',
+                      }}
+                      placeholder="Your Sonarr API Key"
+                    />
+                  </div>
+                  <button
+                    style={{
+                      background: '#a855f7',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 6,
+                      padding: '0.5em 1em',
+                      cursor: 'pointer',
+                      fontWeight: 'bold',
+                      boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb',
+                    }}
+                    onClick={async () => {
+                      setSonarrStatus('');
+                      try {
+                        const res = await fetch('/api/settings/sonarr', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ url: sonarrUrl, apiKey: sonarrApiKey })
+                        });
+                        if (!res.ok) throw new Error('Failed to save');
+                        setSonarrStatus('Saved!');
+                      } catch {
+                        setSonarrStatus('Error saving');
+                      }
+                    }}
+                  >Save</button>
+                  {sonarrStatus && <div style={{ marginTop: '1em', color: '#22c55e' }}>{sonarrStatus}</div>}
                 </div>
               } />
               <Route path="/settings" element={
