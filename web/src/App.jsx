@@ -9,6 +9,7 @@ function MovieDetails({ movies, loading }) {
   const movie = movies.find(m => String(m.id) === id);
   const navigate = useNavigate();
   const [extras, setExtras] = useState([]);
+  const [existingExtras, setExistingExtras] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [error, setError] = useState('');
   const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -25,7 +26,16 @@ function MovieDetails({ movies, loading }) {
     setSearchLoading(true);
     setError('');
     searchExtras(movie.title)
-      .then(res => setExtras(res.extras || []))
+      .then(res => {
+        setExtras(res.extras || []);
+        // Check which extras exist on disk
+        if (movie.path) {
+          fetch(`/api/extras/existing?moviePath=${encodeURIComponent(movie.path)}`)
+            .then(r => r.json())
+            .then(data => setExistingExtras(data.existing || []))
+            .catch(() => setExistingExtras([]));
+        }
+      })
       .catch(() => setError('Failed to search extras'))
       .finally(() => setSearchLoading(false));
   }, [movie]);
@@ -79,40 +89,48 @@ function MovieDetails({ movies, loading }) {
                   <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9', background: darkMode ? '#23232a' : '#f3e8ff' }}>Type</th>
                   <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9', background: darkMode ? '#23232a' : '#f3e8ff' }}>Title</th>
                   <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9', background: darkMode ? '#23232a' : '#f3e8ff' }}>URL</th>
+                  <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9', background: darkMode ? '#23232a' : '#f3e8ff' }}>Exists</th>
                 </tr>
               </thead>
               <tbody>
-                {extras.map((extra, idx) => (
-                  <tr key={idx} style={{ borderBottom: darkMode ? '1px solid #333' : '1px solid #e5e7eb' }}>
-                    <td style={{ padding: '0.5em', textAlign: 'left', color: darkMode ? '#e5e7eb' : '#222' }}>{extra.type || ''}</td>
-                    <td style={{ padding: '0.5em', textAlign: 'left', color: darkMode ? '#e5e7eb' : '#222' }}>{extra.title || String(extra)}</td>
-                    <td style={{ padding: '0.5em', textAlign: 'left', color: darkMode ? '#a855f7' : '#6d28d9' }}>
-                      {extra.url ? (
-                        <>
-                          <a href={extra.url} target="_blank" rel="noopener noreferrer" style={{ color: darkMode ? '#a855f7' : '#6d28d9', textDecoration: 'underline', marginRight: 8 }}>Link</a>
-                          {extra.url.includes('youtube.com/watch?v=') || extra.url.includes('youtu.be/') ? (
-                            <button
-                              style={{ background: '#a855f7', color: '#fff', border: 'none', borderRadius: 6, padding: '0.25em 0.75em', cursor: 'pointer', fontWeight: 'bold', marginLeft: 4 }}
-                              onClick={async () => {
-                                try {
-                                  const res = await downloadExtra({
-                                    moviePath: movie.path,
-                                    extraType: extra.type,
-                                    extraTitle: extra.title,
-                                    url: typeof extra.url === 'string' ? extra.url : (extra.url && extra.url.url ? extra.url.url : '')
-                                  });
-                                  // Optionally handle error or success here (no alert)
-                                } catch (e) {
-                                  alert('Download failed: ' + (e.message || e));
-                                }
-                              }}
-                            >Download</button>
-                          ) : null}
-                        </>
-                      ) : ''}
-                    </td>
-                  </tr>
-                ))}
+                {extras.map((extra, idx) => {
+                  // Determine if this extra exists
+                  const exists = existingExtras.some(e => e.type === extra.type && e.title === extra.title);
+                  return (
+                    <tr key={idx} style={{ borderBottom: darkMode ? '1px solid #333' : '1px solid #e5e7eb', background: exists ? (darkMode ? '#1e293b' : '#e0e7ff') : undefined }}>
+                      <td style={{ padding: '0.5em', textAlign: 'left', color: darkMode ? '#e5e7eb' : '#222' }}>{extra.type || ''}</td>
+                      <td style={{ padding: '0.5em', textAlign: 'left', color: darkMode ? '#e5e7eb' : '#222' }}>{extra.title || String(extra)}</td>
+                      <td style={{ padding: '0.5em', textAlign: 'left', color: darkMode ? '#a855f7' : '#6d28d9' }}>
+                        {extra.url ? (
+                          <>
+                            <a href={extra.url} target="_blank" rel="noopener noreferrer" style={{ color: darkMode ? '#a855f7' : '#6d28d9', textDecoration: 'underline', marginRight: 8 }}>Link</a>
+                            {extra.url.includes('youtube.com/watch?v=') || extra.url.includes('youtu.be/') ? (
+                              <button
+                                style={{ background: exists ? '#888' : '#a855f7', color: '#fff', border: 'none', borderRadius: 6, padding: '0.25em 0.75em', cursor: exists ? 'not-allowed' : 'pointer', fontWeight: 'bold', marginLeft: 4 }}
+                                disabled={exists}
+                                onClick={async () => {
+                                  if (exists) return;
+                                  try {
+                                    const res = await downloadExtra({
+                                      moviePath: movie.path,
+                                      extraType: extra.type,
+                                      extraTitle: extra.title,
+                                      url: typeof extra.url === 'string' ? extra.url : (extra.url && extra.url.url ? extra.url.url : '')
+                                    });
+                                    // Optionally handle error or success here (no alert)
+                                  } catch (e) {
+                                    alert('Download failed: ' + (e.message || e));
+                                  }
+                                }}
+                              >Download</button>
+                            ) : null}
+                          </>
+                        ) : ''}
+                      </td>
+                      <td style={{ padding: '0.5em', textAlign: 'left', color: exists ? '#22c55e' : '#ef4444', fontWeight: 'bold' }}>{exists ? 'Yes' : 'No'}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
