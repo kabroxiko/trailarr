@@ -76,7 +76,29 @@ function MovieDetails({ movies, loading }) {
                     <td style={{ padding: '0.5em', textAlign: 'left', color: darkMode ? '#e5e7eb' : '#222' }}>{extra.type || ''}</td>
                     <td style={{ padding: '0.5em', textAlign: 'left', color: darkMode ? '#e5e7eb' : '#222' }}>{extra.title || String(extra)}</td>
                     <td style={{ padding: '0.5em', textAlign: 'left', color: darkMode ? '#a855f7' : '#6d28d9' }}>
-                      {extra.url ? <a href={extra.url} target="_blank" rel="noopener noreferrer" style={{ color: darkMode ? '#a855f7' : '#6d28d9', textDecoration: 'underline' }}>Link</a> : ''}
+                      {extra.url ? (
+                        <>
+                          <a href={extra.url} target="_blank" rel="noopener noreferrer" style={{ color: darkMode ? '#a855f7' : '#6d28d9', textDecoration: 'underline', marginRight: 8 }}>Link</a>
+                          {extra.url.includes('youtube.com/watch?v=') || extra.url.includes('youtu.be/') ? (
+                            <button
+                              style={{ background: '#a855f7', color: '#fff', border: 'none', borderRadius: 6, padding: '0.25em 0.75em', cursor: 'pointer', fontWeight: 'bold', marginLeft: 4 }}
+                              onClick={async () => {
+                                try {
+                                  const res = await downloadExtra({
+                                    moviePath: movie.path,
+                                    extraType: extra.type,
+                                    extraTitle: extra.title,
+                                    url: typeof extra.url === 'string' ? extra.url : (extra.url && extra.url.url ? extra.url.url : '')
+                                  });
+                                  // Optionally handle error or success here (no alert)
+                                } catch (e) {
+                                  alert('Download failed: ' + (e.message || e));
+                                }
+                              }}
+                            >Download</button>
+                          ) : null}
+                        </>
+                      ) : ''}
                     </td>
                   </tr>
                 ))}

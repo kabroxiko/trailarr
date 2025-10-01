@@ -95,14 +95,24 @@ func searchExtrasHandler(c *gin.Context) {
 
 func downloadExtraHandler(c *gin.Context) {
 	var req struct {
-		URL string `json:"url"`
+		MoviePath  string `json:"moviePath"`
+		ExtraType  string `json:"extraType"`
+		ExtraTitle string `json:"extraTitle"`
+		URL        string `json:"url"`
 	}
 	if err := c.BindJSON(&req); err != nil {
+		fmt.Printf("[downloadExtraHandler] Invalid request: %v\n", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
-	_ = DownloadExtra(req.URL)
-	c.JSON(http.StatusOK, gin.H{"status": "downloading"})
+	fmt.Printf("[downloadExtraHandler] Download request: moviePath=%s, extraType=%s, extraTitle=%s, url=%s\n", req.MoviePath, req.ExtraType, req.ExtraTitle, req.URL)
+	meta, err := DownloadYouTubeExtra(req.MoviePath, req.ExtraType, req.ExtraTitle, req.URL)
+	if err != nil {
+		fmt.Printf("[downloadExtraHandler] Download error: %v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "downloaded", "meta": meta})
 }
 
 // SyncRadarrMoviesAndMediaCover syncs Radarr movie list and MediaCover folder

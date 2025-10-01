@@ -24,11 +24,13 @@ export async function searchExtras(movieTitle) {
 	return await res.json();
 }
 
-export async function downloadExtra(url) {
+export async function downloadExtra({ moviePath, extraType, extraTitle, url }) {
+	const payload = { moviePath, extraType, extraTitle, url };
+	console.log('downloadExtra payload:', payload);
 	const res = await fetch(`/api/extras/download`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ url })
+		body: JSON.stringify(payload)
 	});
 	if (!res.ok) throw new Error('Failed to start download');
 	return await res.json();
