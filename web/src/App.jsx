@@ -4,6 +4,7 @@ import './App.css';
 import { searchExtras, downloadExtra, fetchPlexItems, getRadarrSettings, getRadarrMovies } from './api';
 
 function App() {
+  const [selectedMovie, setSelectedMovie] = useState(null);
   const [plexItems, setPlexItems] = useState([]);
   const [plexError, setPlexError] = useState('');
   const [radarrMovies, setRadarrMovies] = useState([]);
@@ -148,24 +149,51 @@ function App() {
     {selectedSection === 'Movies' ? (
       <>
         <h3 style={{ color: '#a855f7', marginTop: 0 }}>Radarr Movies</h3>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: '#f3e8ff' }}>
-              <th style={{ textAlign: 'left', padding: '0.5em' }}>Title</th>
-              <th style={{ textAlign: 'left', padding: '0.5em' }}>Year</th>
-              <th style={{ textAlign: 'left', padding: '0.5em' }}>Path</th>
-            </tr>
-          </thead>
-          <tbody>
-            {radarrMovies.map((movie, idx) => (
-              <tr key={idx} style={{ borderBottom: '1px solid #f3e8ff' }}>
-                <td style={{ padding: '0.5em' }}>{movie.title}</td>
-                <td style={{ padding: '0.5em' }}>{movie.year}</td>
-                <td style={{ padding: '0.5em' }}>{movie.path}</td>
+        {!selectedMovie ? (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: '#f3e8ff' }}>
+                <th style={{ textAlign: 'left', padding: '0.5em' }}>Title</th>
+                <th style={{ textAlign: 'left', padding: '0.5em' }}>Year</th>
+                <th style={{ textAlign: 'left', padding: '0.5em' }}>Path</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {radarrMovies.map((movie, idx) => (
+                <tr key={idx} style={{ borderBottom: '1px solid #f3e8ff' }}>
+                  <td style={{ padding: '0.5em' }}>
+                    <a
+                      href="#"
+                      style={{ color: '#a855f7', textDecoration: 'underline', cursor: 'pointer', fontWeight: 'bold' }}
+                      onClick={e => {
+                        e.preventDefault();
+                        setSelectedMovie(movie);
+                      }}
+                    >{movie.title}</a>
+                  </td>
+                  <td style={{ padding: '0.5em' }}>{movie.year}</td>
+                  <td style={{ padding: '0.5em' }}>{movie.path}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div style={{ display: 'flex', gap: 32 }}>
+            <div style={{ minWidth: 300 }}>
+              {/* Placeholder for movie poster */}
+              <div style={{ width: 300, height: 450, background: '#222', borderRadius: 12, marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 32 }}>
+                {selectedMovie.title[0]}
+              </div>
+              <button style={{ marginTop: 8, background: '#eee', border: 'none', borderRadius: 6, padding: '0.5em 1em', cursor: 'pointer' }} onClick={() => setSelectedMovie(null)}>Back to list</button>
+            </div>
+            <div style={{ flex: 1 }}>
+              <h2 style={{ color: '#a855f7', margin: 0 }}>{selectedMovie.title}</h2>
+              <div style={{ marginBottom: 8, color: '#888' }}>{selectedMovie.year} &bull; {selectedMovie.path}</div>
+              <div style={{ marginBottom: 16, color: '#333' }}>Movie extras would be listed here.</div>
+              {/* TODO: Integrate actual extras data here */}
+            </div>
+          </div>
+        )}
         {radarrMoviesError && <div style={{ color: 'red', marginTop: '1em' }}>{radarrMoviesError}</div>}
       </>
     ) : (
