@@ -147,7 +147,7 @@ func checkExistingExtra(info *downloadInfo, extraURL string) (*ExtraDownloadMeta
 }
 
 func checkRejectedExtras(info *downloadInfo, extraURL string) *ExtraDownloadMetadata {
-	rejectedPath := filepath.Join("./", "rejected_extras.json")
+	rejectedPath := filepath.Join(TrailarrRoot, "rejected_extras.json")
 	rejected := make([]map[string]string, 0)
 
 	if data, err := os.ReadFile(rejectedPath); err == nil {
@@ -425,7 +425,7 @@ func handleDownloadError(info *downloadInfo, extraURL string, err error, output 
 }
 
 func addToRejectedExtras(info *downloadInfo, extraURL, reason string) {
-	rejectedPath := filepath.Join("./", "rejected_extras.json")
+	rejectedPath := filepath.Join(TrailarrRoot, "rejected_extras.json")
 	var rejectedList []map[string]string
 
 	if data, err := os.ReadFile(rejectedPath); err == nil {

@@ -19,7 +19,6 @@ FROM ubuntu:22.04
 WORKDIR /app
 COPY --from=go-builder /app/bin/trailarr /app/bin/trailarr
 COPY --from=go-builder /app/internal /app/internal
-COPY --from=go-builder /app/rejected_extras.json /app/rejected_extras.json
 COPY --from=go-builder /app/go.mod /app/go.mod
 COPY --from=go-builder /app/go.sum /app/go.sum
 COPY --from=go-builder /app/scripts /app/scripts
