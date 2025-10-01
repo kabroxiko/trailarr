@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import MovieTable from './components/MovieTable';
+import MediaTable from './components/MediaTable';
 import SeriesTable from './components/SeriesTable';
-import MovieDetails from './components/MovieDetails';
+import MediaDetails from './components/MediaDetails';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -166,12 +166,12 @@ function App() {
               } />
               <Route path="/movies" element={
                 <>
-                  <MovieTable movies={radarrMovies} darkMode={darkMode} />
+                  <MediaTable media={radarrMovies} darkMode={darkMode} />
                   {radarrMoviesError && <div style={{ color: 'red', marginTop: '1em' }}>{radarrMoviesError}</div>}
                 </>
               } />
-              <Route path="/movies/:id" element={<MovieDetails movies={radarrMovies} loading={radarrMoviesLoading} />} />
-              <Route path="/series/:id" element={<MovieDetails movies={sonarrSeries} loading={sonarrSeriesLoading} />} />
+              <Route path="/movies/:id" element={<MediaDetails mediaItems={radarrMovies} loading={radarrMoviesLoading} />} />
+              <Route path="/series/:id" element={<MediaDetails mediaItems={sonarrSeries} loading={sonarrSeriesLoading} />} />
               <Route path="/settings/radarr" element={
                 <div style={{
                   background: darkMode ? '#23232a' : '#fff',
