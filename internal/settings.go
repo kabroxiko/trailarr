@@ -555,3 +555,23 @@ func FetchRootFolders(apiURL, apiKey string) ([]map[string]interface{}, error) {
 	}
 	return rootFolderPaths, nil
 }
+
+// Test connection to Radarr/Sonarr by calling /api/v3/system/status
+func testMediaConnection(url, apiKey, mediaType string) error {
+	endpoint := "/api/v3/system/status"
+	req, err := http.NewRequest("GET", url+endpoint, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("X-Api-Key", apiKey)
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("API returned status %d", resp.StatusCode)
+	}
+	return nil
+}

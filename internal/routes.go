@@ -7,6 +7,50 @@ import (
 )
 
 func RegisterRoutes(r *gin.Engine) {
+	// Endpoint to fetch root folders for Radarr/Sonarr
+	r.GET("/api/rootfolders", func(c *gin.Context) {
+		url := c.Query("url")
+		apiKey := c.Query("apiKey")
+		if url == "" || apiKey == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Missing url or apiKey"})
+			return
+		}
+		folders, err := FetchRootFolders(url, apiKey)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "folders": []string{}})
+			return
+		}
+		c.JSON(http.StatusOK, folders)
+	})
+	// Test connection endpoints for Radarr/Sonarr
+	r.GET("/api/test/radarr", func(c *gin.Context) {
+		url := c.Query("url")
+		apiKey := c.Query("apiKey")
+		if url == "" || apiKey == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Missing url or apiKey"})
+			return
+		}
+		err := testMediaConnection(url, apiKey, "radarr")
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "error": err.Error()})
+		} else {
+			c.JSON(http.StatusOK, gin.H{"success": true})
+		}
+	})
+	r.GET("/api/test/sonarr", func(c *gin.Context) {
+		url := c.Query("url")
+		apiKey := c.Query("apiKey")
+		if url == "" || apiKey == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Missing url or apiKey"})
+			return
+		}
+		err := testMediaConnection(url, apiKey, "sonarr")
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "error": err.Error()})
+		} else {
+			c.JSON(http.StatusOK, gin.H{"success": true})
+		}
+	})
 	// Health check
 	r.GET("/api/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
