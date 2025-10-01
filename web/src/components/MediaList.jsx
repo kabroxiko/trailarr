@@ -61,11 +61,9 @@ export default function MediaList({ items, darkMode, type }) {
                 fontSize: 18,
                 textAlign: 'center',
                 marginBottom: 6,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
                 width: '100%',
                 maxWidth: 160,
+                wordBreak: 'break-word',
               }}
               title={item.title}
             >
