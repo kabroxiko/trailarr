@@ -25,6 +25,177 @@ func RegisterRoutes(r *gin.Engine) {
 	r.GET("/api/sonarr/series", HandleSonarrSeries)
 	r.POST("/api/settings/sonarr", saveSonarrSettingsHandler)
 	r.GET("/api/settings/sonarr", getSonarrSettingsHandler)
+	// Sonarr poster and banner proxy endpoints
+	r.GET("/api/sonarr/poster/:seriesId", HandleSonarrPoster)
+	r.GET("/api/sonarr/banner/:seriesId", HandleSonarrBanner)
+}
+
+// Handler for /api/sonarr/banner/:seriesId
+func HandleSonarrBanner(c *gin.Context) {
+	seriesId := c.Param("seriesId")
+	// Load Sonarr settings
+	data, err := os.ReadFile("sonarr.json")
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Sonarr settings not found")
+		return
+	}
+	var settings struct {
+		URL    string `json:"url"`
+		APIKey string `json:"apiKey"`
+	}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		c.String(http.StatusInternalServerError, "Invalid Sonarr settings")
+		return
+	}
+	// Remove trailing slash from URL if present
+	apiBase := settings.URL
+	if strings.HasSuffix(apiBase, "/") {
+		apiBase = strings.TrimRight(apiBase, "/")
+	}
+	// Fetch series info from Sonarr to get banner path
+	req, err := http.NewRequest("GET", apiBase+"/api/v3/series/"+seriesId, nil)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Error creating request")
+		return
+	}
+	req.Header.Set("X-Api-Key", settings.APIKey)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		c.String(http.StatusBadGateway, "Failed to fetch series info from Sonarr")
+		return
+	}
+	defer resp.Body.Close()
+	var series map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&series); err != nil {
+		c.String(http.StatusInternalServerError, "Failed to decode Sonarr response")
+		return
+	}
+	// Find banner path in images array
+	images, ok := series["images"].([]interface{})
+	var bannerUrl string
+	if ok {
+		for _, img := range images {
+			m, ok := img.(map[string]interface{})
+			if ok && m["coverType"] == "banner" {
+				if remoteUrl, ok := m["remoteUrl"].(string); ok && remoteUrl != "" {
+					bannerUrl = remoteUrl
+					break
+				}
+				if url, ok := m["url"].(string); ok && url != "" {
+					bannerUrl = apiBase + url
+					break
+				}
+			}
+		}
+	}
+	if bannerUrl == "" {
+		c.String(http.StatusNotFound, "No banner found for series")
+		return
+	}
+	// Proxy the banner image
+	bannerReq, err := http.NewRequest("GET", bannerUrl, nil)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Error creating banner request")
+		return
+	}
+	// If banner is local, add API key
+	if strings.HasPrefix(bannerUrl, apiBase) {
+		bannerReq.Header.Set("X-Api-Key", settings.APIKey)
+	}
+	bannerResp, err := client.Do(bannerReq)
+	if err != nil || bannerResp.StatusCode != 200 {
+		c.String(http.StatusBadGateway, "Failed to fetch banner image")
+		return
+	}
+	defer bannerResp.Body.Close()
+	c.Header("Content-Type", bannerResp.Header.Get("Content-Type"))
+	c.Status(http.StatusOK)
+	io.Copy(c.Writer, bannerResp.Body)
+}
+
+// Handler for /api/sonarr/poster/:seriesId
+func HandleSonarrPoster(c *gin.Context) {
+	seriesId := c.Param("seriesId")
+	// Load Sonarr settings
+	data, err := os.ReadFile("sonarr.json")
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Sonarr settings not found")
+		return
+	}
+	var settings struct {
+		URL    string `json:"url"`
+		APIKey string `json:"apiKey"`
+	}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		c.String(http.StatusInternalServerError, "Invalid Sonarr settings")
+		return
+	}
+	// Remove trailing slash from URL if present
+	apiBase := settings.URL
+	if strings.HasSuffix(apiBase, "/") {
+		apiBase = strings.TrimRight(apiBase, "/")
+	}
+	// Fetch series info from Sonarr to get poster path
+	req, err := http.NewRequest("GET", apiBase+"/api/v3/series/"+seriesId, nil)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Error creating request")
+		return
+	}
+	req.Header.Set("X-Api-Key", settings.APIKey)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		c.String(http.StatusBadGateway, "Failed to fetch series info from Sonarr")
+		return
+	}
+	defer resp.Body.Close()
+	var series map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&series); err != nil {
+		c.String(http.StatusInternalServerError, "Failed to decode Sonarr response")
+		return
+	}
+	// Find poster path in images array
+	images, ok := series["images"].([]interface{})
+	var posterUrl string
+	if ok {
+		for _, img := range images {
+			m, ok := img.(map[string]interface{})
+			if ok && m["coverType"] == "poster" {
+				if remoteUrl, ok := m["remoteUrl"].(string); ok && remoteUrl != "" {
+					posterUrl = remoteUrl
+					break
+				}
+				if url, ok := m["url"].(string); ok && url != "" {
+					posterUrl = apiBase + url
+					break
+				}
+			}
+		}
+	}
+	if posterUrl == "" {
+		c.String(http.StatusNotFound, "No poster found for series")
+		return
+	}
+	// Proxy the poster image
+	posterReq, err := http.NewRequest("GET", posterUrl, nil)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Error creating poster request")
+		return
+	}
+	// If poster is local, add API key
+	if strings.HasPrefix(posterUrl, apiBase) {
+		posterReq.Header.Set("X-Api-Key", settings.APIKey)
+	}
+	posterResp, err := client.Do(posterReq)
+	if err != nil || posterResp.StatusCode != 200 {
+		c.String(http.StatusBadGateway, "Failed to fetch poster image")
+		return
+	}
+	defer posterResp.Body.Close()
+	c.Header("Content-Type", posterResp.Header.Get("Content-Type"))
+	c.Status(http.StatusOK)
+	io.Copy(c.Writer, posterResp.Body)
 }
 
 // Handler to get Sonarr settings
@@ -67,11 +238,10 @@ func saveSonarrSettingsHandler(c *gin.Context) {
 
 // --- Sonarr Series API ---
 type SonarrSeries struct {
-	ID     int                    `json:"id"`
-	Title  string                 `json:"title"`
-	Year   int                    `json:"year"`
-	Path   string                 `json:"path"`
-	Images []map[string]interface{} `json:"images"`
+	ID    int    `json:"id"`
+	Title string `json:"title"`
+	Year  int    `json:"year"`
+	Path  string `json:"path"`
 }
 
 // Handler for /api/sonarr/series
@@ -155,19 +325,11 @@ func HandleSonarrSeries(c *gin.Context) {
 		title, _ := s["title"].(string)
 		year, _ := s["year"].(float64)
 		path, _ := s["path"].(string)
-		images, _ := s["images"].([]interface{})
-		var imgArr []map[string]interface{}
-		for _, img := range images {
-			if imgMap, ok := img.(map[string]interface{}); ok {
-				imgArr = append(imgArr, imgMap)
-			}
-		}
 		series = append(series, SonarrSeries{
-			ID:     int(id),
-			Title:  title,
-			Year:   int(year),
-			Path:   path,
-			Images: imgArr,
+			ID:    int(id),
+			Title: title,
+			Year:  int(year),
+			Path:  path,
 		})
 	}
 	// Save series to cache file
