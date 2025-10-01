@@ -48,6 +48,60 @@ type SyncSonarrQueueItem struct {
 	Error    string
 }
 
+func getAllTasksStatus() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Build schedules array
+		schedules := []gin.H{
+			{
+				"type":          "Sync Radarr",
+				"name":          "Sync Radarr",
+				"interval":      "15 minutes",
+				"lastExecution": syncRadarrStatus.LastExecution,
+				"lastDuration":  syncRadarrStatus.LastDuration.String(),
+				"nextExecution": syncRadarrStatus.NextExecution,
+				"lastError":     syncRadarrStatus.LastError,
+			},
+			{
+				"type":          "Sync Sonarr",
+				"name":          "Sync Sonarr",
+				"interval":      "15 minutes",
+				"lastExecution": syncSonarrStatus.LastExecution,
+				"lastDuration":  syncSonarrStatus.LastDuration.String(),
+				"nextExecution": syncSonarrStatus.NextExecution,
+				"lastError":     syncSonarrStatus.LastError,
+			},
+		}
+		// Build queues array as []map[string]interface{} with type field
+		queues := make([]map[string]interface{}, 0)
+		for _, item := range syncRadarrStatus.Queue {
+			queues = append(queues, map[string]interface{}{
+				"type":     "Sync Radarr",
+				"Queued":   item.Queued,
+				"Started":  item.Started,
+				"Ended":    item.Ended,
+				"Duration": item.Duration,
+				"Status":   item.Status,
+				"Error":    item.Error,
+			})
+		}
+		for _, item := range syncSonarrStatus.Queue {
+			queues = append(queues, map[string]interface{}{
+				"type":     "Sync Sonarr",
+				"Queued":   item.Queued,
+				"Started":  item.Started,
+				"Ended":    item.Ended,
+				"Duration": item.Duration,
+				"Status":   item.Status,
+				"Error":    item.Error,
+			})
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"schedules": schedules,
+			"queues":    queues,
+		})
+	}
+}
+
 func main() {
 	r := gin.Default()
 
@@ -88,6 +142,9 @@ func main() {
 			"queue": syncSonarrStatus.Queue,
 		})
 	})
+
+	// API endpoint for combined scheduled/queue status
+	r.GET("/api/tasks/status", getAllTasksStatus())
 
 	// Background sync task: sync Radarr movies and MediaCover every 15 minutes
 	go func() {

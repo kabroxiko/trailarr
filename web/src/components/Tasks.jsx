@@ -1,23 +1,17 @@
 import React, { useEffect, useState } from 'react';
 
 export default function Tasks() {
-  const [radarrStatus, setRadarrStatus] = useState(null);
-  const [sonarrStatus, setSonarrStatus] = useState(null);
+  const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchStatus() {
       setLoading(true);
       try {
-        const [radarrRes, sonarrRes] = await Promise.all([
-          fetch('/api/tasks/sync-radarr/status'),
-          fetch('/api/tasks/sync-sonarr/status'),
-        ]);
-        setRadarrStatus(await radarrRes.json());
-        setSonarrStatus(await sonarrRes.json());
+        const res = await fetch('/api/tasks/status');
+        setStatus(await res.json());
       } catch (e) {
-        setRadarrStatus(null);
-        setSonarrStatus(null);
+        setStatus(null);
       }
       setLoading(false);
     }
@@ -27,18 +21,10 @@ export default function Tasks() {
   }, []);
 
   if (loading) return <div>Loading...</div>;
+  if (!status) return <div>Error loading task status.</div>;
 
-  // Combine schedules
-  const schedules = [
-    radarrStatus && radarrStatus.scheduled ? { ...radarrStatus.scheduled, type: 'Sync Radarr' } : null,
-    sonarrStatus && sonarrStatus.scheduled ? { ...sonarrStatus.scheduled, type: 'Sync Sonarr' } : null,
-  ].filter(Boolean);
-
-  // Combine queues
-  const queues = [
-    ...(radarrStatus && radarrStatus.queue ? radarrStatus.queue.map(item => ({ ...item, type: 'Sync Radarr' })) : []),
-    ...(sonarrStatus && sonarrStatus.queue ? sonarrStatus.queue.map(item => ({ ...item, type: 'Sync Sonarr' })) : []),
-  ];
+  const schedules = status.schedules || [];
+  const queues = status.queues || [];
 
   return (
     <div style={{ padding: '2em' }}>
