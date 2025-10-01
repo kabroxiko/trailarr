@@ -244,3 +244,23 @@ func SyncRadarrImages() error {
 	)
 	return nil
 }
+
+// Lists movies without any downloaded trailer extra
+func GetMoviesWithoutTrailerExtraHandler(c *gin.Context) {
+	cachePath := MoviesCachePath
+	movies, err := loadCache(cachePath)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Movie cache not found"})
+		return
+	}
+	trailerSet := findMediaWithTrailers("/mnt/unionfs/Media/Movies")
+	var result []map[string]interface{}
+	for _, m := range movies {
+		path, ok := m["path"].(string)
+		if !ok || trailerSet[path] {
+			continue
+		}
+		result = append(result, m)
+	}
+	c.JSON(200, gin.H{"movies": result})
+}
