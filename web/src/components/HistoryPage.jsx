@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getHistory } from '../api';
+// ...existing code...
 import { FaDownload, FaTrash } from 'react-icons/fa';
 
 function formatDate(date) {
@@ -24,15 +24,17 @@ const HistoryPage = () => {
 
   useEffect(() => {
     setLoading(true);
-    getHistory()
-      .then(data => {
-        setHistory(data);
-        setLoading(false);
-      })
-      .catch(err => {
-        setError(err.message || 'Failed to load history');
-        setLoading(false);
-      });
+    import('../api').then(({ getHistory }) => {
+      getHistory()
+        .then(data => {
+          setHistory(data);
+          setLoading(false);
+        })
+        .catch(err => {
+          setError(err.message || 'Failed to load history');
+          setLoading(false);
+        });
+    });
   }, []);
 
   let content;
