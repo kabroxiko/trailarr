@@ -57,7 +57,7 @@ func resolveCachePath(mediaType string) (string, error) {
 		return TrailarrRoot + "/series.json", nil
 	default:
 		TrailarrLog("Warn", "Extras", "Invalid mediaType: %s", mediaType)
-		return "", fmt.Errorf("Invalid mediaType")
+		return "", fmt.Errorf("invalid mediaType")
 	}
 }
 
@@ -149,19 +149,19 @@ func ExtractYouTubeID(url string) (string, error) {
 		parts := strings.Split(url, "v=")
 		if len(parts) < 2 {
 			TrailarrLog("Warn", "Extras", "Could not extract YouTube video ID from URL: %s", url)
-			return "", fmt.Errorf("Could not extract YouTube video ID from URL: %s", url)
+			return "", fmt.Errorf("could not extract YouTube video ID from URL: %s", url)
 		}
 		return strings.Split(parts[1], "&")[0], nil
 	} else if strings.Contains(url, "youtu.be/") {
 		parts := strings.Split(url, "/")
 		if len(parts) < 2 {
 			TrailarrLog("Warn", "Extras", "Could not extract YouTube video ID from URL: %s", url)
-			return "", fmt.Errorf("Could not extract YouTube video ID from URL: %s", url)
+			return "", fmt.Errorf("could not extract YouTube video ID from URL: %s", url)
 		}
 		return parts[len(parts)-1], nil
 	}
 	TrailarrLog("Warn", "Extras", "Not a valid YouTube URL: %s", url)
-	return "", fmt.Errorf("Not a valid YouTube URL: %s", url)
+	return "", fmt.Errorf("not a valid YouTube URL: %s", url)
 }
 
 // Placeholder for extras search and download logic
