@@ -1,18 +1,18 @@
 package main
 
 import (
-       "gozarr/internal"
-       "net/http"
-       "time"
+	"gozarr/internal"
+	"net/http"
+	"time"
 
-       "github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin"
 )
 
 const (
-       TaskSyncWithRadarr         = "Sync with Radarr"
-       TaskSyncWithRadarrInterval = "15 minutes"
-       TaskSyncWithSonarr         = "Sync with Sonarr"
-       TaskSyncWithSonarrInterval = "15 minutes"
+	TaskSyncWithRadarr         = "Sync with Radarr"
+	TaskSyncWithRadarrInterval = "15 minutes"
+	TaskSyncWithSonarr         = "Sync with Sonarr"
+	TaskSyncWithSonarrInterval = "15 minutes"
 )
 
 var (
@@ -176,7 +176,7 @@ func forceTaskHandler() gin.HandlerFunc {
 			Name string `json:"name"`
 		}
 		if err := c.BindJSON(&req); err != nil {
-			   c.JSON(http.StatusBadRequest, gin.H{"error": internal.ErrInvalidRequest})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 			return
 		}
 		println("[FORCE] Requested force execution for:", req.Name)
