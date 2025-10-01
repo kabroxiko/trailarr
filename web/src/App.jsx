@@ -5,6 +5,7 @@ import MediaDetails from './components/MediaDetails';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import GeneralSettings from './components/GeneralSettings';
+import Tasks from './components/Tasks';
 import { Routes, Route, Link, useParams } from 'react-router-dom';
 import { Navigate } from 'react-router-dom';
 import './App.css';
@@ -141,7 +142,7 @@ function App() {
   }, []);
 
   return (
-    <div style={{ width: '100vw', height: '100vh', fontFamily: 'sans-serif', background: darkMode ? '#18181b' : '#f7f8fa', color: darkMode ? '#e5e7eb' : '#222', overflow: 'hidden', position: 'fixed', left: 0, top: 0 }}>
+    <div className="app-container">
       <Header darkMode={darkMode} />
       <div style={{ display: 'flex', width: '100%', height: 'calc(100vh - 64px)' }}>
         <Sidebar
@@ -322,6 +323,7 @@ function App() {
               } />
               <Route path="/settings/general" element={<GeneralSettings />} />
               <Route path="/" element={<Navigate to="/movies" replace />} />
+              <Route path="/system/tasks" element={<Tasks />} />
             </Routes>
           </div>
         </main>
