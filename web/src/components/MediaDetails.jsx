@@ -171,90 +171,110 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
         </div>
       </div>
       {extras.length > 0 && (
-        <div style={{ width: '100%', background: darkMode ? '#23232a' : '#f3e8ff', overflow: 'hidden', padding: 0, margin: 0 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', background: 'transparent' }}>
-            <thead>
-              <tr style={{ height: 32 }}>
-                <th style={{ textAlign: 'left', padding: '0.5em 1em', color: darkMode ? '#e5e7eb' : '#6d28d9', background: 'transparent', fontSize: 13, fontWeight: 500 }}>Type</th>
-                <th style={{ textAlign: 'left', padding: '0.5em 1em', color: darkMode ? '#e5e7eb' : '#6d28d9', background: 'transparent', fontSize: 13, fontWeight: 500 }}>Title</th>
-                <th style={{ textAlign: 'left', padding: '0.5em 1em', color: darkMode ? '#e5e7eb' : '#6d28d9', background: 'transparent', fontSize: 13, fontWeight: 500 }}>URL</th>
-                <th style={{ textAlign: 'left', padding: '0.5em 1em', color: darkMode ? '#e5e7eb' : '#6d28d9', background: 'transparent', fontSize: 13, fontWeight: 500 }}>Download</th>
-                <th style={{ textAlign: 'left', padding: '0.5em 1em', color: darkMode ? '#e5e7eb' : '#6d28d9', background: 'transparent', fontSize: 13, fontWeight: 500 }}>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {extras.map((extra, idx) => {
-                const baseTitle = extra.title || String(extra);
-                const totalCount = extras.filter(e => (e.title || String(e)) === baseTitle).length;
-                const displayTitle = totalCount > 1 ? `${baseTitle} (${extras.slice(0, idx + 1).filter(e => (e.title || String(e)) === baseTitle).length})` : baseTitle;
-                let youtubeID = '';
-                if (extra.url) {
-                  if (extra.url.includes('youtube.com/watch?v=')) {
-                    youtubeID = extra.url.split('v=')[1]?.split('&')[0] || '';
-                  } else if (extra.url.includes('youtu.be/')) {
-                    youtubeID = extra.url.split('youtu.be/')[1]?.split(/[?&]/)[0] || '';
-                  }
+        <div style={{ width: '100%', background: darkMode ? '#23232a' : '#f3e8ff', overflow: 'hidden', padding: '24px 10px', margin: 0 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '32px', justifyItems: 'center', alignItems: 'start', width: '100%' }}>
+            {extras.map((extra, idx) => {
+              const baseTitle = extra.title || String(extra);
+              const totalCount = extras.filter(e => (e.title || String(e)) === baseTitle).length;
+              let displayTitle = totalCount > 1 ? `${baseTitle} (${extras.slice(0, idx + 1).filter(e => (e.title || String(e)) === baseTitle).length})` : baseTitle;
+              // Truncate and add ellipsis if too long
+              const maxLen = 40;
+              if (displayTitle.length > maxLen) {
+                displayTitle = displayTitle.slice(0, maxLen - 3) + '...';
+              }
+              let youtubeID = '';
+              if (extra.url) {
+                if (extra.url.includes('youtube.com/watch?v=')) {
+                  youtubeID = extra.url.split('v=')[1]?.split('&')[0] || '';
+                } else if (extra.url.includes('youtu.be/')) {
+                  youtubeID = extra.url.split('youtu.be/')[1]?.split(/[?&]/)[0] || '';
                 }
-                // Find matching existing extra and get its status
-                const match = existingExtras.find(e => e.type === extra.type && e.title === extra.title && e.youtube_id === youtubeID);
-                const status = match?.status || 'Not downloaded';
-                const exists = status === 'downloaded' || status === 'Downloaded';
-                return (
-                  <tr key={idx} style={{ height: 32, background: exists ? (darkMode ? '#1e293b' : '#e0e7ff') : undefined }}>
-                    <td style={{ padding: '0.5em 1em', textAlign: 'left', color: darkMode ? '#e5e7eb' : '#222', fontSize: 13 }}>{extra.type || ''}</td>
-                    <td style={{ padding: '0.5em 1em', textAlign: 'left', color: darkMode ? '#e5e7eb' : '#222', fontSize: 13 }}>{displayTitle}</td>
-                    <td style={{ padding: '0.5em 1em', textAlign: 'left', color: darkMode ? '#e5e7eb' : '#6d28d9', fontSize: 13 }}>
-                      {extra.url ? (
-                        <a href={extra.url} target="_blank" rel="noopener noreferrer" style={{ color: darkMode ? '#e5e7eb' : '#6d28d9', textDecoration: 'underline', fontSize: 13 }}>Link</a>
-                      ) : null}
-                    </td>
-                    <td style={{ padding: '0.5em 1em', textAlign: 'left' }}>
-                      {extra.url && (extra.url.includes('youtube.com/watch?v=') || extra.url.includes('youtu.be/')) ? (
-                        <button
-                          style={{ background: exists ? '#888' : '#a855f7', color: '#fff', border: 'none', borderRadius: 4, padding: '0.25em 0.75em', cursor: exists ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: 13 }}
-                          disabled={exists}
-                          onClick={async () => {
-                            if (exists) return;
-                            try {
-                              const res = await fetch(`/api/extras/download`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                  moviePath: media.path,
-                                  extraType: extra.type,
-                                  extraTitle: extra.title,
-                                  url: typeof extra.url === 'string' ? extra.url : (extra.url && extra.url.url ? extra.url.url : '')
-                                })
-                              });
-                              if (res.ok) {
-                                setExistingExtras(prev => [...prev, { type: extra.type, title: extra.title, youtube_id: youtubeID, status: 'downloaded' }]);
-                              } else {
-                                const data = await res.json();
-                                let msg = data?.error || 'Download failed';
-                                if (msg.includes('UNPLAYABLE') || msg.includes('no se encuentra disponible')) {
-                                  msg = 'This YouTube video is unavailable and cannot be downloaded.';
-                                }
-                                setModalMsg(msg);
-                                setShowModal(true);
-                              }
-                            } catch (e) {
-                              let msg = (e.message || e);
+              }
+              // Use YouTube thumbnail if available
+              let posterUrl = extra.poster;
+              if (!posterUrl && youtubeID) {
+                posterUrl = `https://img.youtube.com/vi/${youtubeID}/hqdefault.jpg`;
+              }
+                // Adjust font size for long titles
+                let titleFontSize = 16;
+                if (displayTitle.length > 22) titleFontSize = 14;
+                if (displayTitle.length > 32) titleFontSize = 12;
+              const match = existingExtras.find(e => e.type === extra.type && e.title === extra.title && e.youtube_id === youtubeID);
+              const status = match?.status || 'Not downloaded';
+              const exists = status === 'downloaded' || status === 'Downloaded';
+              return (
+                <div key={idx} style={{
+                  width: 180,
+                  height: 280,
+                  background: darkMode ? '#18181b' : '#fff',
+                  borderRadius: 12,
+                  boxShadow: darkMode ? '0 2px 12px rgba(0,0,0,0.22)' : '0 2px 12px rgba(0,0,0,0.10)',
+                  overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  padding: '0 0 18px 0',
+                  position: 'relative',
+                  border: exists ? '2px solid #22c55e' : '2px solid transparent',
+                }}>
+                  <div style={{ width: '100%', background: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {posterUrl ? (
+                      <img src={posterUrl} alt={displayTitle} style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: 260, background: '#222' }} />
+                    ) : (
+                      <div style={{ color: '#fff', fontSize: 18, textAlign: 'center', padding: 12 }}>No Image</div>
+                    )}
+                  </div>
+                  <div style={{ width: '100%', padding: '12px 10px 0 10px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <div style={{ fontWeight: 600, fontSize: titleFontSize, color: darkMode ? '#e5e7eb' : '#222', textAlign: 'center', marginBottom: 4, height: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', width: '100%' }}>{displayTitle}</div>
+                    <div style={{ fontSize: 13, color: '#888', marginBottom: 2 }}>{extra.year || ''}</div>
+                    <div style={{ fontSize: 13, color: exists ? '#22c55e' : '#ef4444', fontWeight: 'bold', marginBottom: 6 }}>{status}</div>
+                    {extra.url ? (
+                      <a href={extra.url} target="_blank" rel="noopener noreferrer" style={{ color: darkMode ? '#e5e7eb' : '#6d28d9', textDecoration: 'underline', fontSize: 13, marginBottom: 8 }}>View</a>
+                    ) : null}
+                    {extra.url && (extra.url.includes('youtube.com/watch?v=') || extra.url.includes('youtu.be/')) ? (
+                      <button
+                        style={{ background: exists ? '#888' : '#a855f7', color: '#fff', border: 'none', borderRadius: 4, padding: '0.25em 0.75em', cursor: exists ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: 13, marginTop: 4 }}
+                        disabled={exists}
+                        onClick={async () => {
+                          if (exists) return;
+                          try {
+                            const res = await fetch(`/api/extras/download`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                moviePath: media.path,
+                                extraType: extra.type,
+                                extraTitle: extra.title,
+                                url: typeof extra.url === 'string' ? extra.url : (extra.url && extra.url.url ? extra.url.url : '')
+                              })
+                            });
+                            if (res.ok) {
+                              setExistingExtras(prev => [...prev, { type: extra.type, title: extra.title, youtube_id: youtubeID, status: 'downloaded' }]);
+                            } else {
+                              const data = await res.json();
+                              let msg = data?.error || 'Download failed';
                               if (msg.includes('UNPLAYABLE') || msg.includes('no se encuentra disponible')) {
                                 msg = 'This YouTube video is unavailable and cannot be downloaded.';
                               }
                               setModalMsg(msg);
                               setShowModal(true);
                             }
-                          }}
-                        >Download</button>
-                      ) : null}
-                    </td>
-                    <td style={{ padding: '0.5em 1em', textAlign: 'left', color: exists ? '#22c55e' : '#ef4444', fontWeight: 'bold', fontSize: 13 }}>{status}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                          } catch (e) {
+                            let msg = (e.message || e);
+                            if (msg.includes('UNPLAYABLE') || msg.includes('no se encuentra disponible')) {
+                              msg = 'This YouTube video is unavailable and cannot be downloaded.';
+                            }
+                            setModalMsg(msg);
+                            setShowModal(true);
+                          }
+                        }}
+                      >Download</button>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
