@@ -26,4 +26,7 @@ func RegisterRoutes(r *gin.Engine) {
 	// General settings (TMDB key)
 	r.GET("/api/settings/general", getGeneralSettingsHandler)
 	r.POST("/api/settings/general", saveGeneralSettingsHandler)
+
+	// Server-side file browser for directory picker
+	r.GET("/api/files/list", ListServerFoldersHandler)
 }

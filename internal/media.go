@@ -230,6 +230,50 @@ func loadCache(path string) ([]map[string]interface{}, error) {
 	if err := json.Unmarshal(cacheData, &items); err != nil {
 		return nil, err
 	}
+
+	// Determine section and get pathMappings
+	var section string
+	if strings.Contains(path, "movie") || strings.Contains(path, "Movie") {
+		section = "radarr"
+	} else if strings.Contains(path, "series") || strings.Contains(path, "Series") {
+		section = "sonarr"
+	}
+	if section != "" {
+		data, err := os.ReadFile(ConfigPath)
+		if err == nil {
+			var config map[string]interface{}
+			if yaml.Unmarshal(data, &config) == nil {
+				sec, _ := config[section].(map[string]interface{})
+				var mappings [][2]string
+				if sec != nil {
+					if pm, ok := sec["pathMappings"].([]interface{}); ok {
+						for _, m := range pm {
+							if mMap, ok := m.(map[string]interface{}); ok {
+								from, _ := mMap["from"].(string)
+								to, _ := mMap["to"].(string)
+								if from != "" && to != "" {
+									mappings = append(mappings, [2]string{from, to})
+								}
+							}
+						}
+					}
+				}
+				// For each item, convert root folder part of path
+				for _, item := range items {
+					p, ok := item["path"].(string)
+					if !ok || p == "" {
+						continue
+					}
+					for _, m := range mappings {
+						if strings.HasPrefix(p, m[0]) {
+							item["path"] = m[1] + p[len(m[0]):]
+							break
+						}
+					}
+				}
+			}
+		}
+	}
 	return items, nil
 }
 
