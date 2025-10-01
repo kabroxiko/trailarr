@@ -99,7 +99,6 @@ func getSonarrSettingsHandler(c *gin.Context) {
 
 	// Add any root folder from Sonarr API response to settings if missing
 	folders, err := FetchRootFolders(sonarrSection["url"].(string), sonarrSection["apiKey"].(string))
-	fmt.Printf("[DEBUG] Sonarr root folders response: %+v\n", folders)
 	updated := false
 	for _, f := range folders {
 		if path, ok := f["path"].(string); ok {
@@ -123,7 +122,6 @@ func getSonarrSettingsHandler(c *gin.Context) {
 			fmt.Printf("[INFO] Updated config with new root folders\n")
 		}
 	}
-	fmt.Printf("[DEBUG] Returning Sonarr settings: url=%v, apiKey=%v, pathMappings=%+v\n", sonarrSection["url"], sonarrSection["apiKey"], mappings)
 	c.JSON(http.StatusOK, gin.H{"url": sonarrSection["url"], "apiKey": sonarrSection["apiKey"], "pathMappings": mappings})
 }
 

@@ -136,7 +136,6 @@ func getRadarrSettingsHandler(c *gin.Context) {
 
 	// Add any root folder from Radarr API response to settings if missing
 	folders, err := FetchRootFolders(radarrSection["url"].(string), radarrSection["apiKey"].(string))
-	fmt.Printf("[DEBUG] Radarr root folders response: %+v\n", folders)
 	updated := false
 	for _, f := range folders {
 		if path, ok := f["path"].(string); ok {
@@ -160,7 +159,6 @@ func getRadarrSettingsHandler(c *gin.Context) {
 			fmt.Printf("[INFO] Updated config with new root folders\n")
 		}
 	}
-	fmt.Printf("[DEBUG] Returning Radarr settings: url=%v, apiKey=%v, pathMappings=%+v\n", radarrSection["url"], radarrSection["apiKey"], mappings)
 	c.JSON(http.StatusOK, gin.H{"url": radarrSection["url"], "apiKey": radarrSection["apiKey"], "pathMappings": mappings})
 }
 
