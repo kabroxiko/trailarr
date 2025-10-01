@@ -7,6 +7,11 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+
+	"github.com/kkdai/youtube/v2"
 )
 
 // Plex API integration
@@ -144,24 +149,91 @@ func SearchExtras(movieTitle string) ([]map[string]string, error) {
 	return extras, nil
 }
 
-func DownloadExtra(extraURL string) error {
-	// Native download: fetch video page and save (basic, for YouTube)
-	resp, err := http.Get(extraURL)
+// Sanitize filename for OS conflicts (remove/replace invalid chars)
+func SanitizeFilename(name string) string {
+	// Remove any character not allowed in filenames
+	// Windows: \/:*?"<>|, Linux: /
+	re := regexp.MustCompile(`[\\/:*?"<>|]`)
+	name = re.ReplaceAllString(name, "_")
+	name = strings.TrimSpace(name)
+	return name
+}
+
+// Download YouTube video and record metadata
+type ExtraDownloadMetadata struct {
+	Title     string `json:"title"`
+	Type      string `json:"type"`
+	YouTubeID string `json:"youtube_id"`
+	FileName  string `json:"file_name"`
+	Status    string `json:"status"`
+	URL       string `json:"url"`
+}
+
+func DownloadYouTubeExtra(moviePath, extraType, extraTitle, extraURL string) (*ExtraDownloadMetadata, error) {
+	// Extract YouTube video ID from URL
+	var youtubeID string
+	if strings.Contains(extraURL, "youtube.com/watch?v=") {
+		parts := strings.Split(extraURL, "v=")
+		if len(parts) < 2 {
+			return nil, fmt.Errorf("Could not extract YouTube video ID from URL: %s", extraURL)
+		}
+		youtubeID = strings.Split(parts[1], "&")[0]
+	} else if strings.Contains(extraURL, "youtu.be/") {
+		parts := strings.Split(extraURL, "/")
+		if len(parts) < 2 {
+			return nil, fmt.Errorf("Could not extract YouTube video ID from URL: %s", extraURL)
+		}
+		youtubeID = parts[len(parts)-1]
+	} else {
+		return nil, fmt.Errorf("Not a valid YouTube URL: %s", extraURL)
+	}
+	fmt.Printf("[DownloadYouTubeExtra] Requested URL: %s, Extracted YouTube ID: %s\n", extraURL, youtubeID)
+
+	// Sanitize type and title for filename
+	safeType := SanitizeFilename(extraType)
+	safeTitle := SanitizeFilename(extraTitle)
+	outDir := filepath.Join(moviePath, safeType)
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		return nil, fmt.Errorf("Failed to create output dir '%s': %w", outDir, err)
+	}
+	outFile := filepath.Join(outDir, safeTitle+".mp4")
+
+	// Download using kkdai/youtube
+	client := youtube.Client{}
+	video, err := client.GetVideo(youtubeID)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("Failed to get video info for YouTube ID '%s': %w", youtubeID, err)
 	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	formats := video.Formats.WithAudioChannels()
+	if len(formats) == 0 {
+		return nil, fmt.Errorf("No downloadable video format found for YouTube ID '%s'", youtubeID)
+	}
+	stream, _, err := client.GetStream(video, &formats[0])
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("Failed to get stream for YouTube ID '%s': %w", youtubeID, err)
 	}
-	// This is a placeholder: actual YouTube video download requires parsing the page and extracting video URLs
-	// For robust downloading, use a Go library like github.com/kkdai/youtube
-	// Here, just save the HTML page for demonstration
-	filename := "video.html"
-	if err := os.WriteFile(filename, body, 0644); err != nil {
-		return err
+	f, err := os.Create(outFile)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to create file '%s': %w", outFile, err)
 	}
-	fmt.Println("Saved video page to", filename)
-	return nil
+	defer f.Close()
+	if _, err := io.Copy(f, stream); err != nil {
+		return nil, fmt.Errorf("Failed to save video to '%s': %w", outFile, err)
+	}
+
+	meta := &ExtraDownloadMetadata{
+		Title:     extraTitle,
+		Type:      extraType,
+		YouTubeID: youtubeID,
+		FileName:  outFile,
+		Status:    "downloaded",
+		URL:       extraURL,
+	}
+	// Optionally, save metadata to a file (e.g., outFile+".json")
+	metaFile := outFile + ".json"
+	metaBytes, _ := json.MarshalIndent(meta, "", "  ")
+	_ = os.WriteFile(metaFile, metaBytes, 0644)
+
+	fmt.Printf("Downloaded %s to %s\n", extraTitle, outFile)
+	return meta, nil
 }
