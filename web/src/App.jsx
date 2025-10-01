@@ -81,7 +81,7 @@ function MovieDetails({ movies, loading }) {
       boxSizing: 'border-box',
     }}>
       {/* Top bar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '0px 0 0 0', padding: 0, width: '100%' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', margin: '0px 0 0 0', padding: 0, width: '100%' }}>
         <div
           style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 'bold', color: '#a855f7', fontSize: 18 }}
           onClick={handleSearchExtras}
@@ -89,7 +89,6 @@ function MovieDetails({ movies, loading }) {
           <span style={{ fontSize: 20, display: 'inline-block' }}>🔎</span>
           <span>{searchLoading ? 'Searching...' : 'Search'}</span>
         </div>
-        <button style={{ background: '#eee', border: 'none', borderRadius: 6, padding: '0.5em 1em', cursor: 'pointer', fontWeight: 'bold' }} onClick={() => navigate('/movies')}>Back to list</button>
       </div>
       {/* Movie info card with background and overlay */}
       <div style={{
@@ -286,7 +285,7 @@ function App() {
     boxSizing: 'border-box'
   }}>
         <div style={{ textAlign: 'center', marginBottom: '0em' }}>
-          <span style={{ fontWeight: 'bold', color: '#d6b4f7', fontSize: 18 }}>EXTRAZARR</span>
+          <img src="/logo.svg" alt="Logo" style={{ width: 64, height: 64, margin: '16px auto 8px auto', display: 'block' }} />
         </div>
         <nav>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
