@@ -1,6 +1,6 @@
-APP_NAME=gozarr
+APP_NAME=trailarr
 BIN_DIR=bin
-SRC_DIR=cmd/gozarr
+SRC_DIR=cmd/trailarr
 
 .PHONY: build clean run
 

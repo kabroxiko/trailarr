@@ -17,7 +17,7 @@ RUN npm run build
 # Final image
 FROM ubuntu:22.04
 WORKDIR /app
-COPY --from=go-builder /app/bin/gozarr /app/bin/gozarr
+COPY --from=go-builder /app/bin/trailarr /app/bin/trailarr
 COPY --from=go-builder /app/internal /app/internal
 COPY --from=go-builder /app/rejected_extras.json /app/rejected_extras.json
 COPY --from=go-builder /app/go.mod /app/go.mod
@@ -33,4 +33,4 @@ RUN apt-get update && apt-get install -y ca-certificates python3 python3-pip wge
 	&& chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe \
 	&& pip3 install --no-cache-dir yt-dlp curl_cffi
 EXPOSE 8080
-CMD ["/app/bin/gozarr"]
+CMD ["/app/bin/trailarr"]

@@ -1,4 +1,4 @@
-module gozarr
+module trailarr
 
 go 1.25.1
 
