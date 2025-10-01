@@ -12,7 +12,8 @@ import RadarrSettings from './components/RadarrSettings';
 import { Routes, Route } from 'react-router-dom';
 import { Navigate } from 'react-router-dom';
 import './App.css';
-import { getRadarrSettings, getMovies, getSeries } from './api';
+// Removed static import of api.js
+// Refactored to use dynamic imports
 
 function App() {
   const [search, setSearch] = useState('');
@@ -60,22 +61,24 @@ function App() {
   // Sonarr series fetch from backend
   useEffect(() => {
     setSonarrSeriesLoading(true);
-    getSeries()
-      .then(data => {
-        const sorted = (data.series || []).slice().sort((a, b) => {
-          if (!a.title) return 1;
-          if (!b.title) return -1;
-          return a.title.localeCompare(b.title);
+    import('./api').then(({ getSeries }) => {
+      getSeries()
+        .then(data => {
+          const sorted = (data.series || []).slice().sort((a, b) => {
+            if (!a.title) return 1;
+            if (!b.title) return -1;
+            return a.title.localeCompare(b.title);
+          });
+          setSonarrSeries(sorted);
+          setSonarrSeriesLoading(false);
+          setSonarrSeriesError('');
+        })
+        .catch(e => {
+          setSonarrSeries([]);
+          setSonarrSeriesLoading(false);
+          setSonarrSeriesError(e.message || 'Sonarr series API not available');
         });
-        setSonarrSeries(sorted);
-        setSonarrSeriesLoading(false);
-        setSonarrSeriesError('');
-      })
-      .catch(e => {
-        setSonarrSeries([]);
-        setSonarrSeriesLoading(false);
-        setSonarrSeriesError(e.message || 'Sonarr series API not available');
-      });
+    });
   }, []);
 
   const [radarrMovies, setRadarrMovies] = useState([]);
@@ -89,15 +92,17 @@ function App() {
   const [sonarrStatus, setSonarrStatus] = useState('');
 
   useEffect(() => {
-    getRadarrSettings()
-      .then(res => {
-        setRadarrUrl(res.url || '');
-        setRadarrApiKey(res.apiKey || '');
-      })
-      .catch(() => {
-        setRadarrUrl('');
-        setRadarrApiKey('');
-      });
+    import('./api').then(({ getRadarrSettings }) => {
+      getRadarrSettings()
+        .then(res => {
+          setRadarrUrl(res.url || '');
+          setRadarrApiKey(res.apiKey || '');
+        })
+        .catch(() => {
+          setRadarrUrl('');
+          setRadarrApiKey('');
+        });
+    });
     // Sonarr settings fetch fallback
     async function getSonarrSettings() {
       try {
@@ -126,20 +131,22 @@ function App() {
 
   useEffect(() => {
     setRadarrMoviesLoading(true);
-    getMovies()
-      .then(res => {
-        const sorted = (res.movies || []).slice().sort((a, b) => {
-          if (!a.title) return 1;
-          if (!b.title) return -1;
-          return a.title.localeCompare(b.title);
+    import('./api').then(({ getMovies }) => {
+      getMovies()
+        .then(res => {
+          const sorted = (res.movies || []).slice().sort((a, b) => {
+            if (!a.title) return 1;
+            if (!b.title) return -1;
+            return a.title.localeCompare(b.title);
+          });
+          setRadarrMovies(sorted);
+          setRadarrMoviesLoading(false);
+        })
+        .catch(e => {
+          setRadarrMoviesError(e.message);
+          setRadarrMoviesLoading(false);
         });
-        setRadarrMovies(sorted);
-        setRadarrMoviesLoading(false);
-      })
-      .catch(e => {
-        setRadarrMoviesError(e.message);
-        setRadarrMoviesLoading(false);
-      });
+    });
   }, []);
 
   // Separate search results into title and overview matches

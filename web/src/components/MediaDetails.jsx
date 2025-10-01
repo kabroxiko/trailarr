@@ -3,7 +3,6 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTrashCan, faBookmark, faCheckSquare } from '@fortawesome/free-regular-svg-icons';
 import { faPlay, faDownload } from '@fortawesome/free-solid-svg-icons';
 import { useParams } from 'react-router-dom';
-import { getExtras } from '../api';
 
 // Spinner and YouTubeEmbed component
 function Spinner() {
@@ -96,12 +95,14 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
     console.log('[MediaDetails] mediaType:', mediaType, 'id:', media.id);
     setSearchLoading(true);
     setError('');
-    getExtras({ mediaType, id: media.id })
-      .then(res => {
-        setExtras(res.extras || []);
-      })
-      .catch(() => setError('Failed to fetch extras'))
-      .finally(() => setSearchLoading(false));
+    import('../api').then(({ getExtras }) => {
+      getExtras({ mediaType, id: media.id })
+        .then(res => {
+          setExtras(res.extras || []);
+        })
+        .catch(() => setError('Failed to fetch extras'))
+        .finally(() => setSearchLoading(false));
+    });
   }, [media, mediaType]);
 
   useEffect(() => {
