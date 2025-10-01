@@ -312,7 +312,9 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
                         })
                       });
                       if (res.ok) {
-                        setExtras(prev => prev.map((e, i) => i === idx && e.type === 'Trailers' ? { ...e, downloaded: 'true' } : e));
+                        setExtras(prev => prev.map((e) =>
+                          e.title === extra.title && e.type === extra.type ? { ...e, downloaded: 'true' } : e
+                        ));
                       } else {
                         const data = await res.json();
                         let msg = data?.error || 'Download failed';
@@ -411,7 +413,9 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
                                       extraTitle: extra.title
                                     };
                                     await deleteExtra(payload);
-                                    setExtras(prev => prev.map((e, i) => i === idx && e.type === 'Trailers' ? { ...e, downloaded: 'false' } : e));
+                                    setExtras(prev => prev.map((e) =>
+                                      e.title === extra.title && e.type === extra.type ? { ...e, downloaded: 'false' } : e
+                                    ));
                                   } catch (e) {
                                     let msg = e?.message || e;
                                     if (e?.detail) msg += `\n${e.detail}`;
