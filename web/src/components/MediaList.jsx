@@ -13,10 +13,11 @@ export default function MediaList({ items, darkMode, type }) {
         </tr>
       </thead>
       <tbody>
-        {items.map((item, idx) => (
-          <tr key={idx} style={{ borderBottom: '1px solid #f3e8ff' }}>
+        {items.map((item) => (
+          <tr key={item.id + '-' + type} style={{ borderBottom: '1px solid #f3e8ff' }}>
             <td style={{ padding: '0.5em', textAlign: 'left' }}>
               <img
+                key={item.id + '-' + type}
                 src={type === 'series' ? `/api/sonarr/poster/${item.id}` : `/api/radarr/poster/${item.id}`}
                 style={{ width: 48, height: 72, objectFit: 'cover', borderRadius: 2, background: '#222', boxShadow: '0 1px 4px rgba(0,0,0,0.18)' }}
                 onError={e => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/48x72?text=No+Poster'; }}
