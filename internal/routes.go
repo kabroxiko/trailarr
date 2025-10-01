@@ -7,6 +7,14 @@ import (
 )
 
 func RegisterRoutes(r *gin.Engine) {
+	// Log all API calls except /mediacover
+	r.Use(func(c *gin.Context) {
+		if len(c.Request.URL.Path) < 11 || c.Request.URL.Path[:11] != "/mediacover" {
+			TrailarrLog("Info", "API", "%s %s", c.Request.Method, c.Request.URL.Path)
+		}
+		c.Next()
+	})
+
 	// Endpoint to fetch root folders for Radarr/Sonarr
 	r.GET("/api/rootfolders", func(c *gin.Context) {
 		url := c.Query("url")

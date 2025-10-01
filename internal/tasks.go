@@ -11,7 +11,6 @@ import (
 )
 
 var extrasTaskCancel context.CancelFunc
-var extrasTaskRunning bool
 
 const (
 	TaskSyncWithRadarr = "Sync with Radarr"
@@ -155,12 +154,10 @@ func StartBackgroundTasks() {
 
 func StartExtrasDownloadTask() {
 	StopExtrasDownloadTask()
-	extrasTaskRunning = false
 	ctx, cancel := context.WithCancel(context.Background())
 	extrasTaskCancel = cancel
-	extrasTaskRunning = true
 	go func() {
-		defer func() { extrasTaskRunning = false }()
+		defer func() {}()
 		for {
 			if handleExtrasDownloadLoop(ctx) {
 				return
@@ -267,11 +264,11 @@ func downloadMissingExtrasWithTypeFilter(cfg ExtraTypesConfig, mediaType, cacheP
 			continue
 		}
 		MarkDownloadedExtras(extras, mediaPath, "type", "title")
-		filterAndDownloadTypeFilteredExtras(cfg, mediaType, mediaPath, item, extras)
+		filterAndDownloadTypeFilteredExtras(cfg, mediaType, item, extras)
 	}
 }
 
-func filterAndDownloadTypeFilteredExtras(cfg ExtraTypesConfig, mediaType, mediaPath string, item map[string]interface{}, extras []map[string]string) {
+func filterAndDownloadTypeFilteredExtras(cfg ExtraTypesConfig, mediaType string, item map[string]interface{}, extras []map[string]string) {
 	for _, extra := range extras {
 		typ := canonicalizeExtraType(extra["type"], extra["type"])
 		if !isExtraTypeEnabled(cfg, typ) {
