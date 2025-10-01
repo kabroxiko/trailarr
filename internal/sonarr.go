@@ -13,6 +13,25 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Handler for /api/sonarr/poster/:seriesId
+func getSonarrPosterHandler(c *gin.Context) {
+	seriesId := c.Param("seriesId")
+	sonarrSettings, err := getSonarrSettings()
+	if err != nil {
+		c.String(http.StatusInternalServerError, ErrInvalidSonarrSettings)
+		return
+	}
+	apiBase := trimTrailingSlash(sonarrSettings.URL)
+	posterUrl, err := getSonarrSeriesPosterUrl(apiBase, sonarrSettings.APIKey, seriesId)
+	if err != nil {
+		c.String(http.StatusNotFound, err.Error())
+		return
+	}
+	if err := proxyImage(c, posterUrl, apiBase, sonarrSettings.APIKey); err != nil {
+		c.String(http.StatusBadGateway, err.Error())
+	}
+}
+
 // Handler for /api/sonarr/banner/:seriesId
 func getSonarrBannerHandler(c *gin.Context) {
 	seriesId := c.Param("seriesId")
@@ -58,25 +77,6 @@ func getSonarrBannerHandler(c *gin.Context) {
 	c.Header(HeaderContentType, resp.Header.Get(HeaderContentType))
 	c.Status(http.StatusOK)
 	io.Copy(c.Writer, resp.Body)
-}
-
-// Handler for /api/sonarr/poster/:seriesId
-func getSonarrPosterHandler(c *gin.Context) {
-	seriesId := c.Param("seriesId")
-	sonarrSettings, err := getSonarrSettings()
-	if err != nil {
-		c.String(http.StatusInternalServerError, ErrInvalidSonarrSettings)
-		return
-	}
-	apiBase := trimTrailingSlash(sonarrSettings.URL)
-	posterUrl, err := getSonarrSeriesPosterUrl(apiBase, sonarrSettings.APIKey, seriesId)
-	if err != nil {
-		c.String(http.StatusNotFound, err.Error())
-		return
-	}
-	if err := proxyImage(c, posterUrl, apiBase, sonarrSettings.APIKey); err != nil {
-		c.String(http.StatusBadGateway, err.Error())
-	}
 }
 
 func getSonarrSettings() (struct {
@@ -191,7 +191,7 @@ func getSonarrSeriesHandler(c *gin.Context) {
 		return
 	}
 
-	sonarrSettings, err := getSonarrSettingsFromConfig()
+	sonarrSettings, err := loadSonarrSettings()
 	if err != nil {
 		fmt.Println("[getSonarrSeriesHandler] Sonarr settings not found or invalid:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Sonarr settings not found"})
@@ -223,7 +223,7 @@ func loadSonarrSeriesFromCache(cachePath string) ([]SonarrSeries, bool) {
 	return series, true
 }
 
-func getSonarrSettingsFromConfig() (struct {
+func loadSonarrSettings() (struct {
 	URL    string
 	APIKey string
 }, error) {

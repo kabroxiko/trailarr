@@ -6,10 +6,103 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/gin-gonic/gin"
-	"gopkg.in/yaml.v3"
 )
+
+func getRadarrPosterHandler(c *gin.Context) {
+	movieId := c.Param("movieId")
+	// Load Radarr settings
+	data, err := os.ReadFile(ConfigPath)
+	var allSettings struct {
+		Radarr struct {
+			URL    string `yaml:"url"`
+			APIKey string `yaml:"apiKey"`
+		} `yaml:"radarr"`
+	}
+	if err := yaml.Unmarshal(data, &allSettings); err != nil {
+		c.String(http.StatusInternalServerError, "Invalid Radarr settings")
+		return
+	}
+	radarrSettings := allSettings.Radarr
+	// Remove trailing slash from URL if present
+	apiBase := radarrSettings.URL
+	if strings.HasSuffix(apiBase, "/") {
+		apiBase = strings.TrimRight(apiBase, "/")
+	}
+	// Try local MediaCover first
+	localPath := MediaCoverPath + movieId + "/poster-500.jpg"
+	if _, err := os.Stat(localPath); err == nil {
+		c.File(localPath)
+		return
+	}
+	// Fallback to Radarr API
+	posterUrl := apiBase + RemoteMediaCoverPath + movieId + "/poster-500.jpg"
+	req, err := http.NewRequest("GET", posterUrl, nil)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Error creating poster request")
+		return
+	}
+	req.Header.Set(HeaderApiKey, radarrSettings.APIKey)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		c.String(http.StatusBadGateway, "Failed to fetch poster image from Radarr")
+		return
+	}
+	defer resp.Body.Close()
+	c.Header(HeaderContentType, resp.Header.Get(HeaderContentType))
+	c.Status(http.StatusOK)
+	io.Copy(c.Writer, resp.Body)
+}
+
+func getRadarrBannerHandler(c *gin.Context) {
+	movieId := c.Param("movieId")
+	// Load Radarr settings
+	data, err := os.ReadFile(ConfigPath)
+	var allSettings struct {
+		Radarr struct {
+			URL    string `yaml:"url"`
+			APIKey string `yaml:"apiKey"`
+		} `yaml:"radarr"`
+	}
+	if err := yaml.Unmarshal(data, &allSettings); err != nil {
+		c.String(http.StatusInternalServerError, "Invalid Radarr settings")
+		return
+	}
+	radarrSettings := allSettings.Radarr
+	// Remove trailing slash from URL if present
+	apiBase := radarrSettings.URL
+	if strings.HasSuffix(apiBase, "/") {
+		apiBase = strings.TrimRight(apiBase, "/")
+	}
+	// Try local MediaCover first
+	localPath := MediaCoverPath + movieId + "/fanart-1280.jpg"
+	if _, err := os.Stat(localPath); err == nil {
+		c.File(localPath)
+		return
+	}
+	// Fallback to Radarr API
+	bannerUrl := apiBase + RemoteMediaCoverPath + movieId + "/fanart-1280.jpg"
+	req, err := http.NewRequest("GET", bannerUrl, nil)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Error creating banner request")
+		return
+	}
+	req.Header.Set(HeaderApiKey, radarrSettings.APIKey)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		c.String(http.StatusBadGateway, "Failed to fetch banner image from Radarr")
+		return
+	}
+	defer resp.Body.Close()
+	c.Header(HeaderContentType, resp.Header.Get(HeaderContentType))
+	c.Status(http.StatusOK)
+}
 
 func getRadarrMoviesHandler(c *gin.Context) {
 	cachePath := MoviesCachePath
