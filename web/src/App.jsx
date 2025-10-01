@@ -137,6 +137,14 @@ function MovieDetails({ movies, loading }) {
     }
   };
 
+  const isSeriesDetail = window.location.pathname.startsWith('/series/');
+  let background;
+  if (isSeriesDetail) {
+    background = `url(/api/sonarr/banner/${movie.id}) center center/cover no-repeat`;
+  } else {
+    background = `url(/api/radarr/banner/${movie.id}) center center/cover no-repeat`;
+  }
+
   return (
     <div style={{
       display: 'flex',
@@ -166,8 +174,8 @@ function MovieDetails({ movies, loading }) {
       <div style={{
         width: '100%',
         position: 'relative',
-  background: `url(/api/sonarr/banner/${movie.id}) center center/cover no-repeat`,
-        minHeight: 210,
+        background,
+        minHeight: 400,
         display: 'flex',
         flexDirection: 'row',
         alignItems: 'center',
@@ -185,7 +193,9 @@ function MovieDetails({ movies, loading }) {
         }} />
         <div style={{ minWidth: 150, zIndex: 2, display: 'flex', justifyContent: 'flex-start', alignItems: 'center', height: '100%', padding: '0 0 0 32px' }}>
           <img
-            src={`/api/sonarr/poster/${movie.id}`}
+            src={isSeriesDetail
+              ? `/api/sonarr/poster/${movie.id}`
+              : `/api/radarr/poster/${movie.id}`}
             style={{ width: 120, height: 180, objectFit: 'cover', borderRadius: 2, background: '#222', boxShadow: '0 1px 4px rgba(0,0,0,0.18)' }}
             onError={e => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/120x180?text=No+Poster'; }}
           />
@@ -489,6 +499,7 @@ function App() {
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                       <tr style={{ background: darkMode ? '#23232a' : '#f3e8ff' }}>
+                        <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Poster</th>
                         <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Title</th>
                         <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Year</th>
                         <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Path</th>
@@ -497,6 +508,13 @@ function App() {
                     <tbody>
                       {sonarrSeries.map((series, idx) => (
                         <tr key={idx} style={{ borderBottom: '1px solid #f3e8ff' }}>
+                          <td style={{ padding: '0.5em', textAlign: 'left' }}>
+                            <img
+                              src={`/api/sonarr/poster/${series.id}`}
+                              style={{ width: 48, height: 72, objectFit: 'cover', borderRadius: 2, background: '#222', boxShadow: '0 1px 4px rgba(0,0,0,0.18)' }}
+                              onError={e => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/48x72?text=No+Poster'; }}
+                            />
+                          </td>
                           <td style={{ padding: '0.5em', textAlign: 'left' }}>
                             <Link to={`/series/${series.id}`} style={{ color: '#a855f7', textDecoration: 'underline', cursor: 'pointer', fontWeight: 'bold', textAlign: 'left', display: 'block' }}>{series.title}</Link>
                           </td>
@@ -514,6 +532,7 @@ function App() {
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                       <tr style={{ background: darkMode ? '#23232a' : '#f3e8ff' }}>
+                        <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Poster</th>
                         <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Title</th>
                         <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Year</th>
                         <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Path</th>
@@ -522,6 +541,13 @@ function App() {
                     <tbody>
                       {radarrMovies.map((movie, idx) => (
                         <tr key={idx} style={{ borderBottom: '1px solid #f3e8ff' }}>
+                          <td style={{ padding: '0.5em', textAlign: 'left' }}>
+                            <img
+                              src={`/api/radarr/poster/${movie.id}`}
+                              style={{ width: 48, height: 72, objectFit: 'cover', borderRadius: 2, background: '#222', boxShadow: '0 1px 4px rgba(0,0,0,0.18)' }}
+                              onError={e => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/48x72?text=No+Poster'; }}
+                            />
+                          </td>
                           <td style={{ padding: '0.5em', textAlign: 'left' }}>
                             <Link to={`/movies/${movie.id}`} style={{ color: '#a855f7', textDecoration: 'underline', cursor: 'pointer', fontWeight: 'bold', textAlign: 'left', display: 'block' }}>{movie.title}</Link>
                           </td>
