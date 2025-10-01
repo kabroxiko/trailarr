@@ -9,10 +9,59 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/gin-gonic/gin"
+	"gopkg.in/yaml.v3"
 )
+
+// Helper to fetch and cache poster image
+func fetchAndCachePoster(localPath, posterUrl, section string) error {
+	resp, err := http.Get(posterUrl)
+	if err != nil || resp.StatusCode != 200 {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		return fmt.Errorf("Failed to fetch poster image from %s", section)
+	}
+	defer resp.Body.Close()
+	out, err := os.Create(localPath)
+	if err != nil {
+		return fmt.Errorf("Failed to cache poster image for %s", section)
+	}
+	_, _ = io.Copy(out, resp.Body)
+	out.Close()
+	return nil
+}
+
+// Parametrized poster caching for Radarr/Sonarr
+func CacheMediaPosters(
+	section string, // "radarr" or "sonarr"
+	baseDir string, // e.g. MediaCoverPath + "Movies" or MediaCoverPath + "Series"
+	idList []map[string]interface{}, // loaded cache
+	idKey string, // "id"
+	posterSuffixes []string, // ["/poster-500.jpg", "/fanart-1280.jpg"]
+	debug bool, // enable debug output
+) {
+	for _, item := range idList {
+		id := fmt.Sprintf("%v", item[idKey])
+		for _, suffix := range posterSuffixes {
+			idDir := baseDir + "/" + id
+			if err := os.MkdirAll(idDir, 0775); err != nil {
+				continue
+			}
+			localPath := idDir + suffix
+			if _, err := os.Stat(localPath); err == nil {
+				continue
+			}
+			settings, err := loadMediaSettings(section)
+			if err != nil {
+				continue
+			}
+			apiBase := trimTrailingSlash(settings.URL)
+			posterUrl := apiBase + RemoteMediaCoverPath + id + suffix
+			_ = fetchAndCachePoster(localPath, posterUrl, section)
+		}
+	}
+}
 
 // Finds the media path for a given id in a cache file
 func FindMediaPathByID(cachePath string, idStr string) (string, error) {
@@ -87,15 +136,34 @@ func getImageHandler(section string, idParam string, fileSuffix string) gin.Hand
 			return
 		}
 		apiBase := trimTrailingSlash(settings.URL)
-		localPath := MediaCoverPath + id + fileSuffix
+		var localPath string
+		switch section {
+		case "radarr":
+			localPath = MediaCoverPath + "Movies/" + id + fileSuffix
+		case "sonarr":
+			localPath = MediaCoverPath + "Series/" + id + fileSuffix
+		default:
+			localPath = MediaCoverPath + id + fileSuffix
+		}
 		if _, err := os.Stat(localPath); err == nil {
 			c.File(localPath)
 			return
 		}
 		posterUrl := apiBase + RemoteMediaCoverPath + id + fileSuffix
-		if err := proxyImage(c, posterUrl, apiBase, settings.APIKey); err != nil {
-			c.String(502, "Failed to fetch poster image from %s", section)
+		if err := fetchAndCachePoster(localPath, posterUrl, section); err == nil {
+			c.File(localPath)
+			return
 		}
+		// If can't cache, just proxy
+		resp, err := http.Get(posterUrl)
+		if err != nil || resp.StatusCode != 200 {
+			c.String(502, "Failed to fetch poster image from %s", section)
+			return
+		}
+		defer resp.Body.Close()
+		c.Header(HeaderContentType, resp.Header.Get(HeaderContentType))
+		c.Status(http.StatusOK)
+		_, _ = io.Copy(c.Writer, resp.Body)
 	}
 }
 

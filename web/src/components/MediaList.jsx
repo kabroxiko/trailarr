@@ -47,7 +47,9 @@ export default function MediaList({ items, darkMode, type }) {
           >
             <img
               key={item.id + '-' + type}
-              src={type === 'series' ? `/api/sonarr/poster/${item.id}` : `/api/radarr/poster/${item.id}`}
+              src={type === 'series'
+                ? `/mediacover/Series/${item.id}/poster-500.jpg`
+                : `/mediacover/Movies/${item.id}/poster-500.jpg`}
               width={200}
               height={300}
               loading="lazy"
