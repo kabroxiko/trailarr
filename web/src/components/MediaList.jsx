@@ -72,9 +72,6 @@ export default function MediaList({ items, darkMode, type }) {
               {item.title}
             </div>
           </Link>
-          {item.path && (
-            <div style={{ color: darkMode ? '#a3a3a3' : '#666', fontSize: 12, marginTop: 4, wordBreak: 'break-all', textAlign: 'center' }}>{item.path}</div>
-          )}
         </div>
       ))}
     </div>
