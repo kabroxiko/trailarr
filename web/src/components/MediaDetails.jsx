@@ -177,7 +177,15 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
       </div>
       {extras.length > 0 && (
         <div style={{ width: '100%', background: darkMode ? '#23232a' : '#f3e8ff', overflow: 'hidden', padding: '24px 10px', margin: 0 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '32px', justifyItems: 'center', alignItems: 'start', width: '100%' }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 0px))',
+            gap: '32px',
+            justifyItems: 'start',
+            alignItems: 'start',
+            width: '100%',
+            justifyContent: 'start',
+          }}>
             {extras.map((extra, idx) => {
               const baseTitle = extra.title || String(extra);
               const totalCount = extras.filter(e => (e.title || String(e)) === baseTitle).length;
