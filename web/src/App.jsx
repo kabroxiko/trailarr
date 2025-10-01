@@ -93,45 +93,54 @@ function MovieDetails({ movies, loading }) {
                 </tr>
               </thead>
               <tbody>
-                {extras.map((extra, idx) => {
-                  // Determine if this extra exists
-                  const exists = existingExtras.some(e => e.type === extra.type && e.title === extra.title);
-                  return (
-                    <tr key={idx} style={{ borderBottom: darkMode ? '1px solid #333' : '1px solid #e5e7eb', background: exists ? (darkMode ? '#1e293b' : '#e0e7ff') : undefined }}>
-                      <td style={{ padding: '0.5em', textAlign: 'left', color: darkMode ? '#e5e7eb' : '#222' }}>{extra.type || ''}</td>
-                      <td style={{ padding: '0.5em', textAlign: 'left', color: darkMode ? '#e5e7eb' : '#222' }}>{extra.title || String(extra)}</td>
-                      <td style={{ padding: '0.5em', textAlign: 'left', color: darkMode ? '#a855f7' : '#6d28d9' }}>
-                        {extra.url ? (
-                          <>
-                            <a href={extra.url} target="_blank" rel="noopener noreferrer" style={{ color: darkMode ? '#a855f7' : '#6d28d9', textDecoration: 'underline', marginRight: 8 }}>Link</a>
-                            {extra.url.includes('youtube.com/watch?v=') || extra.url.includes('youtu.be/') ? (
-                              <button
-                                style={{ background: exists ? '#888' : '#a855f7', color: '#fff', border: 'none', borderRadius: 6, padding: '0.25em 0.75em', cursor: exists ? 'not-allowed' : 'pointer', fontWeight: 'bold', marginLeft: 4 }}
-                                disabled={exists}
-                                onClick={async () => {
-                                  if (exists) return;
-                                  try {
-                                    const res = await downloadExtra({
-                                      moviePath: movie.path,
-                                      extraType: extra.type,
-                                      extraTitle: extra.title,
-                                      url: typeof extra.url === 'string' ? extra.url : (extra.url && extra.url.url ? extra.url.url : '')
-                                    });
-                                    // Mark as existing immediately after successful download
-                                    setExistingExtras(prev => [...prev, { type: extra.type, title: extra.title }]);
-                                  } catch (e) {
-                                    alert('Download failed: ' + (e.message || e));
-                                  }
-                                }}
-                              >Download</button>
-                            ) : null}
-                          </>
-                        ) : ''}
-                      </td>
-                      <td style={{ padding: '0.5em', textAlign: 'left', color: exists ? '#22c55e' : '#ef4444', fontWeight: 'bold' }}>{exists ? 'Yes' : 'No'}</td>
-                    </tr>
-                  );
-                })}
+                {(() => {
+                  // Track counts for repeated titles
+                  const titleCounts = {};
+                  return extras.map((extra, idx) => {
+                    const baseTitle = extra.title || String(extra);
+                    titleCounts[baseTitle] = (titleCounts[baseTitle] || 0) + 1;
+                    // Only show incremental if there are duplicates
+                    const totalCount = extras.filter(e => (e.title || String(e)) === baseTitle).length;
+                    const displayTitle = totalCount > 1 ? `${baseTitle} (${titleCounts[baseTitle]})` : baseTitle;
+                    // Determine if this extra exists
+                    const exists = existingExtras.some(e => e.type === extra.type && e.title === extra.title);
+                    return (
+                      <tr key={idx} style={{ borderBottom: darkMode ? '1px solid #333' : '1px solid #e5e7eb', background: exists ? (darkMode ? '#1e293b' : '#e0e7ff') : undefined }}>
+                        <td style={{ padding: '0.5em', textAlign: 'left', color: darkMode ? '#e5e7eb' : '#222' }}>{extra.type || ''}</td>
+                        <td style={{ padding: '0.5em', textAlign: 'left', color: darkMode ? '#e5e7eb' : '#222' }}>{displayTitle}</td>
+                        <td style={{ padding: '0.5em', textAlign: 'left', color: darkMode ? '#a855f7' : '#6d28d9' }}>
+                          {extra.url ? (
+                            <>
+                              <a href={extra.url} target="_blank" rel="noopener noreferrer" style={{ color: darkMode ? '#a855f7' : '#6d28d9', textDecoration: 'underline', marginRight: 8 }}>Link</a>
+                              {extra.url.includes('youtube.com/watch?v=') || extra.url.includes('youtu.be/') ? (
+                                <button
+                                  style={{ background: exists ? '#888' : '#a855f7', color: '#fff', border: 'none', borderRadius: 6, padding: '0.25em 0.75em', cursor: exists ? 'not-allowed' : 'pointer', fontWeight: 'bold', marginLeft: 4 }}
+                                  disabled={exists}
+                                  onClick={async () => {
+                                    if (exists) return;
+                                    try {
+                                      const res = await downloadExtra({
+                                        moviePath: movie.path,
+                                        extraType: extra.type,
+                                        extraTitle: extra.title,
+                                        url: typeof extra.url === 'string' ? extra.url : (extra.url && extra.url.url ? extra.url.url : '')
+                                      });
+                                      // Mark as existing immediately after successful download
+                                      setExistingExtras(prev => [...prev, { type: extra.type, title: extra.title }]);
+                                    } catch (e) {
+                                      alert('Download failed: ' + (e.message || e));
+                                    }
+                                  }}
+                                >Download</button>
+                              ) : null}
+                            </>
+                          ) : ''}
+                        </td>
+                        <td style={{ padding: '0.5em', textAlign: 'left', color: exists ? '#22c55e' : '#ef4444', fontWeight: 'bold' }}>{exists ? 'Yes' : 'No'}</td>
+                      </tr>
+                    );
+                  });
+                })()}
               </tbody>
             </table>
           )}
