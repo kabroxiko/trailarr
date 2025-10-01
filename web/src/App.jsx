@@ -9,18 +9,6 @@ import { searchExtras, downloadExtra, fetchPlexItems, getRadarrSettings, getRada
 function MovieDetails({ movies, loading }) {
   const { id } = useParams();
   const movie = movies.find(m => String(m.id) === id);
-  // Get Sonarr poster and background URLs if available
-  let posterUrl = '';
-  let backgroundUrl = '';
-  if (movie && Array.isArray(movie.images)) {
-    const poster = movie.images.find(img => img.coverType === 'poster');
-    const fanart = movie.images.find(img => img.coverType === 'fanart');
-    posterUrl = poster ? poster.url : '';
-    backgroundUrl = fanart ? fanart.url : '';
-    // Sonarr returns relative URLs, prepend /mediacover if needed
-    if (posterUrl && !posterUrl.startsWith('http')) posterUrl = '/mediacover' + posterUrl;
-    if (backgroundUrl && !backgroundUrl.startsWith('http')) backgroundUrl = '/mediacover' + backgroundUrl;
-  }
   const [extras, setExtras] = useState([]);
   const [existingExtras, setExistingExtras] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -178,7 +166,7 @@ function MovieDetails({ movies, loading }) {
       <div style={{
         width: '100%',
         position: 'relative',
-        background: backgroundUrl ? `url(${backgroundUrl}) center center/cover no-repeat` : undefined,
+  background: `url(/api/sonarr/banner/${movie.id}) center center/cover no-repeat`,
         minHeight: 210,
         display: 'flex',
         flexDirection: 'row',
@@ -197,10 +185,9 @@ function MovieDetails({ movies, loading }) {
         }} />
         <div style={{ minWidth: 150, zIndex: 2, display: 'flex', justifyContent: 'flex-start', alignItems: 'center', height: '100%', padding: '0 0 0 32px' }}>
           <img
-            src={posterUrl || 'https://via.placeholder.com/120x180?text=No+Poster'}
+            src={`/api/sonarr/poster/${movie.id}`}
             style={{ width: 120, height: 180, objectFit: 'cover', borderRadius: 2, background: '#222', boxShadow: '0 1px 4px rgba(0,0,0,0.18)' }}
             onError={e => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/120x180?text=No+Poster'; }}
-            alt={movie.title}
           />
         </div>
         <div style={{ flex: 1, zIndex: 2, display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', marginLeft: 32 }}>
