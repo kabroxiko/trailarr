@@ -55,12 +55,25 @@ func getAllTasksStatus() gin.HandlerFunc {
 			default:
 				queueType = item.TaskName
 			}
+			// Patch: convert zero Ended and zero Duration to empty string for frontend compatibility
+			var startedOut interface{} = ""
+			if !item.Started.IsZero() {
+				startedOut = item.Started
+			}
+			var endedOut interface{} = ""
+			if !item.Ended.IsZero() {
+				endedOut = item.Ended
+			}
+			var durationOut interface{} = ""
+			if item.Duration > 0 {
+				durationOut = item.Duration
+			}
 			queues = append(queues, map[string]interface{}{
 				"type":     queueType,
 				"Queued":   item.Queued,
-				"Started":  item.Started,
-				"Ended":    item.Ended,
-				"Duration": item.Duration,
+				"Started":  startedOut,
+				"Ended":    endedOut,
+				"Duration": durationOut,
 				"Status":   item.Status,
 				"Error":    item.Error,
 			})

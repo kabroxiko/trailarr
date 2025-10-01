@@ -40,8 +40,11 @@ export default function Tasks() {
       setLoading(true);
       try {
         const res = await fetch('/api/tasks/status');
-        setStatus(await res.json());
+        const data = await res.json();
+        console.log('Task API response:', data); // Debug log
+        setStatus(data);
       } catch (e) {
+        console.error('Error fetching task status:', e); // Debug log
         setStatus(null);
       }
       setLoading(false);
@@ -206,11 +209,11 @@ export default function Tasks() {
                 })()}
               </td>
               <td style={tdStyle}>{item.type}</td>
-              <td style={tdStyle}>{item.Queued ? new Date(item.Queued).toLocaleString() : '-'}</td>
-              <td style={tdStyle}>{item.Started ? new Date(item.Started).toLocaleString() : '-'}</td>
-              <td style={tdStyle}>{item.Ended ? new Date(item.Ended).toLocaleString() : '-'}</td>
+              <td style={tdStyle}>{item.Queued ? new Date(item.Queued).toLocaleString() : '—'}</td>
+              <td style={tdStyle}>{item.Started ? new Date(item.Started).toLocaleString() : '—'}</td>
+              <td style={tdStyle}>{item.Ended ? new Date(item.Ended).toLocaleString() : '—'}</td>
               <td style={tdStyle}>{(() => {
-                if (!item.Duration) return '-';
+                if (!item.Duration || item.Duration === '') return '—';
                 if (typeof item.Duration === 'number') {
                   // If > 1s, show seconds, else show ms
                   if (item.Duration >= 1e9) {
