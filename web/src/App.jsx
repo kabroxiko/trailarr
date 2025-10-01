@@ -302,20 +302,48 @@ function App() {
             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
               {[{ name: 'Series', icon: '📺' }, { name: 'Movies', icon: '🎬' }, { name: 'History', icon: '🕑' }, { name: 'Wanted', icon: '⭐' }, { name: 'Blacklist', icon: '🚫' }, { name: 'Settings', icon: '⚙️' }, { name: 'System', icon: '🖥️' }].map(({ name, icon }) => (
                 <li key={name} style={{ marginBottom: 16 }}>
-                  <Link
-                    to={name === 'Movies' ? '/movies' : name === 'Settings' ? '/settings' : '/'}
-                    style={{ textDecoration: 'none', background: selectedSection === name ? (darkMode ? '#d6b4f7' : '#f3e8ff') : 'none', border: 'none', color: selectedSection === name ? (darkMode ? '#6d28d9' : '#a855f7') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSection === name ? 'bold' : 'normal', width: '100%', textAlign: 'left', padding: '0.5em 1em', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75em' }}
-                    onClick={() => setSelectedSection(name)}
-                  >
-                    <span style={{ fontSize: 18 }}>{icon}</span>
-                    {name}
-                  </Link>
+                  {name === 'Settings' ? (
+                    <div
+                      style={{
+                        textDecoration: 'none',
+                        background: selectedSection === name ? (darkMode ? '#d6b4f7' : '#f3e8ff') : 'none',
+                        border: 'none',
+                        color: selectedSection === name ? (darkMode ? '#6d28d9' : '#a855f7') : (darkMode ? '#e5e7eb' : '#333'),
+                        fontWeight: selectedSection === name ? 'bold' : 'normal',
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '0.5em 1em',
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.75em',
+                      }}
+                      onClick={() => setSelectedSection(name)}
+                    >
+                      <span style={{ fontSize: 18 }}>{icon}</span>
+                      {name}
+                    </div>
+                  ) : (
+                    <Link
+                      to={name === 'Movies' ? '/movies' : '/'}
+                      style={{ textDecoration: 'none', background: selectedSection === name ? (darkMode ? '#d6b4f7' : '#f3e8ff') : 'none', border: 'none', color: selectedSection === name ? (darkMode ? '#6d28d9' : '#a855f7') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSection === name ? 'bold' : 'normal', width: '100%', textAlign: 'left', padding: '0.5em 1em', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75em' }}
+                      onClick={() => setSelectedSection(name)}
+                    >
+                      <span style={{ fontSize: 18 }}>{icon}</span>
+                      {name}
+                    </Link>
+                  )}
                   {name === 'Settings' && selectedSection === 'Settings' && (
                     <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0 0', background: darkMode ? '#23232a' : '#f3f4f6', borderRadius: 6, color: darkMode ? '#e5e7eb' : '#222' }}>
                       {['General', 'Languages', 'Providers', 'Subtitles', 'Sonarr', 'Radarr', 'Plex', 'Notifications', 'Scheduler', 'UI'].map((submenu, idx) => (
-                        <li key={submenu} style={{ padding: '0.5em 1em', borderLeft: selectedSettingsSub === submenu ? '3px solid #d6b4f7' : '3px solid transparent', background: selectedSettingsSub === submenu ? (darkMode ? '#d6b4f7' : '#fff') : 'none', color: selectedSettingsSub === submenu ? (darkMode ? '#6d28d9' : '#a855f7') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSettingsSub === submenu ? 'bold' : 'normal', cursor: 'pointer' }}
-                          onClick={() => setSelectedSettingsSub(submenu)}
-                        >{submenu}</li>
+                        <li key={submenu} style={{ padding: '0.5em 1em', borderLeft: selectedSettingsSub === submenu ? '3px solid #d6b4f7' : '3px solid transparent', background: selectedSettingsSub === submenu ? (darkMode ? '#d6b4f7' : '#fff') : 'none', color: selectedSettingsSub === submenu ? (darkMode ? '#6d28d9' : '#a855f7') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSettingsSub === submenu ? 'bold' : 'normal', cursor: 'pointer' }}>
+                          <Link
+                            to={`/settings/${submenu.toLowerCase()}`}
+                            style={{ color: 'inherit', textDecoration: 'none', display: 'block', width: '100%' }}
+                            onClick={() => setSelectedSettingsSub(submenu)}
+                          >{submenu}</Link>
+                        </li>
                       ))}
                     </ul>
                   )}
@@ -325,21 +353,64 @@ function App() {
           </nav>
         </aside>
         <main style={{ flex: 1, padding: '0em', height: '100%', boxSizing: 'border-box', overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'stretch', maxWidth: 'calc(100vw - 220px)', background: darkMode ? '#18181b' : '#fff', color: darkMode ? '#e5e7eb' : '#222' }}>
-          <div style={{ marginBottom: '0em', display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2 style={{ color: '#a855f7', margin: 0 }}>{selectedSection}</h2>
-          </div>
+          {/* Removed content title (Movies, Settings, etc) */}
           {selectedSection === 'Settings' && selectedSettingsSub === 'Radarr' && (
-            <div style={{ background: '#fff', borderRadius: 8, boxShadow: '0 1px 4px #e5e7eb', padding: '0em', width: 400, marginBottom: '0em' }}>
+            <div style={{
+              background: darkMode ? '#23232a' : '#fff',
+              borderRadius: 8,
+              boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb',
+              padding: '0em',
+              width: 400,
+              marginBottom: '0em',
+              color: darkMode ? '#e5e7eb' : '#222',
+              border: darkMode ? '1px solid #333' : 'none',
+            }}>
               <h3 style={{ color: '#a855f7', marginTop: 0 }}>Radarr Connection</h3>
               <div style={{ marginBottom: '1em' }}>
-                <label style={{ display: 'block', marginBottom: 4 }}>Radarr URL</label>
-                <input type="text" value={radarrUrl} onChange={e => setRadarrUrl(e.target.value)} style={{ width: '100%', padding: '0.5em', borderRadius: 6, border: '1px solid #e5e7eb' }} placeholder="http://localhost:7878" />
+                <label style={{ display: 'block', marginBottom: 4, color: darkMode ? '#e5e7eb' : '#222' }}>Radarr URL</label>
+                <input
+                  type="text"
+                  value={radarrUrl}
+                  onChange={e => setRadarrUrl(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.5em',
+                    borderRadius: 6,
+                    border: darkMode ? '1px solid #333' : '1px solid #e5e7eb',
+                    background: darkMode ? '#18181b' : '#fff',
+                    color: darkMode ? '#e5e7eb' : '#222',
+                  }}
+                  placeholder="http://localhost:7878"
+                />
               </div>
               <div style={{ marginBottom: '1em' }}>
-                <label style={{ display: 'block', marginBottom: 4 }}>API Key</label>
-                <input type="text" value={radarrApiKey} onChange={e => setRadarrApiKey(e.target.value)} style={{ width: '100%', padding: '0.5em', borderRadius: 6, border: '1px solid #e5e7eb' }} placeholder="Your Radarr API Key" />
+                <label style={{ display: 'block', marginBottom: 4, color: darkMode ? '#e5e7eb' : '#222' }}>API Key</label>
+                <input
+                  type="text"
+                  value={radarrApiKey}
+                  onChange={e => setRadarrApiKey(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.5em',
+                    borderRadius: 6,
+                    border: darkMode ? '1px solid #333' : '1px solid #e5e7eb',
+                    background: darkMode ? '#18181b' : '#fff',
+                    color: darkMode ? '#e5e7eb' : '#222',
+                  }}
+                  placeholder="Your Radarr API Key"
+                />
               </div>
-              <button style={{ background: '#a855f7', color: '#fff', border: 'none', borderRadius: 6, padding: '0.5em 1em', cursor: 'pointer' }}
+              <button
+                style={{
+                  background: '#a855f7',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 6,
+                  padding: '0.5em 1em',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb',
+                }}
                 onClick={async () => {
                   setRadarrStatus('');
                   try {
@@ -387,27 +458,29 @@ function App() {
               } />
               <Route path="/movies/:id" element={<MovieDetails movies={radarrMovies} loading={radarrMoviesLoading} />} />
               <Route path="/settings" element={
-                <>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ background: darkMode ? '#23232a' : '#f3e8ff' }}>
-                        <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Name</th>
-                        <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Language</th>
-                        <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Extras</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {plexItems.map((item, idx) => (
-                        <tr key={idx} style={{ borderBottom: '1px solid #f3e8ff' }}>
-                          <td style={{ padding: '0.5em' }}>{item.Title}</td>
-                          <td style={{ padding: '0.5em' }}>{item.Language}</td>
-                          <td style={{ padding: '0.5em' }}>{item.Extras.length > 0 ? item.Extras.join(', ') : <span style={{ color: '#bbb' }}>None</span>}</td>
+                selectedSettingsSub === 'Radarr' ? null : (
+                  <>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ background: darkMode ? '#23232a' : '#f3e8ff' }}>
+                          <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Name</th>
+                          <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Language</th>
+                          <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Extras</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {plexError && <div style={{ color: 'red', marginTop: '1em' }}>{plexError}</div>}
-                </>
+                      </thead>
+                      <tbody>
+                        {plexItems.map((item, idx) => (
+                          <tr key={idx} style={{ borderBottom: '1px solid #f3e8ff' }}>
+                            <td style={{ padding: '0.5em' }}>{item.Title}</td>
+                            <td style={{ padding: '0.5em' }}>{item.Language}</td>
+                            <td style={{ padding: '0.5em' }}>{item.Extras.length > 0 ? item.Extras.join(', ') : <span style={{ color: '#bbb' }}>None</span>}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {plexError && <div style={{ color: 'red', marginTop: '1em' }}>{plexError}</div>}
+                  </>
+                )
               } />
               <Route path="/" element={<div>Welcome to Trailarr</div>} />
             </Routes>
