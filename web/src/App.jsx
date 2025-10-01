@@ -50,6 +50,12 @@ function App() {
     } else if (path.startsWith('/settings')) {
       setSelectedSection('Settings');
       setSelectedSettingsSub('General');
+    } else if (path.startsWith('/wanted/movies')) {
+      setSelectedSection('Wanted');
+      setSelectedSettingsSub('Movies');
+    } else if (path.startsWith('/wanted/series')) {
+      setSelectedSection('Wanted');
+      setSelectedSettingsSub('Series');
     } else if (path.startsWith('/movies')) {
       setSelectedSection('Movies');
     } else if (path.startsWith('/series')) {
@@ -226,9 +232,9 @@ function App() {
               <Route path="/settings/radarr" element={<RadarrSettings />} />
               <Route path="/settings/sonarr" element={<SonarrSettings />} />
               <Route path="/settings/general" element={<GeneralSettings />} />
-              <Route path="/" element={<Navigate to="/movies" replace />} />
               <Route path="/system/tasks" element={<Tasks />} />
-              <Route path="/wanted" element={<Wanted darkMode={darkMode} />} />
+              <Route path="/wanted/movies" element={<Wanted darkMode={darkMode} type="movie" />} />
+              <Route path="/wanted/series" element={<Wanted darkMode={darkMode} type="series" />} />
             </Routes>
           </div>
         </main>

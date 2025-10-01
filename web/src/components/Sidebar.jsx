@@ -19,11 +19,11 @@ export default function Sidebar({ selectedSection, setSelectedSection, selectedS
       <nav>
         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {[
-            { name: 'Series', icon: <FontAwesomeIcon icon={faCog} color={darkMode ? '#e5e7eb' : '#333'} />, route: '/series' },
             { name: 'Movies', icon: <FontAwesomeIcon icon={faFilm} color={darkMode ? '#e5e7eb' : '#333'} />, route: '/movies' },
+            { name: 'Series', icon: <FontAwesomeIcon icon={faCog} color={darkMode ? '#e5e7eb' : '#333'} />, route: '/series' },
             { name: 'History', icon: <FontAwesomeIcon icon={faHistory} color={darkMode ? '#e5e7eb' : '#333'} />, route: '/history' },
-            { name: 'Wanted', icon: <FontAwesomeIcon icon={faStar} color={darkMode ? '#e5e7eb' : '#333'} />, route: '/wanted' },
-            { name: 'Blacklist', icon: <FontAwesomeIcon icon={faBan} color={darkMode ? '#e5e7eb' : '#333'} />, route: '/' },
+            { name: 'Wanted', icon: <FontAwesomeIcon icon={faStar} color={darkMode ? '#e5e7eb' : '#333'} />},
+            { name: 'Blacklist', icon: <FontAwesomeIcon icon={faBan} color={darkMode ? '#e5e7eb' : '#333'} /> },
             { name: 'Settings', icon: <FontAwesomeIcon icon={faCog} color={darkMode ? '#e5e7eb' : '#333'} /> },
             { name: 'System', icon: <FontAwesomeIcon icon={faServer} color={darkMode ? '#e5e7eb' : '#333'} /> }
           ].map(({ name, icon, route }) => (
@@ -72,7 +72,7 @@ export default function Sidebar({ selectedSection, setSelectedSection, selectedS
                   <span style={{ fontSize: 18, display: 'flex', alignItems: 'center' }}>{icon}</span>
                   {name}
                 </div>
-              ) : (
+              ) : route ? (
                 <Link
                   to={route}
                   style={{ textDecoration: 'none', background: 'none', border: 'none', color: selectedSection === name ? (darkMode ? '#a855f7' : '#6d28d9') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSection === name ? 'bold' : 'normal', width: '100%', textAlign: 'left', padding: '0.5em 1em', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75em' }}
@@ -81,6 +81,41 @@ export default function Sidebar({ selectedSection, setSelectedSection, selectedS
                   <span style={{ fontSize: 18, display: 'flex', alignItems: 'center' }}>{icon}</span>
                   {name}
                 </Link>
+              ) : (
+                <div
+                  style={{
+                    textDecoration: 'none',
+                    background: selectedSection === name ? (darkMode ? '#333' : '#f3f4f6') : 'none',
+                    border: 'none',
+                    color: selectedSection === name ? (darkMode ? '#a855f7' : '#6d28d9') : (darkMode ? '#e5e7eb' : '#333'),
+                    fontWeight: selectedSection === name ? 'bold' : 'normal',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '0.5em 1em',
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75em',
+                  }}
+                  onClick={() => handleSectionClick(name)}
+                >
+                  <span style={{ fontSize: 18, display: 'flex', alignItems: 'center' }}>{icon}</span>
+                  {name}
+                </div>
+              )}
+              {name === 'Wanted' && selectedSection === 'Wanted' && (
+                <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0 0', background: darkMode ? '#23232a' : '#f3f4f6', borderRadius: 6, color: darkMode ? '#e5e7eb' : '#222', textAlign: 'left' }}>
+                  {['Movies', 'Series'].map((submenu) => (
+                    <li key={submenu} style={{ padding: '0.5em 1em', borderLeft: selectedSettingsSub === submenu ? '3px solid #a855f7' : '3px solid transparent', background: 'none', color: selectedSettingsSub === submenu ? (darkMode ? '#a855f7' : '#6d28d9') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSettingsSub === submenu ? 'bold' : 'normal', cursor: 'pointer', textAlign: 'left' }}>
+                      <Link
+                        to={`/wanted/${submenu.toLowerCase()}`}
+                        style={{ color: 'inherit', textDecoration: 'none', display: 'block', width: '100%', textAlign: 'left' }}
+                        onClick={() => setSelectedSettingsSub(submenu)}
+                      >{submenu}</Link>
+                    </li>
+                  ))}
+                </ul>
               )}
               {name === 'Settings' && selectedSection === 'Settings' && (
                 <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0 0', background: darkMode ? '#23232a' : '#f3f4f6', borderRadius: 6, color: darkMode ? '#e5e7eb' : '#222', textAlign: 'left' }}>
