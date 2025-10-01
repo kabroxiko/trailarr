@@ -245,8 +245,26 @@ function App() {
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', listener);
     return () => window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', listener);
   }, []);
-  const [selectedSection, setSelectedSection] = useState('');
+  const [selectedSection, setSelectedSection] = useState('Movies');
   const [selectedSettingsSub, setSelectedSettingsSub] = useState('General');
+
+  // Sync sidebar state with route on mount/refresh
+  useEffect(() => {
+    const path = window.location.pathname;
+    if (path.startsWith('/settings/')) {
+      setSelectedSection('Settings');
+      const sub = path.split('/')[2];
+      if (sub) {
+        // Capitalize first letter for matching submenu
+        setSelectedSettingsSub(sub.charAt(0).toUpperCase() + sub.slice(1));
+      }
+    } else if (path.startsWith('/settings')) {
+      setSelectedSection('Settings');
+      setSelectedSettingsSub('General');
+    } else if (path.startsWith('/movies')) {
+      setSelectedSection('Movies');
+    }
+  }, []);
   const [plexItems, setPlexItems] = useState([]);
   const [plexError, setPlexError] = useState('');
   const [radarrMovies, setRadarrMovies] = useState([]);
