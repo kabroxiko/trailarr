@@ -15,11 +15,17 @@ export default function SettingsPage({ type }) {
 
   useEffect(() => {
     const setColors = () => {
-      const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      document.documentElement.style.setProperty('--settings-bg', isDark ? '#222' : '#fff');
-      document.documentElement.style.setProperty('--settings-text', isDark ? '#eee' : '#222');
-      document.documentElement.style.setProperty('--save-lane-bg', isDark ? '#333' : '#e5e7eb');
-      document.documentElement.style.setProperty('--save-lane-text', isDark ? '#eee' : '#222');
+        const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.style.setProperty('--settings-bg', isDark ? '#222' : '#fff');
+        document.documentElement.style.setProperty('--settings-text', isDark ? '#eee' : '#222');
+        document.documentElement.style.setProperty('--save-lane-bg', isDark ? '#333' : '#e5e7eb');
+        document.documentElement.style.setProperty('--save-lane-text', isDark ? '#eee' : '#222');
+        document.documentElement.style.setProperty('--settings-input-bg', isDark ? '#333' : '#f5f5f5');
+        document.documentElement.style.setProperty('--settings-input-text', isDark ? '#eee' : '#222');
+  document.documentElement.style.setProperty('--settings-table-bg', isDark ? '#444' : '#f7f7f7');
+  document.documentElement.style.setProperty('--settings-table-text', isDark ? '#f3f3f3' : '#222');
+  document.documentElement.style.setProperty('--settings-table-header-bg', isDark ? '#555' : '#ededed');
+  document.documentElement.style.setProperty('--settings-table-header-text', isDark ? '#fff' : '#222');
     };
     setColors();
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', setColors);
@@ -109,12 +115,12 @@ export default function SettingsPage({ type }) {
   };
 
   return (
-    <div style={{ width: '100%', height: '100%', padding: '2rem', background: 'var(--settings-bg, #fff)', borderRadius: 12, boxShadow: '0 2px 12px #0002', color: 'var(--settings-text, #222)', boxSizing: 'border-box', overflow: 'auto', position: 'relative' }}>
+  <div style={{ width: '100%', margin: 0, height: '100%', padding: '2rem', background: 'var(--settings-bg, #fff)', borderRadius: 12, boxShadow: '0 2px 12px #0002', color: 'var(--settings-text, #222)', boxSizing: 'border-box', overflowX: 'hidden', overflowY: 'auto', position: 'relative' }}>
       {/* Save lane */}
       <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', background: 'var(--save-lane-bg, #f3f4f6)', color: 'var(--save-lane-text, #222)', padding: '0.7rem 2rem', display: 'flex', alignItems: 'center', gap: '1rem', borderTopLeftRadius: 12, borderTopRightRadius: 12, zIndex: 10, boxShadow: '0 2px 8px #0001' }}>
         <button onClick={saveSettings} disabled={saving || !isSettingsChanged()} style={{ background: 'none', color: '#222', border: 'none', borderRadius: 6, padding: '0.3rem 1rem', cursor: saving || !isSettingsChanged() ? 'not-allowed' : 'pointer', opacity: saving || !isSettingsChanged() ? 0.7 : 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
-          <FontAwesomeIcon icon={faSave} style={{ fontSize: 22, color: '#222' }} />
-          <span style={{ fontWeight: 500, fontSize: '0.85em', color: '#222', marginTop: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1.1 }}>
+          <FontAwesomeIcon icon={faSave} style={{ fontSize: 22, color: 'var(--save-lane-text, #222)' }} />
+          <span style={{ fontWeight: 500, fontSize: '0.85em', color: 'var(--save-lane-text, #222)', marginTop: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1.1 }}>
             <span>{saving || !isSettingsChanged() ? 'No' : 'Save'}</span>
             <span>Changes</span>
           </span>
@@ -129,19 +135,19 @@ export default function SettingsPage({ type }) {
             <div style={{ marginBottom: '1.5rem', display: 'block', width: '100%' }}>
               <div style={{ width: '100%', marginBottom: '1.2rem' }}>
                 <label style={{ fontWeight: 600, fontSize: '1.15em', marginBottom: 6, display: 'block', textAlign: 'left' }}>{type === 'radarr' ? 'Radarr URL' : 'Sonarr URL'}<br />
-                  <input name="url" value={settings.url} onChange={handleChange} style={{ width: '60%', minWidth: 220, maxWidth: 600, padding: '0.5rem', borderRadius: 6, border: '1px solid #bbb', background: '#f5f5f5', color: '#222' }} />
+                  <input name="url" value={settings.url} onChange={handleChange} style={{ width: '60%', minWidth: 220, maxWidth: 600, padding: '0.5rem', borderRadius: 6, border: '1px solid #bbb', background: 'var(--settings-input-bg, #f5f5f5)', color: 'var(--settings-input-text, #222)' }} />
                 </label>
               </div>
               <div style={{ width: '100%' }}>
                 <label style={{ fontWeight: 600, fontSize: '1.15em', marginBottom: 6, display: 'block', textAlign: 'left' }}>API Key<br />
-                  <input name="apiKey" value={settings.apiKey} onChange={handleChange} style={{ width: '60%', minWidth: 220, maxWidth: 600, padding: '0.5rem', borderRadius: 6, border: '1px solid #bbb', background: '#f5f5f5', color: '#222' }} />
+                  <input name="apiKey" value={settings.apiKey} onChange={handleChange} style={{ width: '60%', minWidth: 220, maxWidth: 600, padding: '0.5rem', borderRadius: 6, border: '1px solid #bbb', background: 'var(--settings-input-bg, #f5f5f5)', color: 'var(--settings-input-text, #222)' }} />
                 </label>
               </div>
             </div>
             <h3 style={{ margin: '2rem 0 1rem', textAlign: 'left' }}>Path Mappings</h3>
-            <table style={{ width: '100%', minWidth: 300, maxWidth: 620, marginLeft: 0, marginRight: 'auto', borderCollapse: 'collapse', background: '#f5f5f5', borderRadius: 8, overflow: 'hidden', marginTop: '1rem', color: '#222' }}>
+            <table style={{ width: '100%', minWidth: 300, maxWidth: 620, marginLeft: 0, marginRight: 'auto', borderCollapse: 'collapse', background: 'var(--settings-table-bg, #f5f5f5)', borderRadius: 8, overflow: 'hidden', marginTop: '1rem', color: 'var(--settings-table-text, #222)' }}>
               <thead>
-                <tr style={{ background: '#eaeaea', color: '#222' }}>
+                  <tr style={{ background: 'var(--settings-table-header-bg, #eaeaea)', color: 'var(--settings-table-header-text, #222)' }}>
                   <th style={{ padding: '0.5rem', textAlign: 'left' }}>{type === 'radarr' ? 'Radarr Path' : 'Sonarr Path'}</th>
                   <th style={{ padding: '0.5rem', textAlign: 'left' }}>Trailarr Path</th>
                   <th style={{ padding: '0.5rem' }}></th>
@@ -151,7 +157,7 @@ export default function SettingsPage({ type }) {
                 {(Array.isArray(settings.pathMappings) ? settings.pathMappings : []).map((m, idx) => (
                   <tr key={m.from + '-' + idx}>
                     <td style={{ textAlign: 'left' }}>
-                      <input value={m.from} onChange={e => handleMappingChange(idx, 'from', e.target.value)} placeholder={type === 'radarr' ? 'Radarr path' : 'Sonarr path'} style={{ width: '90%', minWidth: 210, maxWidth: 500, padding: '0.4rem', borderRadius: 4, border: '1px solid #bbb', background: '#f5f5f5', color: '#222' }} />
+                      <input value={m.from} onChange={e => handleMappingChange(idx, 'from', e.target.value)} placeholder={type === 'radarr' ? 'Radarr path' : 'Sonarr path'} style={{ width: '90%', minWidth: 210, maxWidth: 500, padding: '0.4rem', borderRadius: 4, border: '1px solid #bbb', background: 'var(--settings-input-bg, #f5f5f5)', color: 'var(--settings-input-text, #222)' }} />
                     </td>
                     <td style={{ textAlign: 'left' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', height: '100%' }}>
@@ -171,10 +177,10 @@ export default function SettingsPage({ type }) {
                           onClick={() => removeMapping(idx)}
                           onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') removeMapping(idx); }}
                           title="Remove"
-                          style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
+                          style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', height: '100%', justifyContent: 'center', verticalAlign: 'middle' }}
                           aria-label="Remove path mapping"
                         >
-                          <FontAwesomeIcon icon={faTrashAlt} style={{ fontSize: 20, color: '#222', filter: 'drop-shadow(0 1px 2px #0002)' }} />
+                          <FontAwesomeIcon icon={faTrashAlt} style={{ fontSize: 20, color: '#222', filter: 'drop-shadow(0 1px 2px #0002)', alignSelf: 'center' }} />
                         </span>
                     </td>
                   </tr>

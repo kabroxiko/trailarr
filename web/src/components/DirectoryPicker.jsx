@@ -70,7 +70,7 @@ export default function DirectoryPicker({ value, onChange, label, disabled }) {
 					value={value}
 					onChange={e => !disabled && onChange(e.target.value)}
 					disabled={disabled}
-					style={{ width: '100%', paddingRight: 32, paddingLeft: 8, paddingTop: 8, paddingBottom: 8, borderRadius: 4, border: '1px solid #bbb', background: '#f5f5f5', color: '#222', fontSize: 15, boxSizing: 'border-box' }}
+					   style={{ width: '100%', paddingRight: 32, paddingLeft: 8, paddingTop: 6, paddingBottom: 6, borderRadius: 4, border: '1px solid #bbb', background: 'var(--settings-input-bg, #f5f5f5)', color: 'var(--settings-input-text, #222)', fontSize: 15, boxSizing: 'border-box' }}
 				/>
 				<span
 					onClick={disabled ? undefined : handleOpen}
