@@ -56,6 +56,7 @@ func resolveCachePath(mediaType string) (string, error) {
 	case "tv":
 		return TrailarrRoot + "/series.json", nil
 	default:
+		TrailarrLog("Warn", "Extras", "Invalid mediaType: %s", mediaType)
 		return "", fmt.Errorf("Invalid mediaType")
 	}
 }
@@ -82,6 +83,7 @@ func deleteExtraFiles(mediaPath, extraType, extraTitle string) error {
 	err1 := os.Remove(extraFile)
 	err2 := os.Remove(metaFile)
 	if err1 != nil && err2 != nil {
+		TrailarrLog("Warn", "Extras", "Failed to delete extra files: %v, meta: %v", err1, err2)
 		return fmt.Errorf("file error: %v, meta error: %v", err1, err2)
 	}
 	return nil
@@ -146,16 +148,19 @@ func ExtractYouTubeID(url string) (string, error) {
 	if strings.Contains(url, "youtube.com/watch?v=") {
 		parts := strings.Split(url, "v=")
 		if len(parts) < 2 {
+			TrailarrLog("Warn", "Extras", "Could not extract YouTube video ID from URL: %s", url)
 			return "", fmt.Errorf("Could not extract YouTube video ID from URL: %s", url)
 		}
 		return strings.Split(parts[1], "&")[0], nil
 	} else if strings.Contains(url, "youtu.be/") {
 		parts := strings.Split(url, "/")
 		if len(parts) < 2 {
+			TrailarrLog("Warn", "Extras", "Could not extract YouTube video ID from URL: %s", url)
 			return "", fmt.Errorf("Could not extract YouTube video ID from URL: %s", url)
 		}
 		return parts[len(parts)-1], nil
 	}
+	TrailarrLog("Warn", "Extras", "Not a valid YouTube URL: %s", url)
 	return "", fmt.Errorf("Not a valid YouTube URL: %s", url)
 }
 
@@ -248,15 +253,15 @@ func downloadExtraHandler(c *gin.Context) {
 		URL        string `json:"url"`
 	}
 	if err := c.BindJSON(&req); err != nil {
-		fmt.Printf("[downloadExtraHandler] Invalid request: %v\n", err)
+		TrailarrLog("Warn", "Extras", "[downloadExtraHandler] Invalid request: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": ErrInvalidRequest})
 		return
 	}
-	fmt.Printf("[downloadExtraHandler] Download request: mediaType=%s, mediaTitle=%s, extraType=%s, extraTitle=%s, url=%s\n", req.MediaType, req.MediaName, req.ExtraType, req.ExtraTitle, req.URL)
+	TrailarrLog("Info", "Extras", "[downloadExtraHandler] Download request: mediaType=%s, mediaTitle=%s, extraType=%s, extraTitle=%s, url=%s", req.MediaType, req.MediaName, req.ExtraType, req.ExtraTitle, req.URL)
 
 	meta, err := DownloadYouTubeExtra(req.MediaType, req.MediaName, req.ExtraType, req.ExtraTitle, req.URL, true)
 	if err != nil {
-		fmt.Printf("[downloadExtraHandler] Download error: %v\n", err)
+		TrailarrLog("Warn", "Extras", "[downloadExtraHandler] Download error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

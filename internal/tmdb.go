@@ -14,7 +14,8 @@ import (
 func GetTMDBKey() (string, error) {
 	settingsData, err := os.ReadFile(ConfigPath)
 	if err != nil {
-		return "", fmt.Errorf("Failed to read config: %w", err)
+		TrailarrLog("Warn", "TMDB", "failed to read config: %v", err)
+		return "", fmt.Errorf("failed to read config: %w", err)
 	}
 	var allSettings struct {
 		General struct {
@@ -22,9 +23,11 @@ func GetTMDBKey() (string, error) {
 		} `yaml:"general"`
 	}
 	if err := yaml.Unmarshal(settingsData, &allSettings); err != nil {
-		return "", fmt.Errorf("Failed to decode config: %w", err)
+		TrailarrLog("Warn", "TMDB", "failed to decode config: %v", err)
+		return "", fmt.Errorf("failed to decode config: %w", err)
 	}
 	if allSettings.General.TMDBKey == "" {
+		TrailarrLog("Warn", "TMDB", "TMDB key not set in general settings")
 		return "", fmt.Errorf("TMDB key not set in general settings")
 	}
 	return allSettings.General.TMDBKey, nil
@@ -37,7 +40,8 @@ func GetTMDBId(mediaType string, id int, tmdbKey string) (int, error) {
 	case "tv":
 		return GetTVTMDBId(id, tmdbKey)
 	default:
-		return 0, fmt.Errorf("Unknown mediaType: %s", mediaType)
+		TrailarrLog("Warn", "TMDB", "unknown mediaType: %s", mediaType)
+		return 0, fmt.Errorf("unknown mediaType: %s", mediaType)
 	}
 }
 
@@ -45,11 +49,13 @@ func GetMovieTMDBId(id int) (int, error) {
 	radarrCache := TrailarrRoot + "/movies.json"
 	cacheData, err := os.ReadFile(radarrCache)
 	if err != nil {
-		return 0, fmt.Errorf("Failed to read Radarr cache: %w", err)
+		TrailarrLog("Warn", "TMDB", "failed to read Radarr cache: %v", err)
+		return 0, fmt.Errorf("failed to read Radarr cache: %w", err)
 	}
 	var movies []map[string]interface{}
 	if err := json.Unmarshal(cacheData, &movies); err != nil {
-		return 0, fmt.Errorf("Failed to decode Radarr cache: %w", err)
+		TrailarrLog("Warn", "TMDB", "failed to decode Radarr cache: %v", err)
+		return 0, fmt.Errorf("failed to decode Radarr cache: %w", err)
 	}
 	for _, m := range movies {
 		if mid, ok := m["id"].(float64); ok && int(mid) == id {
@@ -59,6 +65,7 @@ func GetMovieTMDBId(id int) (int, error) {
 			break
 		}
 	}
+	TrailarrLog("Warn", "TMDB", "TMDB id not found for Radarr movie id %d", id)
 	return 0, fmt.Errorf("TMDB id not found for Radarr movie id %d", id)
 }
 
@@ -66,11 +73,13 @@ func GetTVTMDBId(id int, tmdbKey string) (int, error) {
 	sonarrCache := TrailarrRoot + "/series.json"
 	cacheData, err := os.ReadFile(sonarrCache)
 	if err != nil {
-		return 0, fmt.Errorf("Failed to read Sonarr cache: %w", err)
+		TrailarrLog("Warn", "TMDB", "failed to read Sonarr cache: %v", err)
+		return 0, fmt.Errorf("failed to read Sonarr cache: %w", err)
 	}
 	var series []map[string]interface{}
 	if err := json.Unmarshal(cacheData, &series); err != nil {
-		return 0, fmt.Errorf("Failed to decode Sonarr cache: %w", err)
+		TrailarrLog("Warn", "TMDB", "failed to decode Sonarr cache: %v", err)
+		return 0, fmt.Errorf("failed to decode Sonarr cache: %w", err)
 	}
 	var title string
 	for _, s := range series {
@@ -82,7 +91,8 @@ func GetTVTMDBId(id int, tmdbKey string) (int, error) {
 		}
 	}
 	if title == "" {
-		return 0, fmt.Errorf("Title not found for Sonarr series id %d", id)
+		TrailarrLog("Warn", "TMDB", "title not found for Sonarr series id %d", id)
+		return 0, fmt.Errorf("title not found for Sonarr series id %d", id)
 	}
 	tmdbSearchURL := fmt.Sprintf("https://api.themoviedb.org/3/search/tv?api_key=%s&query=%s", tmdbKey, url.QueryEscape(title))
 	resp, err := http.Get(tmdbSearchURL)
@@ -103,7 +113,8 @@ func GetTVTMDBId(id int, tmdbKey string) (int, error) {
 		return 0, err
 	}
 	if len(tmdbResult.Results) == 0 {
-		return 0, fmt.Errorf("No TMDB TV series found for title %s", title)
+		TrailarrLog("Warn", "TMDB", "no TMDB TV series found for title %s", title)
+		return 0, fmt.Errorf("no TMDB TV series found for title %s", title)
 	}
 	return tmdbResult.Results[0].ID, nil
 }
