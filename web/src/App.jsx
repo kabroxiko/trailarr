@@ -26,7 +26,7 @@ function MovieDetails({ movies }) {
   };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, border: '2px solid #22c55e', padding: '0.5em' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, padding: '0.5em' }}>
         <div
           style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 'bold', color: '#a855f7', fontSize: 18 }}
           onClick={handleSearchExtras}
@@ -36,7 +36,7 @@ function MovieDetails({ movies }) {
         </div>
         <button style={{ background: '#eee', border: 'none', borderRadius: 6, padding: '0.5em 1em', cursor: 'pointer', fontWeight: 'bold' }} onClick={() => navigate('/movies')}>Back to list</button>
       </div>
-  <div style={{ display: 'flex', gap: 32, border: '2px dotted #f59e42', padding: '0.5em' }}>
+  <div style={{ display: 'flex', gap: 32, padding: '0.5em' }}>
         <div style={{ minWidth: 300 }}>
           <img
             src={`/mediacover/${movie.id}/poster-500.jpg`}
