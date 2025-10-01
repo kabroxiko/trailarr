@@ -23,7 +23,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
     if (!media) return;
     setSearchLoading(true);
     setError('');
-    searchExtras(encodeURIComponent(media.title))
+    searchExtras({ mediaType, id: media.id })
       .then(res => {
         setExtras(res.extras || []);
         if (media.path) {
@@ -57,7 +57,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
     setSearchLoading(true);
     setError('');
     try {
-      const res = await searchExtras(media.title);
+      const res = await searchExtras({ mediaType, id: media.id });
       setExtras(res.extras || []);
     } catch (e) {
       setError('Failed to search extras');

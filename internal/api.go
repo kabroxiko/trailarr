@@ -585,8 +585,11 @@ func plexItemsHandler(c *gin.Context) {
 }
 
 func searchExtrasHandler(c *gin.Context) {
-	movie := c.Query("movie")
-	results, _ := SearchExtras(movie)
+	mediaType := c.Query("mediaType")
+	idStr := c.Query("id")
+	var id int
+	fmt.Sscanf(idStr, "%d", &id)
+	results, _ := SearchExtras(mediaType, id)
 	c.JSON(http.StatusOK, gin.H{"extras": results})
 }
 
