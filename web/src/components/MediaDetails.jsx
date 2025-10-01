@@ -137,7 +137,79 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
           {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
         </div>
       </div>
-      {/* ...extras table and other details... */}
+      {extras.length > 0 && (
+        <div style={{ width: '100%', background: darkMode ? '#23232a' : '#f3e8ff', overflow: 'hidden', padding: 0, margin: 0 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', background: 'transparent' }}>
+            <thead>
+              <tr style={{ height: 32 }}>
+                <th style={{ textAlign: 'left', padding: '0.5em 1em', color: darkMode ? '#e5e7eb' : '#6d28d9', background: 'transparent', fontSize: 13, fontWeight: 500 }}>Type</th>
+                <th style={{ textAlign: 'left', padding: '0.5em 1em', color: darkMode ? '#e5e7eb' : '#6d28d9', background: 'transparent', fontSize: 13, fontWeight: 500 }}>Title</th>
+                <th style={{ textAlign: 'left', padding: '0.5em 1em', color: darkMode ? '#e5e7eb' : '#6d28d9', background: 'transparent', fontSize: 13, fontWeight: 500 }}>URL</th>
+                <th style={{ textAlign: 'left', padding: '0.5em 1em', color: darkMode ? '#e5e7eb' : '#6d28d9', background: 'transparent', fontSize: 13, fontWeight: 500 }}>Download</th>
+                <th style={{ textAlign: 'left', padding: '0.5em 1em', color: darkMode ? '#e5e7eb' : '#6d28d9', background: 'transparent', fontSize: 13, fontWeight: 500 }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {extras.map((extra, idx) => {
+                const baseTitle = extra.title || String(extra);
+                const totalCount = extras.filter(e => (e.title || String(e)) === baseTitle).length;
+                const displayTitle = totalCount > 1 ? `${baseTitle} (${extras.slice(0, idx + 1).filter(e => (e.title || String(e)) === baseTitle).length})` : baseTitle;
+                let youtubeID = '';
+                if (extra.url) {
+                  if (extra.url.includes('youtube.com/watch?v=')) {
+                    youtubeID = extra.url.split('v=')[1]?.split('&')[0] || '';
+                  } else if (extra.url.includes('youtu.be/')) {
+                    youtubeID = extra.url.split('youtu.be/')[1]?.split(/[?&]/)[0] || '';
+                  }
+                }
+                const exists = existingExtras.some(e => e.type === extra.type && e.title === extra.title && e.youtube_id === youtubeID);
+                return (
+                  <tr key={idx} style={{ height: 32, background: exists ? (darkMode ? '#1e293b' : '#e0e7ff') : undefined }}>
+                    <td style={{ padding: '0.5em 1em', textAlign: 'left', color: darkMode ? '#e5e7eb' : '#222', fontSize: 13 }}>{extra.type || ''}</td>
+                    <td style={{ padding: '0.5em 1em', textAlign: 'left', color: darkMode ? '#e5e7eb' : '#222', fontSize: 13 }}>{displayTitle}</td>
+                    <td style={{ padding: '0.5em 1em', textAlign: 'left', color: darkMode ? '#e5e7eb' : '#6d28d9', fontSize: 13 }}>
+                      {extra.url ? (
+                        <a href={extra.url} target="_blank" rel="noopener noreferrer" style={{ color: darkMode ? '#e5e7eb' : '#6d28d9', textDecoration: 'underline', fontSize: 13 }}>Link</a>
+                      ) : null}
+                    </td>
+                    <td style={{ padding: '0.5em 1em', textAlign: 'left' }}>
+                      {extra.url && (extra.url.includes('youtube.com/watch?v=') || extra.url.includes('youtu.be/')) ? (
+                        <button
+                          style={{ background: exists ? '#888' : '#a855f7', color: '#fff', border: 'none', borderRadius: 4, padding: '0.25em 0.75em', cursor: exists ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: 13 }}
+                          disabled={exists}
+                          onClick={async () => {
+                            if (exists) return;
+                            try {
+                              const res = await fetch(`/api/extras/download`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  moviePath: media.path,
+                                  extraType: extra.type,
+                                  extraTitle: extra.title,
+                                  url: typeof extra.url === 'string' ? extra.url : (extra.url && extra.url.url ? extra.url.url : '')
+                                })
+                              });
+                              if (res.ok) {
+                                setExistingExtras(prev => [...prev, { type: extra.type, title: extra.title, youtube_id: youtubeID }]);
+                              } else {
+                                alert('Download failed');
+                              }
+                            } catch (e) {
+                              alert('Download failed: ' + (e.message || e));
+                            }
+                          }}
+                        >Download</button>
+                      ) : null}
+                    </td>
+                    <td style={{ padding: '0.5em 1em', textAlign: 'left', color: exists ? '#22c55e' : '#ef4444', fontWeight: 'bold', fontSize: 13 }}>{exists ? 'Downloaded' : 'Not downloaded'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
