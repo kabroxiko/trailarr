@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
 	"github.com/kkdai/youtube/v2"
 )
 
@@ -30,7 +31,6 @@ func ExtractYouTubeID(url string) (string, error) {
 	}
 	return "", fmt.Errorf("Not a valid YouTube URL: %s", url)
 }
-
 
 // Plex API integration
 type PlexItem struct {

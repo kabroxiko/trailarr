@@ -57,7 +57,15 @@ function MovieDetails({ movies, loading }) {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 24,
+      minHeight: '100vh',
+      background: `url(/mediacover/${movie.id}/fanart-1280.jpg) center/cover no-repeat`,
+      backgroundColor: '#18181b',
+      position: 'relative'
+    }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, padding: '0.5em' }}>
         <div
           style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 'bold', color: '#a855f7', fontSize: 18 }}

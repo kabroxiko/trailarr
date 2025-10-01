@@ -59,10 +59,10 @@ func existingExtrasHandler(c *gin.Context) {
 				key := entry.Name() + "|" + meta.Title
 				dupCount[key]++
 				existing = append(existing, map[string]interface{}{
-					"type":  entry.Name(),
-					"title": meta.Title,
+					"type":       entry.Name(),
+					"title":      meta.Title,
 					"youtube_id": meta.YouTubeID,
-					"_dupIndex": dupCount[key],
+					"_dupIndex":  dupCount[key],
 				})
 			}
 		}
@@ -241,32 +241,56 @@ func SyncRadarrMoviesAndMediaCover() {
 		}
 		idStr := fmt.Sprintf("%d", int(id))
 		posterUrl := fmt.Sprintf("%s/MediaCover/%s/poster-500.jpg", settings.URL, idStr)
-		localPath := fmt.Sprintf("/var/lib/extrazarr/MediaCover/%s/poster-500.jpg", idStr)
+		fanartUrl := fmt.Sprintf("%s/MediaCover/%s/fanart-1280.jpg", settings.URL, idStr)
+		posterPath := fmt.Sprintf("/var/lib/extrazarr/MediaCover/%s/poster-500.jpg", idStr)
+		fanartPath := fmt.Sprintf("/var/lib/extrazarr/MediaCover/%s/fanart-1280.jpg", idStr)
 
 		os.MkdirAll(fmt.Sprintf("/var/lib/extrazarr/MediaCover/%s", idStr), 0755)
 
+		// Download poster
 		resp, err := client.Get(posterUrl)
 		if err != nil {
 			fmt.Println("[Sync] Failed to download poster for movie", idStr, err)
-			continue
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode == 200 {
-			out, err := os.Create(localPath)
-			if err == nil {
-				_, err = io.Copy(out, resp.Body)
-				out.Close()
+		} else {
+			defer resp.Body.Close()
+			if resp.StatusCode == 200 {
+				out, err := os.Create(posterPath)
 				if err == nil {
-					// Only add movie to cache if poster was saved successfully and hasFile == true
-					downloadedMovies = append(downloadedMovies, movie)
+					_, err = io.Copy(out, resp.Body)
+					out.Close()
+					if err == nil {
+						downloadedMovies = append(downloadedMovies, movie)
+					} else {
+						fmt.Println("[Sync] Error saving poster for movie", idStr, err)
+					}
 				} else {
-					fmt.Println("[Sync] Error saving poster for movie", idStr, err)
+					fmt.Println("[Sync] Error creating file for poster", posterPath, err)
 				}
 			} else {
-				fmt.Println("[Sync] Error creating file for poster", localPath, err)
+				fmt.Println("[Sync] Poster not found for movie", idStr)
+			}
+		}
+
+		// Download fanart for background
+		respFanart, err := client.Get(fanartUrl)
+		if err != nil {
+			fmt.Println("[Sync] Failed to download fanart for movie", idStr, err)
+			continue
+		}
+		defer respFanart.Body.Close()
+		if respFanart.StatusCode == 200 {
+			out, err := os.Create(fanartPath)
+			if err == nil {
+				_, err = io.Copy(out, respFanart.Body)
+				out.Close()
+				if err != nil {
+					fmt.Println("[Sync] Error saving fanart for movie", idStr, err)
+				}
+			} else {
+				fmt.Println("[Sync] Error creating file for fanart", fanartPath, err)
 			}
 		} else {
-			fmt.Println("[Sync] Poster not found for movie", idStr)
+			fmt.Println("[Sync] Fanart not found for movie", idStr)
 		}
 	}
 
