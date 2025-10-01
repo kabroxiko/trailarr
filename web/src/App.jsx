@@ -161,18 +161,18 @@ function App() {
             <tbody>
               {radarrMovies.map((movie, idx) => (
                 <tr key={idx} style={{ borderBottom: '1px solid #f3e8ff' }}>
-                  <td style={{ padding: '0.5em' }}>
+                  <td style={{ padding: '0.5em', textAlign: 'left' }}>
                     <a
                       href="#"
-                      style={{ color: '#a855f7', textDecoration: 'underline', cursor: 'pointer', fontWeight: 'bold' }}
+                      style={{ color: '#a855f7', textDecoration: 'underline', cursor: 'pointer', fontWeight: 'bold', textAlign: 'left', display: 'block' }}
                       onClick={e => {
                         e.preventDefault();
                         setSelectedMovie(movie);
                       }}
                     >{movie.title}</a>
                   </td>
-                  <td style={{ padding: '0.5em' }}>{movie.year}</td>
-                  <td style={{ padding: '0.5em' }}>{movie.path}</td>
+                  <td style={{ padding: '0.5em', textAlign: 'left' }}>{movie.year}</td>
+                  <td style={{ padding: '0.5em', textAlign: 'left' }}>{movie.path}</td>
                 </tr>
               ))}
             </tbody>
@@ -191,7 +191,7 @@ function App() {
             </div>
             <div style={{ flex: 1 }}>
               <h2 style={{ color: '#a855f7', margin: 0 }}>{selectedMovie.title}</h2>
-              <div style={{ marginBottom: 8, color: '#888' }}>{selectedMovie.year} &bull; {selectedMovie.path}</div>
+              <div style={{ marginBottom: 8, color: '#888', textAlign: 'left' }}>{selectedMovie.year} &bull; {selectedMovie.path}</div>
               <div style={{ marginBottom: 16, color: '#333' }}>Movie extras would be listed here.</div>
               {/* TODO: Integrate actual extras data here */}
             </div>
