@@ -127,6 +127,7 @@ function MovieDetails({ movies, loading }) {
                 <th style={{ textAlign: 'left', padding: '0.5em 1em', color: darkMode ? '#e5e7eb' : '#6d28d9', background: 'transparent', fontSize: 13, fontWeight: 500 }}>Type</th>
                 <th style={{ textAlign: 'left', padding: '0.5em 1em', color: darkMode ? '#e5e7eb' : '#6d28d9', background: 'transparent', fontSize: 13, fontWeight: 500 }}>Title</th>
                 <th style={{ textAlign: 'left', padding: '0.5em 1em', color: darkMode ? '#e5e7eb' : '#6d28d9', background: 'transparent', fontSize: 13, fontWeight: 500 }}>URL</th>
+                <th style={{ textAlign: 'left', padding: '0.5em 1em', color: darkMode ? '#e5e7eb' : '#6d28d9', background: 'transparent', fontSize: 13, fontWeight: 500 }}>Download</th>
                 <th style={{ textAlign: 'left', padding: '0.5em 1em', color: darkMode ? '#e5e7eb' : '#6d28d9', background: 'transparent', fontSize: 13, fontWeight: 500 }}>Exists</th>
               </tr>
             </thead>
@@ -157,30 +158,29 @@ function MovieDetails({ movies, loading }) {
                       <td style={{ padding: '0.5em 1em', textAlign: 'left', color: darkMode ? '#e5e7eb' : '#222', fontSize: 13 }}>{displayTitle}</td>
                       <td style={{ padding: '0.5em 1em', textAlign: 'left', color: darkMode ? '#a855f7' : '#6d28d9', fontSize: 13 }}>
                         {extra.url ? (
-                          <>
-                            <a href={extra.url} target="_blank" rel="noopener noreferrer" style={{ color: darkMode ? '#a855f7' : '#6d28d9', textDecoration: 'underline', marginRight: 8, fontSize: 13 }}>Link</a>
-                            {extra.url.includes('youtube.com/watch?v=') || extra.url.includes('youtu.be/') ? (
-                              <button
-                                style={{ background: exists ? '#888' : '#a855f7', color: '#fff', border: 'none', borderRadius: 4, padding: '0.25em 0.75em', cursor: exists ? 'not-allowed' : 'pointer', fontWeight: 'bold', marginLeft: 4, fontSize: 13 }}
-                                disabled={exists}
-                                onClick={async () => {
-                                  if (exists) return;
-                                  try {
-                                    const res = await downloadExtra({
-                                      moviePath: movie.path,
-                                      extraType: extra.type,
-                                      extraTitle: extra.title,
-                                      url: typeof extra.url === 'string' ? extra.url : (extra.url && extra.url.url ? extra.url.url : '')
-                                    });
-                                    // Mark only this duplicate as existing
-                                    setExistingExtras(prev => [...prev, { type: extra.type, title: extra.title, youtube_id: youtubeID }]);
-                                  } catch (e) {
-                                    alert('Download failed: ' + (e.message || e));
-                                  }
-                                }}
-                              >Download</button>
-                            ) : null}
-                          </>
+                          <a href={extra.url} target="_blank" rel="noopener noreferrer" style={{ color: darkMode ? '#a855f7' : '#6d28d9', textDecoration: 'underline', fontSize: 13 }}>Link</a>
+                        ) : ''}
+                      </td>
+                      <td style={{ padding: '0.5em 1em', textAlign: 'left' }}>
+                        {extra.url && (extra.url.includes('youtube.com/watch?v=') || extra.url.includes('youtu.be/')) ? (
+                          <button
+                            style={{ background: exists ? '#888' : '#a855f7', color: '#fff', border: 'none', borderRadius: 4, padding: '0.25em 0.75em', cursor: exists ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: 13 }}
+                            disabled={exists}
+                            onClick={async () => {
+                              if (exists) return;
+                              try {
+                                const res = await downloadExtra({
+                                  moviePath: movie.path,
+                                  extraType: extra.type,
+                                  extraTitle: extra.title,
+                                  url: typeof extra.url === 'string' ? extra.url : (extra.url && extra.url.url ? extra.url.url : '')
+                                });
+                                setExistingExtras(prev => [...prev, { type: extra.type, title: extra.title, youtube_id: youtubeID }]);
+                              } catch (e) {
+                                alert('Download failed: ' + (e.message || e));
+                              }
+                            }}
+                          >Download</button>
                         ) : ''}
                       </td>
                       <td style={{ padding: '0.5em 1em', textAlign: 'left', color: exists ? '#22c55e' : '#ef4444', fontWeight: 'bold', fontSize: 13 }}>{exists ? 'Yes' : 'No'}</td>
