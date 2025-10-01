@@ -112,7 +112,7 @@ func sortTaskQueuesByQueuedDesc(queues []map[string]interface{}) {
 	})
 }
 
-func ForceTaskHandler() gin.HandlerFunc {
+func TaskHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
 			Name string `json:"name"`
@@ -124,10 +124,10 @@ func ForceTaskHandler() gin.HandlerFunc {
 		println("[FORCE] Requested force execution for:", req.Name)
 		switch req.Name {
 		case TaskSyncWithRadarr:
-			go ForceSyncRadarr()
+			go SyncRadarr()
 			c.JSON(http.StatusOK, gin.H{"status": "Sync Radarr forced"})
 		case TaskSyncWithSonarr:
-			go ForceSyncSonarr()
+			go SyncSonarr()
 			c.JSON(http.StatusOK, gin.H{"status": "Sync Sonarr forced"})
 		default:
 			c.JSON(http.StatusBadRequest, gin.H{"error": "unknown task"})
@@ -139,14 +139,14 @@ func StartBackgroundTasks() {
 	go func() {
 		interval := Timings["radarr"]
 		for {
-			ForceSyncRadarr()
+			SyncRadarr()
 			time.Sleep(time.Duration(interval) * time.Minute)
 		}
 	}()
 	go func() {
 		interval := Timings["sonarr"]
 		for {
-			ForceSyncSonarr()
+			SyncSonarr()
 			time.Sleep(time.Duration(interval) * time.Minute)
 		}
 	}()

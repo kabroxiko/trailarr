@@ -58,7 +58,7 @@ func RegisterRoutes(r *gin.Engine) {
 
 	// API endpoint for scheduled/queue status
 	r.GET("/api/tasks/status", GetAllTasksStatus())
-	r.POST("/api/tasks/force", ForceTaskHandler())
+	r.POST("/api/tasks/force", TaskHandler())
 
 	// Serve React static files and SPA fallback
 	r.Static("/assets", "./web/dist/assets")
@@ -68,7 +68,7 @@ func RegisterRoutes(r *gin.Engine) {
 	})
 
 	// Serve static files for movie posters
-	r.Static("/mediacover", TrailarrRoot+"/MediaCover")
+	r.Static("/mediacover", MediaCoverPath)
 	r.StaticFile("/logo.svg", "web/public/logo.svg")
 	r.GET("/api/movies", getRadarrHandler)
 	var defaultMoviePath string

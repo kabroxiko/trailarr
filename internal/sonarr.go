@@ -2,15 +2,11 @@ package internal
 
 import (
 	"fmt"
+	"github.com/gin-gonic/gin"
+	"log"
 	"net/http"
 	"time"
-
-	"github.com/gin-gonic/gin"
 )
-
-var getSonarrPosterHandler = getImageHandler("sonarr", "id", "/poster-500.jpg")
-
-var getSonarrBannerHandler = getImageHandler("sonarr", "id", "/fanart-1280.jpg")
 
 func getSonarrHandler(c *gin.Context) {
 	cachePath := TrailarrRoot + "/series.json"
@@ -81,14 +77,14 @@ var syncSonarrStatus = struct {
 }
 
 // Handler to force sync Sonarr
-func ForceSyncSonarr() {
+func SyncSonarr() {
 	if !GetAutoDownloadExtras() {
-		println("[FORCE] Auto download of extras is disabled by general settings. Skipping forced Sonarr sync.")
+		log.Println("[FORCE] Auto download of extras is disabled by general settings. Skipping forced Sonarr sync.")
 		return
 	}
 	// Use generic ForceSyncMedia from media.go
 	// Only use GlobalSyncQueue for persistence and display
-	ForceSyncMedia(
+	SyncMedia(
 		"sonarr",
 		SyncSonarrImages,
 		Timings,
@@ -100,15 +96,7 @@ func ForceSyncSonarr() {
 	syncSonarrStatus.Queue = nil
 	for _, item := range GlobalSyncQueue {
 		if item.TaskName == "sonarr" {
-			syncSonarrStatus.Queue = append(syncSonarrStatus.Queue, SyncSonarrQueueItem{
-				TaskName: item.TaskName,
-				Queued:   item.Queued,
-				Started:  item.Started,
-				Ended:    item.Ended,
-				Duration: item.Duration,
-				Status:   item.Status,
-				Error:    item.Error,
-			})
+			syncSonarrStatus.Queue = append(syncSonarrStatus.Queue, SyncSonarrQueueItem(item))
 		}
 	}
 }
@@ -156,7 +144,7 @@ func SyncSonarrImages() error {
 	}
 	CacheMediaPosters(
 		"sonarr",
-		MediaCoverPath+"Series",
+		MediaCoverPath+"/Series",
 		series,
 		"id",
 		[]string{"/poster-500.jpg", "/fanart-1280.jpg"},

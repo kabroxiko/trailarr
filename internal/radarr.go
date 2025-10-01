@@ -2,15 +2,11 @@ package internal
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"time"
-
 	"github.com/gin-gonic/gin"
 )
-
-var getRadarrPosterHandler = getImageHandler("radarr", "id", "/poster-500.jpg")
-
-var getRadarrBannerHandler = getImageHandler("radarr", "id", "/fanart-1280.jpg")
 
 func getRadarrHandler(c *gin.Context) {
 	cachePath := TrailarrRoot + "/movies.json"
@@ -81,14 +77,14 @@ var syncRadarrStatus = struct {
 }
 
 // Handler to force sync Radarr
-func ForceSyncRadarr() {
+func SyncRadarr() {
 	if !GetAutoDownloadExtras() {
-		println("[FORCE] Auto download of extras is disabled by general settings. Skipping forced Radarr sync.")
+		log.Println("[FORCE] Auto download of extras is disabled by general settings. Skipping forced Radarr sync.")
 		return
 	}
 	// Use generic ForceSyncMedia from media.go
 	// Only use GlobalSyncQueue for persistence and display
-	ForceSyncMedia(
+	SyncMedia(
 		"radarr",
 		SyncRadarrImages,
 		Timings,
@@ -100,15 +96,7 @@ func ForceSyncRadarr() {
 	syncRadarrStatus.Queue = nil
 	for _, item := range GlobalSyncQueue {
 		if item.TaskName == "radarr" {
-			syncRadarrStatus.Queue = append(syncRadarrStatus.Queue, SyncRadarrQueueItem{
-				TaskName: item.TaskName,
-				Queued:   item.Queued,
-				Started:  item.Started,
-				Ended:    item.Ended,
-				Duration: item.Duration,
-				Status:   item.Status,
-				Error:    item.Error,
-			})
+			syncRadarrStatus.Queue = append(syncRadarrStatus.Queue, SyncRadarrQueueItem(item))
 		}
 	}
 }
@@ -152,7 +140,7 @@ func SyncRadarrImages() error {
 	}
 	CacheMediaPosters(
 		"radarr",
-		MediaCoverPath+"Movies",
+		MediaCoverPath+"/Movies",
 		movies,
 		"id",
 		[]string{"/poster-500.jpg", "/fanart-1280.jpg"},
