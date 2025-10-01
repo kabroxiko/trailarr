@@ -1,10 +1,28 @@
 package internal
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 )
 
 func RegisterRoutes(r *gin.Engine) {
+	// Health check
+	r.GET("/api/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+
+	// API endpoint for scheduled/queue status
+	r.GET("/api/tasks/status", GetAllTasksStatus())
+	r.POST("/api/tasks/force", ForceTaskHandler())
+
+	// Serve React static files and SPA fallback
+	r.Static("/assets", "./web/dist/assets")
+	r.StaticFile("/", "./web/dist/index.html")
+	r.NoRoute(func(c *gin.Context) {
+		c.File("./web/dist/index.html")
+	})
+
 	// Serve static files for movie posters
 	r.Static("/mediacover", TrailarrRoot+"/MediaCover")
 	r.StaticFile("/logo.svg", "web/public/logo.svg")

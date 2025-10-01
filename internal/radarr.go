@@ -82,6 +82,10 @@ var syncRadarrStatus = struct {
 
 // Handler to force sync Radarr
 func ForceSyncRadarr() {
+	if !GetAutoDownloadExtras() {
+		println("[FORCE] Auto download of extras is disabled by general settings. Skipping forced Radarr sync.")
+		return
+	}
 	// Use generic ForceSyncMedia from media.go
 	// Only use GlobalSyncQueue for persistence and display
 	ForceSyncMedia(

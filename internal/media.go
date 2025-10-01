@@ -12,6 +12,70 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// DownloadMissingExtras downloads missing extras for a given media type ("movie" or "tv")
+func DownloadMissingExtras(mediaType string, cachePath string) error {
+	if !GetAutoDownloadExtras() {
+		fmt.Println("[DownloadMissingExtras] Auto download of extras is disabled by general settings.")
+		return nil
+	}
+	fmt.Printf("[DEBUG] DownloadMissingExtras: mediaType=%s, cachePath=%s\n", mediaType, cachePath)
+	items, err := loadCache(cachePath)
+	if err != nil {
+		fmt.Printf("[DEBUG] Failed to load cache: %v\n", err)
+		return err
+	}
+	for _, m := range items {
+		id, ok := m["id"]
+		if !ok {
+			fmt.Printf("[DEBUG] Missing id in item: %v\n", m)
+			continue
+		}
+		var idInt int
+		switch v := id.(type) {
+		case int:
+			idInt = v
+		case float64:
+			idInt = int(v)
+		case string:
+			fmt.Sscanf(v, "%d", &idInt)
+		}
+		fmt.Printf("[DEBUG] Item idInt=%d\n", idInt)
+		extras, err := SearchExtras(mediaType, idInt)
+		if err != nil {
+			fmt.Printf("[DEBUG] SearchExtras error: %v\n", err)
+			continue
+		}
+		mediaPath, err := FindMediaPathByID(cachePath, fmt.Sprintf("%v", id))
+		if err != nil || mediaPath == "" {
+			fmt.Printf("[DEBUG] FindMediaPathByID error or empty: %v, mediaPath=%s\n", err, mediaPath)
+			continue
+		}
+		fmt.Printf("[DEBUG] mediaPath=%s\n", mediaPath)
+		MarkDownloadedExtras(extras, mediaPath, "type", "title")
+		for _, extra := range extras {
+			fmt.Printf("[DEBUG] Checking extra: %v\n", extra)
+			if extra["downloaded"] == "false" && extra["url"] != "" {
+				fmt.Printf("[DEBUG] Downloading extra: type=%s, title=%s, url=%s\n", extra["type"], extra["title"], extra["url"])
+				_, err := DownloadYouTubeExtra(mediaPath, extra["type"], extra["title"], extra["url"])
+				if err != nil {
+					fmt.Printf("[DownloadMissingExtras] Failed to download: %v\n", err)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// DownloadMissingMoviesExtras downloads missing extras for all movies
+func DownloadMissingMoviesExtras() error {
+	return DownloadMissingExtras("movie", TrailarrRoot+"/movies_wanted.json")
+}
+
+// DownloadMissingSeriesExtras downloads missing extras for all series
+func DownloadMissingSeriesExtras() error {
+	return DownloadMissingExtras("tv", TrailarrRoot+"/series_wanted.json")
+}
+
 var GlobalSyncQueue []SyncQueueItem
 
 const queueFile = TrailarrRoot + "/queue.json"
@@ -86,6 +150,7 @@ func saveQueue() {
 	}
 	_ = json.NewEncoder(f).Encode(out)
 }
+
 func init() {
 	loadQueue()
 	// Remove queued items with null Started/Ended
@@ -97,6 +162,27 @@ func init() {
 		filtered = append(filtered, item)
 	}
 	GlobalSyncQueue = filtered
+
+	// Call extras download tasks at startup
+	go func() {
+		fmt.Println("[DEBUG] Running DownloadMissingMoviesExtras at startup...")
+		_ = DownloadMissingMoviesExtras()
+		fmt.Println("[DEBUG] Running DownloadMissingSeriesExtras at startup...")
+		_ = DownloadMissingSeriesExtras()
+	}()
+
+	// Schedule every 6 hours
+	go func() {
+		ticker := time.NewTicker(6 * time.Hour)
+		defer ticker.Stop()
+		for {
+			<-ticker.C
+			fmt.Println("[DEBUG] Running DownloadMissingMoviesExtras (scheduled)...")
+			_ = DownloadMissingMoviesExtras()
+			fmt.Println("[DEBUG] Running DownloadMissingSeriesExtras (scheduled)...")
+			_ = DownloadMissingSeriesExtras()
+		}
+	}()
 }
 
 // ForceSyncMedia executes a sync for the given section ("radarr" or "sonarr")

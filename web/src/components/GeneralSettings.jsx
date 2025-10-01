@@ -4,7 +4,9 @@ import { faSave } from '@fortawesome/free-solid-svg-icons';
 
 export default function GeneralSettings() {
   const [tmdbKey, setTmdbKey] = useState('');
+  const [autoDownloadExtras, setAutoDownloadExtras] = useState(true);
   const [originalKey, setOriginalKey] = useState('');
+  const [originalAutoDownload, setOriginalAutoDownload] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   useEffect(() => {
@@ -29,9 +31,11 @@ export default function GeneralSettings() {
       .then(data => {
         setTmdbKey(data.tmdbKey || '');
         setOriginalKey(data.tmdbKey || '');
+        setAutoDownloadExtras(data.autoDownloadExtras !== false); // default true
+        setOriginalAutoDownload(data.autoDownloadExtras !== false);
       });
   }, []);
-  const isChanged = tmdbKey !== originalKey;
+  const isChanged = tmdbKey !== originalKey || autoDownloadExtras !== originalAutoDownload;
   const handleSave = async () => {
     setSaving(true);
     setMessage('');
@@ -39,11 +43,12 @@ export default function GeneralSettings() {
       const res = await fetch('/api/settings/general', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tmdbKey })
+        body: JSON.stringify({ tmdbKey, autoDownloadExtras })
       });
       if (res.ok) {
         setMessage('Settings saved successfully!');
         setOriginalKey(tmdbKey);
+        setOriginalAutoDownload(autoDownloadExtras);
       } else {
         setMessage('Error saving settings.');
       }
@@ -74,6 +79,17 @@ export default function GeneralSettings() {
               onChange={e => setTmdbKey(e.target.value)}
               style={{ width: '60%', minWidth: 220, maxWidth: 600, padding: '0.5rem', borderRadius: 6, border: '1px solid #bbb', background: 'var(--settings-input-bg, #f5f5f5)', color: 'var(--settings-input-text, #222)' }}
             />
+          </label>
+        </div>
+        <div style={{ marginBottom: '1.5rem', display: 'block', width: '100%' }}>
+          <label style={{ fontWeight: 600, fontSize: '1.15em', marginBottom: 6, display: 'block', textAlign: 'left' }}>
+            <input
+              type="checkbox"
+              checked={autoDownloadExtras}
+              onChange={e => setAutoDownloadExtras(e.target.checked)}
+              style={{ marginRight: 8 }}
+            />
+            Enable automatic download of extras
           </label>
         </div>
       </div>

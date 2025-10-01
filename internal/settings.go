@@ -14,6 +14,101 @@ import (
 
 var Timings map[string]int
 
+// SearchExtrasConfig holds config for searching movie/series extras
+type SearchExtrasConfig struct {
+	SearchMoviesExtras bool `yaml:"searchMoviesExtras" json:"searchMoviesExtras"`
+	SearchSeriesExtras bool `yaml:"searchSeriesExtras" json:"searchSeriesExtras"`
+	AutoDownloadExtras bool `yaml:"autoDownloadExtras" json:"autoDownloadExtras"`
+}
+
+// GetAutoDownloadExtras reads the autoDownloadExtras flag from config.yml (general section)
+func GetAutoDownloadExtras() bool {
+	data, err := os.ReadFile(ConfigPath)
+	if err != nil {
+		return true // default enabled
+	}
+	var config map[string]interface{}
+	_ = yaml.Unmarshal(data, &config)
+	if general, ok := config["general"].(map[string]interface{}); ok {
+		if v, ok := general["autoDownloadExtras"].(bool); ok {
+			return v
+		}
+	}
+	return true
+}
+
+// GetSearchExtrasConfig loads search extras config from config.yml
+func GetSearchExtrasConfig() (SearchExtrasConfig, error) {
+	data, err := os.ReadFile(ConfigPath)
+	if err != nil {
+		return SearchExtrasConfig{}, err
+	}
+	var config map[string]interface{}
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return SearchExtrasConfig{}, err
+	}
+	sec, ok := config["searchExtras"].(map[string]interface{})
+	if !ok {
+		// Default: both enabled, autoDownload enabled
+		return SearchExtrasConfig{SearchMoviesExtras: true, SearchSeriesExtras: true, AutoDownloadExtras: true}, nil
+	}
+	cfg := SearchExtrasConfig{}
+	if v, ok := sec["searchMoviesExtras"].(bool); ok {
+		cfg.SearchMoviesExtras = v
+	} else {
+		cfg.SearchMoviesExtras = true
+	}
+	if v, ok := sec["searchSeriesExtras"].(bool); ok {
+		cfg.SearchSeriesExtras = v
+	} else {
+		cfg.SearchSeriesExtras = true
+	}
+	if v, ok := sec["autoDownloadExtras"].(bool); ok {
+		cfg.AutoDownloadExtras = v
+	} else {
+		cfg.AutoDownloadExtras = true
+	}
+	return cfg, nil
+}
+
+// SaveSearchExtrasConfig saves search extras config to config.yml
+func SaveSearchExtrasConfig(cfg SearchExtrasConfig) error {
+	data, _ := os.ReadFile(ConfigPath)
+	var config map[string]interface{}
+	_ = yaml.Unmarshal(data, &config)
+	config["searchExtras"] = map[string]interface{}{
+		"searchMoviesExtras": cfg.SearchMoviesExtras,
+		"searchSeriesExtras": cfg.SearchSeriesExtras,
+		"autoDownloadExtras": cfg.AutoDownloadExtras,
+	}
+	out, _ := yaml.Marshal(config)
+	return os.WriteFile(ConfigPath, out, 0644)
+}
+
+// Handler to get search extras config
+func GetSearchExtrasConfigHandler(c *gin.Context) {
+	cfg, err := GetSearchExtrasConfig()
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"searchMoviesExtras": true, "searchSeriesExtras": true})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"searchMoviesExtras": cfg.SearchMoviesExtras, "searchSeriesExtras": cfg.SearchSeriesExtras})
+}
+
+// Handler to save search extras config
+func SaveSearchExtrasConfigHandler(c *gin.Context) {
+	var req SearchExtrasConfig
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": ErrInvalidRequest})
+		return
+	}
+	if err := SaveSearchExtrasConfig(req); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "saved"})
+}
+
 // EnsureSyncTimingsConfig creates config.yml with sync timings if not present, or loads timings if present
 func EnsureSyncTimingsConfig() (map[string]int, error) {
 	defaultTimings := map[string]int{
@@ -262,21 +357,28 @@ func SaveSettingsHandler(section string) gin.HandlerFunc {
 func getGeneralSettingsHandler(c *gin.Context) {
 	data, err := os.ReadFile(ConfigPath)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"tmdbKey": ""})
+		c.JSON(http.StatusOK, gin.H{"tmdbKey": "", "autoDownloadExtras": true})
 		return
 	}
-	var allSettings struct {
-		General struct {
-			TMDBApiKey string `yaml:"tmdbKey"`
-		} `yaml:"general"`
+	var config map[string]interface{}
+	_ = yaml.Unmarshal(data, &config)
+	var tmdbKey string
+	var autoDownloadExtras bool = true
+	if general, ok := config["general"].(map[string]interface{}); ok {
+		if v, ok := general["tmdbKey"].(string); ok {
+			tmdbKey = v
+		}
+		if v, ok := general["autoDownloadExtras"].(bool); ok {
+			autoDownloadExtras = v
+		}
 	}
-	_ = yaml.Unmarshal(data, &allSettings)
-	c.JSON(http.StatusOK, gin.H{"tmdbKey": allSettings.General.TMDBApiKey})
+	c.JSON(http.StatusOK, gin.H{"tmdbKey": tmdbKey, "autoDownloadExtras": autoDownloadExtras})
 }
 
 func saveGeneralSettingsHandler(c *gin.Context) {
 	var req struct {
-		TMDBApiKey string `json:"tmdbKey" yaml:"tmdbKey"`
+		TMDBApiKey         string `json:"tmdbKey" yaml:"tmdbKey"`
+		AutoDownloadExtras *bool  `json:"autoDownloadExtras" yaml:"autoDownloadExtras"`
 	}
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": ErrInvalidRequest})
@@ -292,6 +394,21 @@ func saveGeneralSettingsHandler(c *gin.Context) {
 	}
 	general := config["general"].(map[string]interface{})
 	general["tmdbKey"] = req.TMDBApiKey
+	var prevAutoDownload bool
+	if v, ok := general["autoDownloadExtras"].(bool); ok {
+		prevAutoDownload = v
+	} else {
+		prevAutoDownload = true
+	}
+	if req.AutoDownloadExtras != nil {
+		general["autoDownloadExtras"] = *req.AutoDownloadExtras
+		// Trigger start/stop of extras download task if changed
+		if *req.AutoDownloadExtras && !prevAutoDownload {
+			StartExtrasDownloadTask()
+		} else if !*req.AutoDownloadExtras && prevAutoDownload {
+			StopExtrasDownloadTask()
+		}
+	}
 	config["general"] = general
 	out, _ := yaml.Marshal(config)
 	err := os.WriteFile(ConfigPath, out, 0644)
