@@ -40,8 +40,10 @@ func existingExtrasHandler(c *gin.Context) {
 					Title     string `json:"title"`
 					YouTubeID string `json:"youtube_id"`
 				}
+				status := "not-downloaded"
 				if metaBytes, err := os.ReadFile(metaFile); err == nil {
 					_ = json.Unmarshal(metaBytes, &meta)
+					status = "downloaded"
 				}
 				key := entry.Name() + "|" + meta.Title
 				dupCount[key]++
@@ -50,6 +52,7 @@ func existingExtrasHandler(c *gin.Context) {
 					"title":      meta.Title,
 					"youtube_id": meta.YouTubeID,
 					"_dupIndex":  dupCount[key],
+					"status":     status,
 				})
 			}
 		}

@@ -3,11 +3,12 @@ package internal
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/kkdai/youtube/v2"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/kkdai/youtube/v2"
 )
 
 type ExtraDownloadMetadata struct {
@@ -20,6 +21,7 @@ type ExtraDownloadMetadata struct {
 }
 
 func DownloadYouTubeExtra(moviePath, extraType, extraTitle, extraURL string) (*ExtraDownloadMetadata, error) {
+	fmt.Printf("Downloading YouTube extra: type=%s, title=%s, url=%s\n", extraType, extraTitle, extraURL)
 	// Extract YouTube ID
 	youtubeID, err := ExtractYouTubeID(extraURL)
 	if err != nil {
@@ -32,16 +34,13 @@ func DownloadYouTubeExtra(moviePath, extraType, extraTitle, extraURL string) (*E
 		return nil, fmt.Errorf("Failed to create output dir '%s': %w", outDir, err)
 	}
 
-	// Find existing files with same title to determine incremental index
-	safeTitle := strings.ReplaceAll(extraTitle, " ", "_")
-	files, _ := os.ReadDir(outDir)
-	count := 1
-	for _, f := range files {
-		if !f.IsDir() && strings.HasPrefix(f.Name(), safeTitle) && strings.HasSuffix(f.Name(), ".mp4") {
-			count++
-		}
+	// Sanitize title for filename: only replace forbidden characters
+	forbidden := []string{"/", "\\", ":", "*", "?", "\"", "<", ">", "|"}
+	safeTitle := extraTitle
+	for _, c := range forbidden {
+		safeTitle = strings.ReplaceAll(safeTitle, c, "_")
 	}
-	outFile := filepath.Join(outDir, fmt.Sprintf("%s (%d).mp4", safeTitle, count))
+	outFile := filepath.Join(outDir, fmt.Sprintf("%s.mp4", safeTitle))
 
 	// Download using kkdai/youtube
 	client := youtube.Client{}
