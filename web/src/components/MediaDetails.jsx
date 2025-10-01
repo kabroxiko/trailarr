@@ -206,6 +206,43 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
               if (displayTitle.length > 22) titleFontSize = 14;
               if (displayTitle.length > 32) titleFontSize = 12;
               const downloaded = extra.downloaded === 'true';
+
+              // Extracted button click handler
+              const handleDownloadClick = async () => {
+                if (downloaded) return;
+                try {
+                  const getExtraUrl = extra => typeof extra.url === 'string' ? extra.url : extra.url?.url ?? '';
+                  const res = await fetch(`/api/extras/download`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      moviePath: media.path,
+                      extraType: extra.type,
+                      extraTitle: extra.title,
+                      url: getExtraUrl(extra)
+                    })
+                  });
+                  if (res.ok) {
+                    setExtras(prev => prev.map((e, i) => i === idx ? { ...e, downloaded: 'true' } : e));
+                  } else {
+                    const data = await res.json();
+                    let msg = data?.error || 'Download failed';
+                    if (msg.includes('UNPLAYABLE') || msg.includes('no se encuentra disponible')) {
+                      msg = 'This YouTube video is unavailable and cannot be downloaded.';
+                    }
+                    setModalMsg(msg);
+                    setShowModal(true);
+                  }
+                } catch (e) {
+                  let msg = (e.message || e);
+                  if (msg.includes('UNPLAYABLE') || msg.includes('no se encuentra disponible')) {
+                    msg = 'This YouTube video is unavailable and cannot be downloaded.';
+                  }
+                  setModalMsg(msg);
+                  setShowModal(true);
+                }
+              };
+
               return (
                 <div key={idx} style={{
                   width: 180,
@@ -239,39 +276,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
                       <button
                         style={{ background: downloaded ? '#888' : '#a855f7', color: '#fff', border: 'none', borderRadius: 4, padding: '0.25em 0.75em', cursor: downloaded ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: 13, marginTop: 4 }}
                         disabled={downloaded}
-                        onClick={async () => {
-                          if (downloaded) return;
-                          try {
-                            const res = await fetch(`/api/extras/download`, {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                moviePath: media.path,
-                                extraType: extra.type,
-                                extraTitle: extra.title,
-                                url: typeof extra.url === 'string' ? extra.url : (extra.url && extra.url.url ? extra.url.url : '')
-                              })
-                            });
-                            if (res.ok) {
-                              setExtras(prev => prev.map((e, i) => i === idx ? { ...e, downloaded: 'true' } : e));
-                            } else {
-                              const data = await res.json();
-                              let msg = data?.error || 'Download failed';
-                              if (msg.includes('UNPLAYABLE') || msg.includes('no se encuentra disponible')) {
-                                msg = 'This YouTube video is unavailable and cannot be downloaded.';
-                              }
-                              setModalMsg(msg);
-                              setShowModal(true);
-                            }
-                          } catch (e) {
-                            let msg = (e.message || e);
-                            if (msg.includes('UNPLAYABLE') || msg.includes('no se encuentra disponible')) {
-                              msg = 'This YouTube video is unavailable and cannot be downloaded.';
-                            }
-                            setModalMsg(msg);
-                            setShowModal(true);
-                          }
-                        }}
+                        onClick={handleDownloadClick}
                       >Download</button>
                     ) : null}
                   </div>
