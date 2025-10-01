@@ -245,7 +245,26 @@ func HandleSonarrBanner(c *gin.Context) {
 // Handler for /api/sonarr/poster/:seriesId
 func HandleSonarrPoster(c *gin.Context) {
 	seriesId := c.Param("seriesId")
-	// Load Sonarr settings
+	sonarrSettings, err := getSonarrSettings()
+	if err != nil {
+		c.String(http.StatusInternalServerError, ErrInvalidSonarrSettings)
+		return
+	}
+	apiBase := trimTrailingSlash(sonarrSettings.URL)
+	posterUrl, err := getSonarrSeriesPosterUrl(apiBase, sonarrSettings.APIKey, seriesId)
+	if err != nil {
+		c.String(http.StatusNotFound, err.Error())
+		return
+	}
+	if err := proxyImage(c, posterUrl, apiBase, sonarrSettings.APIKey); err != nil {
+		c.String(http.StatusBadGateway, err.Error())
+	}
+}
+
+func getSonarrSettings() (struct {
+	URL    string
+	APIKey string
+}, error) {
 	data, err := os.ReadFile(ConfigPath)
 	var allSettings struct {
 		Sonarr struct {
@@ -253,76 +272,97 @@ func HandleSonarrPoster(c *gin.Context) {
 			APIKey string `yaml:"apiKey"`
 		} `yaml:"sonarr"`
 	}
+	if err != nil {
+		return struct {
+			URL    string
+			APIKey string
+		}{}, err
+	}
 	if err := yaml.Unmarshal(data, &allSettings); err != nil {
-		c.String(http.StatusInternalServerError, ErrInvalidSonarrSettings)
-		return
+		return struct {
+			URL    string
+			APIKey string
+		}{}, err
 	}
-	sonarrSettings := allSettings.Sonarr
-	// Remove trailing slash from URL if present
-	apiBase := sonarrSettings.URL
-	if strings.HasSuffix(apiBase, "/") {
-		apiBase = strings.TrimRight(apiBase, "/")
+	return struct {
+		URL    string
+		APIKey string
+	}{
+		URL:    allSettings.Sonarr.URL,
+		APIKey: allSettings.Sonarr.APIKey,
+	}, nil
+}
+
+func trimTrailingSlash(url string) string {
+	if strings.HasSuffix(url, "/") {
+		return strings.TrimRight(url, "/")
 	}
-	// Fetch series info from Sonarr to get poster path
+	return url
+}
+
+func getSonarrSeriesPosterUrl(apiBase, apiKey, seriesId string) (string, error) {
 	req, err := http.NewRequest("GET", apiBase+"/api/v3/series/"+seriesId, nil)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Error creating request")
-		return
+		return "", fmt.Errorf("Error creating request")
 	}
-	req.Header.Set(HeaderApiKey, sonarrSettings.APIKey)
+	req.Header.Set(HeaderApiKey, apiKey)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil || resp.StatusCode != 200 {
-		c.String(http.StatusBadGateway, "Failed to fetch series info from Sonarr")
-		return
+		return "", fmt.Errorf("Failed to fetch series info from Sonarr")
 	}
 	defer resp.Body.Close()
 	var series map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&series); err != nil {
-		c.String(http.StatusInternalServerError, "Failed to decode Sonarr response")
-		return
+		return "", fmt.Errorf("Failed to decode Sonarr response")
 	}
-	// Find poster path in images array
 	images, ok := series["images"].([]interface{})
-	var posterUrl string
-	if ok {
-		for _, img := range images {
-			m, ok := img.(map[string]interface{})
-			if ok && m["coverType"] == "poster" {
-				if remoteUrl, ok := m["remoteUrl"].(string); ok && remoteUrl != "" {
-					posterUrl = remoteUrl
-					break
-				}
-				if url, ok := m["url"].(string); ok && url != "" {
-					posterUrl = apiBase + url
-					break
-				}
+	if !ok {
+		return "", fmt.Errorf("No poster found for series")
+	}
+	posterUrl, found := findPosterUrl(images, apiBase)
+	if !found {
+		return "", fmt.Errorf("No poster found for series")
+	}
+	return posterUrl, nil
+}
+
+func findPosterUrl(images []interface{}, apiBase string) (string, bool) {
+	for _, img := range images {
+		m, ok := img.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if m["coverType"] == "poster" {
+			if remoteUrl, ok := m["remoteUrl"].(string); ok && remoteUrl != "" {
+				return remoteUrl, true
+			}
+			if url, ok := m["url"].(string); ok && url != "" {
+				return apiBase + url, true
 			}
 		}
 	}
-	if posterUrl == "" {
-		c.String(http.StatusNotFound, "No poster found for series")
-		return
-	}
-	// Proxy the poster image
-	posterReq, err := http.NewRequest("GET", posterUrl, nil)
+	return "", false
+}
+
+func proxyImage(c *gin.Context, imageUrl, apiBase, apiKey string) error {
+	req, err := http.NewRequest("GET", imageUrl, nil)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Error creating poster request")
-		return
+		return fmt.Errorf("Error creating poster request")
 	}
-	// If poster is local, add API key
-	if strings.HasPrefix(posterUrl, apiBase) {
-		posterReq.Header.Set(HeaderApiKey, sonarrSettings.APIKey)
+	if strings.HasPrefix(imageUrl, apiBase) {
+		req.Header.Set(HeaderApiKey, apiKey)
 	}
-	posterResp, err := client.Do(posterReq)
-	if err != nil || posterResp.StatusCode != 200 {
-		c.String(http.StatusBadGateway, "Failed to fetch poster image")
-		return
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		return fmt.Errorf("Failed to fetch poster image")
 	}
-	defer posterResp.Body.Close()
-	c.Header(HeaderContentType, posterResp.Header.Get(HeaderContentType))
+	defer resp.Body.Close()
+	c.Header(HeaderContentType, resp.Header.Get(HeaderContentType))
 	c.Status(http.StatusOK)
-	io.Copy(c.Writer, posterResp.Body)
+	_, copyErr := io.Copy(c.Writer, resp.Body)
+	return copyErr
 }
 
 // Handler to get Sonarr settings
@@ -389,23 +429,54 @@ type SonarrSeries struct {
 
 // Handler for /api/sonarr/series
 func HandleSonarrSeries(c *gin.Context) {
-	// Serve series from cache (only series with downloaded posters)
 	cachePath := SeriesCachePath
-	cacheData, err := os.ReadFile(cachePath)
-	if err == nil {
-		var series []SonarrSeries
-		if err := json.Unmarshal(cacheData, &series); err == nil {
-			c.JSON(http.StatusOK, gin.H{"series": series})
-			return
-		}
+	if series, ok := loadSonarrSeriesFromCache(cachePath); ok {
+		c.JSON(http.StatusOK, gin.H{"series": series})
+		return
 	}
 
-	// Load Sonarr settings from config.yml (YAML)
-	data, err := os.ReadFile(ConfigPath)
+	sonarrSettings, err := getSonarrSettingsFromConfig()
 	if err != nil {
-		fmt.Println("[HandleSonarrSeries] Sonarr settings not found")
+		fmt.Println("[HandleSonarrSeries] Sonarr settings not found or invalid:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Sonarr settings not found"})
 		return
+	}
+
+	apiBase := trimTrailingSlash(sonarrSettings.URL)
+	series, err := fetchAndFilterSonarrSeries(apiBase, sonarrSettings.APIKey)
+	if err != nil {
+		fmt.Println("[HandleSonarrSeries] Error fetching or decoding series:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	cacheData, _ := json.MarshalIndent(series, "", "  ")
+	_ = os.WriteFile(cachePath, cacheData, 0644)
+	c.JSON(http.StatusOK, gin.H{"series": series})
+}
+
+func loadSonarrSeriesFromCache(cachePath string) ([]SonarrSeries, bool) {
+	cacheData, err := os.ReadFile(cachePath)
+	if err != nil {
+		return nil, false
+	}
+	var series []SonarrSeries
+	if err := json.Unmarshal(cacheData, &series); err != nil {
+		return nil, false
+	}
+	return series, true
+}
+
+func getSonarrSettingsFromConfig() (struct {
+	URL    string
+	APIKey string
+}, error) {
+	data, err := os.ReadFile(ConfigPath)
+	if err != nil {
+		return struct {
+			URL    string
+			APIKey string
+		}{}, err
 	}
 	var allSettings struct {
 		Sonarr struct {
@@ -414,46 +485,45 @@ func HandleSonarrSeries(c *gin.Context) {
 		} `yaml:"sonarr"`
 	}
 	if err := yaml.Unmarshal(data, &allSettings); err != nil {
-		fmt.Println("[HandleSonarrSeries] Invalid Sonarr settings")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": ErrInvalidSonarrSettings})
-		return
+		return struct {
+			URL    string
+			APIKey string
+		}{}, err
 	}
-	sonarrSettings := allSettings.Sonarr
+	return struct {
+		URL    string
+		APIKey string
+	}{
+		URL:    allSettings.Sonarr.URL,
+		APIKey: allSettings.Sonarr.APIKey,
+	}, nil
+}
 
-	// Fetch series from Sonarr
-	// Remove trailing slash from URL if present
-	apiBase := sonarrSettings.URL
-	if strings.HasSuffix(apiBase, "/") {
-		apiBase = strings.TrimRight(apiBase, "/")
-	}
+func fetchAndFilterSonarrSeries(apiBase, apiKey string) ([]SonarrSeries, error) {
 	req, err := http.NewRequest("GET", apiBase+"/api/v3/series", nil)
 	if err != nil {
-		fmt.Println("[HandleSonarrSeries] Error creating request:", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating request"})
-		return
+		return nil, fmt.Errorf("Error creating request: %w", err)
 	}
-	req.Header.Set(HeaderApiKey, sonarrSettings.APIKey)
+	req.Header.Set(HeaderApiKey, apiKey)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Println("[HandleSonarrSeries] Error fetching series:", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error fetching series", "details": err.Error()})
-		return
+		return nil, fmt.Errorf("Error fetching series: %w", err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	fmt.Printf("[HandleSonarrSeries] Raw response body: %s\n", string(body))
 	if resp.StatusCode != 200 {
-		fmt.Printf("[HandleSonarrSeries] Sonarr API error: %d\n", resp.StatusCode)
-		return
+		return nil, fmt.Errorf("Sonarr API error: %d", resp.StatusCode)
 	}
 	var allSeries []map[string]interface{}
 	if err := json.Unmarshal(body, &allSeries); err != nil {
-		fmt.Println("[HandleSonarrSeries] Failed to decode Sonarr response:", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode Sonarr response", "details": err.Error(), "body": string(body)})
-		return
+		return nil, fmt.Errorf("Failed to decode Sonarr response: %w", err)
 	}
-	// Filter only series with downloaded episodes (statistics.episodeFileCount > 0)
+	return filterDownloadedSonarrSeries(allSeries), nil
+}
+
+func filterDownloadedSonarrSeries(allSeries []map[string]interface{}) []SonarrSeries {
 	series := make([]SonarrSeries, 0)
 	for _, s := range allSeries {
 		stats, ok := s["statistics"].(map[string]interface{})
@@ -478,10 +548,7 @@ func HandleSonarrSeries(c *gin.Context) {
 			Path:  path,
 		})
 	}
-	// Save series to cache file
-	cacheData, _ = json.MarshalIndent(series, "", "  ")
-	_ = os.WriteFile(cachePath, cacheData, 0644)
-	c.JSON(http.StatusOK, gin.H{"series": series})
+	return series
 }
 
 // --- Sonarr Series Sync ---
@@ -710,12 +777,48 @@ func downloadExtraHandler(c *gin.Context) {
 
 // SyncRadarrMoviesAndMediaCover syncs Radarr movie list and MediaCover folder
 func SyncRadarrMoviesAndMediaCover() error {
-	var syncErr error
-	// Load Radarr settings from config.yml (YAML)
+	settings, err := loadRadarrSettings()
+	if err != nil {
+		fmt.Println("[Sync] Radarr settings not found or invalid:", err)
+		return err
+	}
+
+	movies, err := fetchDownloadedRadarrMovies(settings)
+	if err != nil {
+		fmt.Println("[Sync] Error fetching movies:", err)
+		return err
+	}
+
+	if err := cacheMovies(movies, MoviesCachePath); err != nil {
+		fmt.Println("[Sync] Error caching movies:", err)
+		return err
+	}
+	fmt.Println("[Sync] Synced", len(movies), "downloaded movies to cache.")
+
+	downloadedMovies, err := downloadMovieImages(settings, movies)
+	if err != nil {
+		fmt.Println("[Sync] Error downloading images:", err)
+	}
+
+	if err := atomicCacheMovies(downloadedMovies, "/var/lib/extrazarr/movies_cache.json"); err != nil {
+		fmt.Println("[Sync] Error updating cache with posters:", err)
+		return err
+	}
+	fmt.Println("[Sync] Cached", len(downloadedMovies), "movies with posters.")
+
+	return err
+}
+
+func loadRadarrSettings() (struct {
+	URL    string
+	APIKey string
+}, error) {
 	data, err := os.ReadFile(ConfigPath)
 	if err != nil {
-		fmt.Println("[Sync] Radarr settings not found")
-		return fmt.Errorf("Radarr settings not found: %w", err)
+		return struct {
+			URL    string
+			APIKey string
+		}{}, fmt.Errorf("Radarr settings not found: %w", err)
 	}
 	var allSettings struct {
 		Radarr struct {
@@ -724,54 +827,60 @@ func SyncRadarrMoviesAndMediaCover() error {
 		} `yaml:"radarr"`
 	}
 	if err := yaml.Unmarshal(data, &allSettings); err != nil {
-		fmt.Println("[Sync] Invalid Radarr settings")
-		return fmt.Errorf("Invalid Radarr settings: %w", err)
+		return struct {
+			URL    string
+			APIKey string
+		}{}, fmt.Errorf("Invalid Radarr settings: %w", err)
 	}
-	settings := allSettings.Radarr
-	// Always fetch movies from Radarr and refresh cache
-	cachePath := MoviesCachePath
+	return struct {
+		URL    string
+		APIKey string
+	}{
+		URL:    allSettings.Radarr.URL,
+		APIKey: allSettings.Radarr.APIKey,
+	}, nil
+}
+
+func fetchDownloadedRadarrMovies(settings struct{ URL, APIKey string }) ([]map[string]interface{}, error) {
 	req, err := http.NewRequest("GET", settings.URL+"/api/v3/movie", nil)
 	if err != nil {
-		fmt.Println("[Sync] Error creating request:", err)
-		return fmt.Errorf("Error creating request: %w", err)
+		return nil, fmt.Errorf("Error creating request: %w", err)
 	}
 	req.Header.Set(HeaderApiKey, settings.APIKey)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Println("[Sync] Error fetching movies:", err)
-		return fmt.Errorf("Error fetching movies: %w", err)
+		return nil, fmt.Errorf("Error fetching movies: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		fmt.Println("[Sync] Radarr API error:", resp.StatusCode)
-		return fmt.Errorf("Radarr API error: %d", resp.StatusCode)
+		return nil, fmt.Errorf("Radarr API error: %d", resp.StatusCode)
 	}
 	var allMovies []map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&allMovies); err != nil {
-		fmt.Println("[Sync] Failed to decode Radarr response:", err)
-		return fmt.Errorf("Failed to decode Radarr response: %w", err)
+		return nil, fmt.Errorf("Failed to decode Radarr response: %w", err)
 	}
-	// Filter only downloaded movies (hasFile == true)
 	movies := make([]map[string]interface{}, 0)
 	for _, m := range allMovies {
 		if hasFile, ok := m["hasFile"].(bool); ok && hasFile {
 			movies = append(movies, m)
 		}
 	}
-	// Save movies to cache file
-	cacheData, _ := json.MarshalIndent(movies, "", "  ")
-	_ = os.WriteFile(cachePath, cacheData, 0644)
-	fmt.Println("[Sync] Synced", len(movies), "downloaded movies to cache.")
+	return movies, nil
+}
 
-	// Download poster images from Radarr and cache only movies with posters
-	client = &http.Client{}
+func cacheMovies(movies []map[string]interface{}, cachePath string) error {
+	cacheData, err := json.MarshalIndent(movies, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(cachePath, cacheData, 0644)
+}
+
+func downloadMovieImages(settings struct{ URL, APIKey string }, movies []map[string]interface{}) ([]map[string]interface{}, error) {
+	client := &http.Client{}
 	downloadedMovies := make([]map[string]interface{}, 0)
 	for _, movie := range movies {
-		hasFile, ok := movie["hasFile"].(bool)
-		if !ok || !hasFile {
-			continue
-		}
 		id, ok := movie["id"].(float64)
 		if !ok {
 			continue
@@ -784,75 +893,46 @@ func SyncRadarrMoviesAndMediaCover() error {
 
 		os.MkdirAll(fmt.Sprintf("/var/lib/extrazarr/MediaCover/%s", idStr), 0755)
 
-		// Download poster
-		resp, err := client.Get(posterUrl)
-		if err != nil {
-			fmt.Println("[Sync] Failed to download poster for movie", idStr, err)
-			syncErr = err
-		} else {
-			defer resp.Body.Close()
-			if resp.StatusCode == 200 {
-				out, err := os.Create(posterPath)
-				if err == nil {
-					_, err = io.Copy(out, resp.Body)
-					out.Close()
-					if err == nil {
-						downloadedMovies = append(downloadedMovies, movie)
-					} else {
-						fmt.Println("[Sync] Error saving poster for movie", idStr, err)
-						syncErr = err
-					}
-				} else {
-					fmt.Println("[Sync] Error creating file for poster", posterPath, err)
-					syncErr = err
-				}
-			} else {
-				fmt.Println("[Sync] Poster not found for movie", idStr)
-			}
+		if downloadImage(client, posterUrl, posterPath) {
+			downloadedMovies = append(downloadedMovies, movie)
 		}
-
-		// Download fanart for background
-		respFanart, err := client.Get(fanartUrl)
-		if err != nil {
-			fmt.Println("[Sync] Failed to download fanart for movie", idStr, err)
-			syncErr = err
-			continue
-		}
-		defer respFanart.Body.Close()
-		if respFanart.StatusCode == 200 {
-			out, err := os.Create(fanartPath)
-			if err == nil {
-				_, err = io.Copy(out, respFanart.Body)
-				out.Close()
-				if err != nil {
-					fmt.Println("[Sync] Error saving fanart for movie", idStr, err)
-					syncErr = err
-				}
-			} else {
-				fmt.Println("[Sync] Error creating file for fanart", fanartPath, err)
-				syncErr = err
-			}
-		} else {
-			fmt.Println("[Sync] Fanart not found for movie", idStr)
-		}
+		downloadImage(client, fanartUrl, fanartPath)
 	}
+	return downloadedMovies, nil
+}
 
-	// Save only movies with downloaded posters to cache
-	cachePath = "/var/lib/extrazarr/movies_cache.json"
+func downloadImage(client *http.Client, url, path string) bool {
+	resp, err := client.Get(url)
+	if err != nil {
+		fmt.Println("[Sync] Failed to download image:", url, err)
+		return false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		fmt.Println("[Sync] Image not found:", url)
+		return false
+	}
+	out, err := os.Create(path)
+	if err != nil {
+		fmt.Println("[Sync] Error creating file for image:", path, err)
+		return false
+	}
+	defer out.Close()
+	if _, err = io.Copy(out, resp.Body); err != nil {
+		fmt.Println("[Sync] Error saving image:", path, err)
+		return false
+	}
+	return true
+}
+
+func atomicCacheMovies(movies []map[string]interface{}, cachePath string) error {
 	tmpCachePath := cachePath + ".tmp"
-	cacheData, _ = json.MarshalIndent(downloadedMovies, "", "  ")
-	// Write to a temporary file first
-	if err := os.WriteFile(tmpCachePath, cacheData, 0644); err != nil {
-		fmt.Println("[Sync] Error writing temp cache file:", err)
-		syncErr = err
-	} else {
-		// Atomically replace the cache file only after successful write
-		if err := os.Rename(tmpCachePath, cachePath); err != nil {
-			fmt.Println("[Sync] Error replacing cache file:", err)
-			syncErr = err
-		} else {
-			fmt.Println("[Sync] Cached", len(downloadedMovies), "movies with posters.")
-		}
+	cacheData, err := json.MarshalIndent(movies, "", "  ")
+	if err != nil {
+		return err
 	}
-	return syncErr
+	if err := os.WriteFile(tmpCachePath, cacheData, 0644); err != nil {
+		return err
+	}
+	return os.Rename(tmpCachePath, cachePath)
 }
