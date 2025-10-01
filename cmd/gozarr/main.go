@@ -53,8 +53,8 @@ func getAllTasksStatus() gin.HandlerFunc {
 		// Build schedules array
 		schedules := []gin.H{
 			{
-				"type":          "Sync Radarr",
-				"name":          "Sync Radarr",
+				"type":          "Sync with Radarr",
+				"name":          "Sync with Radarr",
 				"interval":      "15 minutes",
 				"lastExecution": syncRadarrStatus.LastExecution,
 				"lastDuration":  syncRadarrStatus.LastDuration.String(),
@@ -62,8 +62,8 @@ func getAllTasksStatus() gin.HandlerFunc {
 				"lastError":     syncRadarrStatus.LastError,
 			},
 			{
-				"type":          "Sync Sonarr",
-				"name":          "Sync Sonarr",
+				"type":          "Sync with Sonarr",
+				"name":          "Sync with Sonarr",
 				"interval":      "15 minutes",
 				"lastExecution": syncSonarrStatus.LastExecution,
 				"lastDuration":  syncSonarrStatus.LastDuration.String(),
@@ -75,7 +75,7 @@ func getAllTasksStatus() gin.HandlerFunc {
 		queues := make([]map[string]interface{}, 0)
 		for _, item := range syncRadarrStatus.Queue {
 			queues = append(queues, map[string]interface{}{
-				"type":     "Sync Radarr",
+				"type":     "Sync with Radarr",
 				"Queued":   item.Queued,
 				"Started":  item.Started,
 				"Ended":    item.Ended,
@@ -86,7 +86,7 @@ func getAllTasksStatus() gin.HandlerFunc {
 		}
 		for _, item := range syncSonarrStatus.Queue {
 			queues = append(queues, map[string]interface{}{
-				"type":     "Sync Sonarr",
+				"type":     "Sync with Sonarr",
 				"Queued":   item.Queued,
 				"Started":  item.Started,
 				"Ended":    item.Ended,
@@ -117,7 +117,7 @@ func main() {
 	r.GET("/api/tasks/sync-radarr/status", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"scheduled": gin.H{
-				"name":          "Sync Radarr",
+				"name":          "Sync with Radarr",
 				"interval":      "15 minutes",
 				"lastExecution": syncRadarrStatus.LastExecution,
 				"lastDuration":  syncRadarrStatus.LastDuration.String(),
@@ -132,7 +132,7 @@ func main() {
 	r.GET("/api/tasks/sync-sonarr/status", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"scheduled": gin.H{
-				"name":          "Sync Sonarr",
+				"name":          "Sync with Sonarr",
 				"interval":      "15 minutes",
 				"lastExecution": syncSonarrStatus.LastExecution,
 				"lastDuration":  syncSonarrStatus.LastDuration.String(),
@@ -145,6 +145,87 @@ func main() {
 
 	// API endpoint for combined scheduled/queue status
 	r.GET("/api/tasks/status", getAllTasksStatus())
+
+	// API endpoint to force execution of a scheduled task
+	r.POST("/api/tasks/force", func(c *gin.Context) {
+		var req struct {
+			Name string `json:"name"`
+		}
+		if err := c.BindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+			return
+		}
+		// Log the force execution request
+		println("[FORCE] Requested force execution for:", req.Name)
+		if req.Name == "Sync with Radarr" {
+			go func() {
+				println("[FORCE] Executing Sync Radarr...")
+				item := SyncRadarrQueueItem{
+					Queued: time.Now(),
+					Status: "queued",
+				}
+				syncRadarrStatus.Queue = append(syncRadarrStatus.Queue, item)
+				item.Started = time.Now()
+				item.Status = "running"
+				err := internal.SyncRadarrMoviesAndMediaCover()
+				item.Ended = time.Now()
+				item.Duration = item.Ended.Sub(item.Started)
+				item.Status = "done"
+				if err != nil {
+					item.Error = err.Error()
+					item.Status = "error"
+					syncRadarrStatus.LastError = err.Error()
+					println("[FORCE] Sync Radarr error:", err.Error())
+				} else {
+					println("[FORCE] Sync Radarr completed successfully.")
+				}
+				syncRadarrStatus.LastExecution = item.Ended
+				syncRadarrStatus.LastDuration = item.Duration
+				syncRadarrStatus.NextExecution = item.Ended.Add(15 * time.Minute)
+				if len(syncRadarrStatus.Queue) > 10 {
+					syncRadarrStatus.Queue = syncRadarrStatus.Queue[len(syncRadarrStatus.Queue)-10:]
+				}
+			}()
+			c.JSON(http.StatusOK, gin.H{"status": "Sync Radarr forced"})
+			return
+		}
+		if req.Name == "Sync with Sonarr" {
+			go func() {
+				println("[FORCE] Executing Sync Sonarr...")
+				item := SyncSonarrQueueItem{
+					Queued: time.Now(),
+					Status: "queued",
+				}
+				syncSonarrStatus.Queue = append(syncSonarrStatus.Queue, item)
+				item.Started = time.Now()
+				item.Status = "running"
+				err := internal.SyncSonarrSeriesAndMediaCover()
+				item.Ended = time.Now()
+				item.Duration = item.Ended.Sub(item.Started)
+				if err == nil {
+					item.Status = "done"
+				} else {
+					item.Status = "error"
+				}
+				if err != nil {
+					item.Error = err.Error()
+					syncSonarrStatus.LastError = err.Error()
+					println("[FORCE] Sync Sonarr error:", err.Error())
+				} else {
+					println("[FORCE] Sync Sonarr completed successfully.")
+				}
+				syncSonarrStatus.LastExecution = item.Ended
+				syncSonarrStatus.LastDuration = item.Duration
+				syncSonarrStatus.NextExecution = item.Ended.Add(15 * time.Minute)
+				if len(syncSonarrStatus.Queue) > 10 {
+					syncSonarrStatus.Queue = syncSonarrStatus.Queue[len(syncSonarrStatus.Queue)-10:]
+				}
+			}()
+			c.JSON(http.StatusOK, gin.H{"status": "Sync Sonarr forced"})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown task"})
+	})
 
 	// Background sync task: sync Radarr movies and MediaCover every 15 minutes
 	go func() {
