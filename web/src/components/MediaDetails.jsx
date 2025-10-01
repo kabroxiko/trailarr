@@ -4,9 +4,9 @@ import { faBookmark } from '@fortawesome/free-solid-svg-icons';
 import { useParams } from 'react-router-dom';
 import { searchExtras } from '../api';
 
-export default function MovieDetails({ movies, loading }) {
+export default function MediaDetails({ mediaItems, loading }) {
   const { id } = useParams();
-  const movie = movies.find(m => String(m.id) === id);
+  const media = mediaItems.find(m => String(m.id) === id);
   const [extras, setExtras] = useState([]);
   const [existingExtras, setExistingExtras] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -20,14 +20,15 @@ export default function MovieDetails({ movies, loading }) {
   }, []);
 
   useEffect(() => {
-    if (!movie) return;
+    if (!media) return;
     setSearchLoading(true);
     setError('');
-    searchExtras(movie.title)
+    searchExtras(media.title)
       .then(res => {
         setExtras(res.extras || []);
-        if (movie.path) {
-          fetch(`/api/extras/existing?moviePath=${encodeURIComponent(movie.path)}`)
+        if (media.path) {
+          let paramName = isSeriesDetail ? 'seriesPath' : 'moviePath';
+          fetch(`/api/extras/existing?${paramName}=${encodeURIComponent(media.path)}`)
             .then(r => r.json())
             .then(data => setExistingExtras(data.existing || []))
             .catch(() => setExistingExtras([]));
@@ -35,18 +36,18 @@ export default function MovieDetails({ movies, loading }) {
       })
       .catch(() => setError('Failed to search extras'))
       .finally(() => setSearchLoading(false));
-  }, [movie]);
+  }, [media]);
 
-  if (loading) return <div>Loading movie details...</div>;
-  if (!movie) {
+  if (loading) return <div>Loading media details...</div>;
+  if (!media) {
     return (
       <div>
-        Movie not found
+        Media not found
         <pre style={{ background: '#eee', color: '#222', padding: 8, marginTop: 12, fontSize: 13 }}>
           Debug info:
           id: {String(id)}
-          movies.length: {movies ? movies.length : 'undefined'}
-          movies: {JSON.stringify(movies, null, 2)}
+          mediaItems.length: {mediaItems ? mediaItems.length : 'undefined'}
+          mediaItems: {JSON.stringify(mediaItems, null, 2)}
         </pre>
       </div>
     );
@@ -56,7 +57,7 @@ export default function MovieDetails({ movies, loading }) {
     setSearchLoading(true);
     setError('');
     try {
-      const res = await searchExtras(movie.title);
+      const res = await searchExtras(media.title);
       setExtras(res.extras || []);
     } catch (e) {
       setError('Failed to search extras');
@@ -68,9 +69,9 @@ export default function MovieDetails({ movies, loading }) {
   const isSeriesDetail = window.location.pathname.startsWith('/series/');
   let background;
   if (isSeriesDetail) {
-    background = `url(/api/sonarr/banner/${movie.id}) center center/cover no-repeat`;
+    background = `url(/api/sonarr/banner/${media.id}) center center/cover no-repeat`;
   } else {
-    background = `url(/api/radarr/banner/${movie.id}) center center/cover no-repeat`;
+    background = `url(/api/radarr/banner/${media.id}) center center/cover no-repeat`;
   }
 
   return (
@@ -122,8 +123,8 @@ export default function MovieDetails({ movies, loading }) {
         <div style={{ minWidth: 150, zIndex: 2, display: 'flex', justifyContent: 'flex-start', alignItems: 'center', height: '100%', padding: '0 0 0 32px' }}>
           <img
             src={isSeriesDetail
-              ? `/api/sonarr/poster/${movie.id}`
-              : `/api/radarr/poster/${movie.id}`}
+              ? `/api/sonarr/poster/${media.id}`
+              : `/api/radarr/poster/${media.id}`}
             style={{ width: 120, height: 180, objectFit: 'cover', borderRadius: 2, background: '#222', boxShadow: '0 1px 4px rgba(0,0,0,0.18)' }}
             onError={e => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/120x180?text=No+Poster'; }}
           />
@@ -131,9 +132,9 @@ export default function MovieDetails({ movies, loading }) {
         <div style={{ flex: 1, zIndex: 2, display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', marginLeft: 32 }}>
           <h2 style={{ color: '#fff', margin: 0, fontSize: 22, fontWeight: 500, textShadow: '0 1px 2px #000', letterSpacing: 0.2, textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8 }}>
             <FontAwesomeIcon icon={faBookmark} color="#eee" style={{ marginRight: 8 }} />
-            {movie.title}
+            {media.title}
           </h2>
-          <div style={{ marginBottom: 6, color: '#e5e7eb', textAlign: 'left', fontSize: 13, textShadow: '0 1px 2px #000' }}>{movie.year} &bull; {movie.path}</div>
+          <div style={{ marginBottom: 6, color: '#e5e7eb', textAlign: 'left', fontSize: 13, textShadow: '0 1px 2px #000' }}>{media.year} &bull; {media.path}</div>
           {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
         </div>
       </div>
