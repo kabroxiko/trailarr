@@ -1,3 +1,19 @@
+export async function deleteExtra({ mediaType, mediaId, extraType, extraTitle }) {
+	const payload = { mediaType, mediaId: Number(mediaId), extraType, extraTitle };
+	const res = await fetch('/api/extras', {
+		method: 'DELETE',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(payload)
+	});
+	if (!res.ok) throw new Error('Failed to delete extra');
+	return await res.json();
+}
+export async function getHistory() {
+	const res = await fetch('/api/history');
+	if (!res.ok) throw new Error('Failed to fetch history');
+	const data = await res.json();
+	return data.history || [];
+}
 export async function getSeries() {
 	const res = await fetch('/api/series');
 	if (!res.ok) throw new Error('Failed to fetch Sonarr series');

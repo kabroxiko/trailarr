@@ -17,7 +17,9 @@ func RegisterRoutes(r *gin.Engine) {
 	r.GET("/api/settings/sonarr", getSonarrSettingsHandler)
 	r.POST("/api/settings/sonarr", saveSonarrSettingsHandler)
 	r.POST("/api/extras/download", downloadExtraHandler)
+	r.DELETE("/api/extras", deleteExtraHandler)
 	r.GET("/api/extras/existing", existingExtrasHandler)
+	r.GET("/api/history", historyHandler)
 	// Posters and banners are now served directly from /mediacover static path
 	// General settings (TMDB key)
 	r.GET("/api/settings/general", getGeneralSettingsHandler)

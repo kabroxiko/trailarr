@@ -5,6 +5,7 @@ import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import GeneralSettings from './components/GeneralSettings';
 import Tasks from './components/Tasks';
+import HistoryPage from './components/HistoryPage';
 import { Routes, Route } from 'react-router-dom';
 import { Navigate } from 'react-router-dom';
 import './App.css';
@@ -39,7 +40,6 @@ function App() {
       setSelectedSection('Settings');
       const sub = path.split('/')[2];
       if (sub) {
-        // Capitalize first letter for matching submenu
         setSelectedSettingsSub(sub.charAt(0).toUpperCase() + sub.slice(1));
       }
     } else if (path.startsWith('/settings')) {
@@ -49,6 +49,8 @@ function App() {
       setSelectedSection('Movies');
     } else if (path.startsWith('/series')) {
       setSelectedSection('Series');
+    } else if (path.startsWith('/history')) {
+      setSelectedSection('History');
     }
   }, []);
 
@@ -204,6 +206,7 @@ function App() {
               } />
               <Route path="/movies/:id" element={<MediaDetails mediaItems={radarrMovies} loading={radarrMoviesLoading} mediaType="movie" />} />
               <Route path="/series/:id" element={<MediaDetails mediaItems={sonarrSeries} loading={sonarrSeriesLoading} mediaType="tv" />} />
+              <Route path="/history" element={<HistoryPage />} />
               <Route path="/settings/radarr" element={
                 <div style={{
                   background: darkMode ? '#23232a' : '#fff',

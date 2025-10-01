@@ -406,24 +406,22 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
                                 onClick={async () => {
                                   if (!window.confirm('Delete this extra?')) return;
                                   try {
-                                    const res = await fetch('/api/extras/delete', {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({
-                                        mediaPath: media.path,
-                                        extraType: extra.type,
-                                        extraTitle: extra.title
-                                      })
-                                    });
-                                    if (res.ok) {
-                                      setExtras(prev => prev.map((e, i) => i === idx && e.type === type ? { ...e, downloaded: 'false' } : e));
-                                    } else {
-                                      const data = await res.json();
-                                      setModalMsg(data?.error || 'Delete failed');
-                                      setShowModal(true);
-                                    }
+                                    // Use shared API function for delete
+                                    const { deleteExtra } = await import('../api');
+                                    const payload = {
+                                      mediaType,
+                                      mediaId: media.id,
+                                      extraType: extra.type,
+                                      extraTitle: extra.title
+                                    };
+                                    await deleteExtra(payload);
+                                    setExtras(prev => prev.map((e, i) => i === idx && e.type === type ? { ...e, downloaded: 'false' } : e));
                                   } catch (e) {
-                                    setModalMsg(e.message || 'Delete failed');
+                                    let msg = e?.message || e;
+                                    // If error response has detail, show it
+                                    if (e?.detail) msg += `\n${e.detail}`;
+                                    console.error('Failed to delete extra:', e);
+                                    setModalMsg(msg || 'Delete failed');
                                     setShowModal(true);
                                   }
                                 }}
