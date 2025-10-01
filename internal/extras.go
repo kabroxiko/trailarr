@@ -111,14 +111,6 @@ const (
 	ExtraTypeOthers          ExtraType = "Others"
 )
 
-var extraTypes = map[ExtraType]bool{
-	ExtraTypeBehindTheScenes: true,
-	ExtraTypeFeaturettes:     true,
-	ExtraTypeScenes:          true,
-	ExtraTypeTrailers:        true,
-	ExtraTypeOthers:          true,
-}
-
 func canonicalizeExtraType(extraType, name string) string {
 	if extraType == "" {
 		if name != "" {
