@@ -61,6 +61,14 @@ function MovieDetails({ movies }) {
 }
 
 function App() {
+  // Night mode detection
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const [darkMode, setDarkMode] = useState(prefersDark);
+  useEffect(() => {
+    const listener = e => setDarkMode(e.matches);
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', listener);
+    return () => window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', listener);
+  }, []);
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [plexItems, setPlexItems] = useState([]);
   const [plexError, setPlexError] = useState('');
@@ -101,9 +109,28 @@ function App() {
   }, []);
 
   return (
-    <div style={{ display: 'flex', width: '100vw', height: '100vh', fontFamily: 'sans-serif', background: '#f7f8fa', overflowX: 'hidden', overflowY: 'hidden', position: 'fixed', left: 0, top: 0 }}>
+    <div style={{
+      display: 'flex',
+      width: '100vw',
+      height: '100vh',
+      fontFamily: 'sans-serif',
+      background: darkMode ? '#18181b' : '#f7f8fa',
+      color: darkMode ? '#e5e7eb' : '#222',
+      overflowX: 'hidden',
+      overflowY: 'hidden',
+      position: 'fixed',
+      left: 0,
+      top: 0
+    }}>
     {/* Sidebar */}
-  <aside style={{ width: 220, background: '#fff', borderRight: '1px solid #e5e7eb', padding: '1em 0', height: '100vh', boxSizing: 'border-box' }}>
+  <aside style={{
+    width: 220,
+    background: darkMode ? '#23232a' : '#fff',
+    borderRight: darkMode ? '1px solid #333' : '1px solid #e5e7eb',
+    padding: '1em 0',
+    height: '100vh',
+    boxSizing: 'border-box'
+  }}>
         <div style={{ textAlign: 'center', marginBottom: '2em' }}>
           <span style={{ fontWeight: 'bold', color: '#d6b4f7', fontSize: 18 }}>EXTRAZARR</span>
         </div>
@@ -123,9 +150,11 @@ function App() {
                   to={name === 'Movies' ? '/movies' : name === 'Settings' ? '/settings' : '/'}
                   style={{
                     textDecoration: 'none',
-                    background: selectedSection === name ? '#f3e8ff' : 'none',
+                    background: selectedSection === name ? (darkMode ? '#d6b4f7' : '#f3e8ff') : 'none',
                     border: 'none',
-                    color: selectedSection === name ? '#a855f7' : '#333',
+                    color: selectedSection === name
+                      ? (darkMode ? '#6d28d9' : '#a855f7')
+                      : (darkMode ? '#e5e7eb' : '#333'),
                     fontWeight: selectedSection === name ? 'bold' : 'normal',
                     width: '100%',
                     textAlign: 'left',
@@ -147,15 +176,18 @@ function App() {
                     listStyle: 'none',
                     padding: 0,
                     margin: '8px 0 0 0',
-                    background: '#f3f4f6',
+                    background: darkMode ? '#23232a' : '#f3f4f6',
                     borderRadius: 6,
+                    color: darkMode ? '#e5e7eb' : '#222',
                   }}>
                     {['General', 'Languages', 'Providers', 'Subtitles', 'Sonarr', 'Radarr', 'Plex', 'Notifications', 'Scheduler', 'UI'].map((submenu, idx) => (
                       <li key={submenu} style={{
                         padding: '0.5em 1em',
                         borderLeft: selectedSettingsSub === submenu ? '3px solid #d6b4f7' : '3px solid transparent',
-                        background: selectedSettingsSub === submenu ? '#fff' : 'none',
-                        color: selectedSettingsSub === submenu ? '#a855f7' : '#333',
+                        background: selectedSettingsSub === submenu ? (darkMode ? '#d6b4f7' : '#fff') : 'none',
+                        color: selectedSettingsSub === submenu
+                          ? (darkMode ? '#6d28d9' : '#a855f7')
+                          : (darkMode ? '#e5e7eb' : '#333'),
                         fontWeight: selectedSettingsSub === submenu ? 'bold' : 'normal',
                         cursor: 'pointer',
                       }}
@@ -171,7 +203,21 @@ function App() {
       </aside>
 
   {/* Main content */}
-  <main style={{ flex: 1, padding: '2em', height: '100vh', boxSizing: 'border-box', overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'stretch', maxWidth: 'calc(100vw - 220px)' }}>
+  <main style={{
+    flex: 1,
+    padding: '2em',
+    height: '100vh',
+    boxSizing: 'border-box',
+    overflowY: 'auto',
+    overflowX: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    justifyContent: 'stretch',
+    maxWidth: 'calc(100vw - 220px)',
+    background: darkMode ? '#18181b' : '#fff',
+    color: darkMode ? '#e5e7eb' : '#222'
+  }}>
         <div style={{ marginBottom: '2em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ color: '#a855f7', margin: 0 }}>{selectedSection}</h2>
           <input type="search" placeholder="Search" style={{ padding: '0.5em', borderRadius: 6, border: '1px solid #e5e7eb', width: 200 }} />
@@ -209,7 +255,18 @@ function App() {
             {radarrStatus && <div style={{ marginTop: '1em', color: '#22c55e' }}>{radarrStatus}</div>}
           </div>
         )}
-  <div style={{ background: '#fff', borderRadius: 8, boxShadow: '0 1px 4px #e5e7eb', padding: '1em', width: '100%', maxWidth: '100%', flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
+  <div style={{
+    background: darkMode ? '#23232a' : '#fff',
+    borderRadius: 8,
+    boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb',
+    padding: '1em',
+    width: '100%',
+    maxWidth: '100%',
+    flex: 1,
+    overflowY: 'auto',
+    overflowX: 'hidden',
+    color: darkMode ? '#e5e7eb' : '#222'
+  }}>
     <Routes>
       <Route path="/movies" element={
         <>
