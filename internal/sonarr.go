@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	// adjust to actual module path if needed
 )
 
 var getSonarrPosterHandler = getImageHandler("sonarr", "id", "/poster-500.jpg")
@@ -82,36 +81,38 @@ var syncSonarrStatus = struct {
 
 // Handler to force sync Sonarr
 func ForceSyncSonarr() {
-	println("[FORCE] Executing Sync Sonarr...")
-	item := SyncSonarrQueueItem{
-		Queued: time.Now(),
-		Status: "queued",
+	// Use generic ForceSyncMedia from media.go
+	var tempQueue []SyncQueueItem
+	for _, item := range syncSonarrStatus.Queue {
+		tempQueue = append(tempQueue, SyncQueueItem{
+			Queued:   item.Queued,
+			Started:  item.Started,
+			Ended:    item.Ended,
+			Duration: item.Duration,
+			Status:   item.Status,
+			Error:    item.Error,
+		})
 	}
-	syncSonarrStatus.Queue = append(syncSonarrStatus.Queue, item)
-	item.Started = time.Now()
-	item.Status = "running"
-	err := SyncSonarrImages()
-	item.Ended = time.Now()
-	item.Duration = item.Ended.Sub(item.Started)
-	if err == nil {
-		item.Status = "done"
-	} else {
-		item.Status = "error"
-	}
-	if err != nil {
-		item.Error = err.Error()
-		item.Status = "error"
-		syncSonarrStatus.LastError = err.Error()
-		println("[FORCE] Sync Sonarr error:", err.Error())
-	} else {
-		println("[FORCE] Sync Sonarr completed successfully.")
-	}
-	syncSonarrStatus.LastExecution = item.Ended
-	syncSonarrStatus.LastDuration = item.Duration
-	interval := Timings["sonarr"]
-	syncSonarrStatus.NextExecution = item.Ended.Add(time.Duration(interval) * time.Minute)
-	if len(syncSonarrStatus.Queue) > 10 {
-		syncSonarrStatus.Queue = syncSonarrStatus.Queue[len(syncSonarrStatus.Queue)-10:]
+	ForceSyncMedia(
+		"sonarr",
+		SyncSonarrImages,
+		Timings,
+		&tempQueue,
+		&syncSonarrStatus.LastError,
+		&syncSonarrStatus.LastExecution,
+		&syncSonarrStatus.LastDuration,
+		&syncSonarrStatus.NextExecution,
+	)
+	syncSonarrStatus.Queue = nil
+	for _, item := range tempQueue {
+		syncSonarrStatus.Queue = append(syncSonarrStatus.Queue, SyncSonarrQueueItem{
+			Queued:   item.Queued,
+			Started:  item.Started,
+			Ended:    item.Ended,
+			Duration: item.Duration,
+			Status:   item.Status,
+			Error:    item.Error,
+		})
 	}
 }
 

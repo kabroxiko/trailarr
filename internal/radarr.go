@@ -81,32 +81,38 @@ var syncRadarrStatus = struct {
 
 // Handler to force sync Radarr
 func ForceSyncRadarr() {
-	println("[FORCE] Executing Sync Radarr...")
-	item := SyncRadarrQueueItem{
-		Queued: time.Now(),
-		Status: "queued",
+	// Use generic ForceSyncMedia from media.go
+	var tempQueue []SyncQueueItem
+	for _, item := range syncRadarrStatus.Queue {
+		tempQueue = append(tempQueue, SyncQueueItem{
+			Queued:   item.Queued,
+			Started:  item.Started,
+			Ended:    item.Ended,
+			Duration: item.Duration,
+			Status:   item.Status,
+			Error:    item.Error,
+		})
 	}
-	syncRadarrStatus.Queue = append(syncRadarrStatus.Queue, item)
-	item.Started = time.Now()
-	item.Status = "running"
-	err := SyncRadarrImages()
-	item.Ended = time.Now()
-	item.Duration = item.Ended.Sub(item.Started)
-	item.Status = "done"
-	if err != nil {
-		item.Error = err.Error()
-		item.Status = "error"
-		syncRadarrStatus.LastError = err.Error()
-		println("[FORCE] Sync Radarr error:", err.Error())
-	} else {
-		println("[FORCE] Sync Radarr completed successfully.")
-	}
-	syncRadarrStatus.LastExecution = item.Ended
-	syncRadarrStatus.LastDuration = item.Duration
-	interval := Timings["radarr"]
-	syncRadarrStatus.NextExecution = item.Ended.Add(time.Duration(interval) * time.Minute)
-	if len(syncRadarrStatus.Queue) > 10 {
-		syncRadarrStatus.Queue = syncRadarrStatus.Queue[len(syncRadarrStatus.Queue)-10:]
+	ForceSyncMedia(
+		"radarr",
+		SyncRadarrImages,
+		Timings,
+		&tempQueue,
+		&syncRadarrStatus.LastError,
+		&syncRadarrStatus.LastExecution,
+		&syncRadarrStatus.LastDuration,
+		&syncRadarrStatus.NextExecution,
+	)
+	syncRadarrStatus.Queue = nil
+	for _, item := range tempQueue {
+		syncRadarrStatus.Queue = append(syncRadarrStatus.Queue, SyncRadarrQueueItem{
+			Queued:   item.Queued,
+			Started:  item.Started,
+			Ended:    item.Ended,
+			Duration: item.Duration,
+			Status:   item.Status,
+			Error:    item.Error,
+		})
 	}
 }
 

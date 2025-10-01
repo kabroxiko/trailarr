@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"sort"
 	"time"
 
 	"gozarr/internal"
@@ -66,6 +67,16 @@ func getAllTasksStatus() gin.HandlerFunc {
 				"Error":    item.Error,
 			})
 		}
+		// Sort queues by Queued date descending
+		sort.Slice(queues, func(i, j int) bool {
+			qi, qj := queues[i]["Queued"], queues[j]["Queued"]
+			ti, ok1 := qi.(time.Time)
+			tj, ok2 := qj.(time.Time)
+			if ok1 && ok2 {
+				return ti.After(tj)
+			}
+			return false
+		})
 		c.JSON(http.StatusOK, gin.H{
 			"schedules": schedules,
 			"queues":    queues,

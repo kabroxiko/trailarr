@@ -12,6 +12,65 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Parametric force sync for Radarr/Sonarr
+type SyncQueueItem struct {
+	Queued   time.Time
+	Started  time.Time
+	Ended    time.Time
+	Duration time.Duration
+	Status   string
+	Error    string
+}
+
+// ForceSyncMedia executes a sync for the given section ("radarr" or "sonarr")
+// syncFunc: function to perform the sync (e.g. SyncRadarrImages or SyncSonarrImages)
+// timings: map of intervals (e.g. Timings)
+// queue: pointer to a slice of SyncQueueItem
+// lastError, lastExecution, lastDuration, nextExecution: pointers to status fields
+func ForceSyncMedia(
+	section string,
+	syncFunc func() error,
+	timings map[string]int,
+	queue *[]SyncQueueItem,
+	lastError *string,
+	lastExecution *time.Time,
+	lastDuration *time.Duration,
+	nextExecution *time.Time,
+) {
+	println("[FORCE] Executing Sync", section, "...")
+	item := SyncQueueItem{
+		Queued: time.Now(),
+		Status: "queued",
+	}
+	// Add initial queued item
+	*queue = append(*queue, item)
+	idx := len(*queue) - 1
+
+	// Update status to running and set Started
+	(*queue)[idx].Started = time.Now()
+	(*queue)[idx].Status = "running"
+
+	err := syncFunc()
+	(*queue)[idx].Ended = time.Now()
+	(*queue)[idx].Duration = (*queue)[idx].Ended.Sub((*queue)[idx].Started)
+	if err != nil {
+		(*queue)[idx].Error = err.Error()
+		(*queue)[idx].Status = "failed"
+		*lastError = err.Error()
+		println("[FORCE] Sync", section, "error:", err.Error())
+	} else {
+		(*queue)[idx].Status = "success"
+		println("[FORCE] Sync", section, "completed successfully.")
+	}
+	*lastExecution = (*queue)[idx].Ended
+	*lastDuration = (*queue)[idx].Duration
+	interval := timings[section]
+	*nextExecution = (*queue)[idx].Ended.Add(time.Duration(interval) * time.Minute)
+	if len(*queue) > 10 {
+		*queue = (*queue)[len(*queue)-10:]
+	}
+}
+
 // Helper to fetch and cache poster image
 func fetchAndCachePoster(localPath, posterUrl, section string) error {
 	resp, err := http.Get(posterUrl)
