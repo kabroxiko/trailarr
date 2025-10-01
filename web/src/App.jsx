@@ -162,9 +162,13 @@ function MovieDetails({ movies, loading }) {
           />
         </div>
         <div style={{ flex: 1, zIndex: 2, display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', marginLeft: 32 }}>
-          <h2 style={{ color: '#fff', margin: 0, fontSize: 22, fontWeight: 500, textShadow: '0 1px 2px #000', letterSpacing: 0.2 }}>{movie.title}</h2>
+          <h2 style={{ color: '#fff', margin: 0, fontSize: 22, fontWeight: 500, textShadow: '0 1px 2px #000', letterSpacing: 0.2, textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 8 }}>
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+            </svg>
+            {movie.title}
+          </h2>
           <div style={{ marginBottom: 6, color: '#e5e7eb', textAlign: 'left', fontSize: 13, textShadow: '0 1px 2px #000' }}>{movie.year} &bull; {movie.path}</div>
-          <div style={{ marginBottom: 10, color: '#f3e8ff', fontSize: 13, textShadow: '0 1px 2px #000' }}>Movie extras would be listed here.</div>
           {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
         </div>
       </div>
