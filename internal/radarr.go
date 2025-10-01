@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"time"
@@ -10,18 +11,54 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var getRadarrPosterHandler = getImageHandler("radarr", "movieId", "/poster-500.jpg")
+var getRadarrPosterHandler = getImageHandler("radarr", "id", "/poster-500.jpg")
 
-var getRadarrBannerHandler = getImageHandler("radarr", "movieId", "/fanart-1280.jpg")
+var getRadarrBannerHandler = getImageHandler("radarr", "id", "/fanart-1280.jpg")
 
-func getRadarrMoviesHandler(c *gin.Context) {
+func getRadarrHandler(c *gin.Context) {
 	cachePath := MoviesCachePath
 	movies, err := loadCache(cachePath)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Movie cache not found"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"movies": movies})
+	// If id query param is present, filter for that movie only
+	idParam := c.Query("id")
+	var filtered []map[string]interface{}
+	if idParam != "" {
+		for _, m := range movies {
+			if id, ok := m["id"]; ok && fmt.Sprintf("%v", id) == idParam {
+				filtered = append(filtered, m)
+				break
+			}
+		}
+	} else {
+		filtered = movies
+	}
+	// Removed extras download check from list endpoint; should only be done in detail endpoint
+	c.JSON(http.StatusOK, gin.H{"movies": filtered})
+}
+
+func getMovieExtrasHandler(c *gin.Context) {
+	idStr := c.Param("id")
+	var id int
+	fmt.Sscanf(idStr, "%d", &id)
+	results, err := SearchExtras("movie", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	moviePath, err := FindMediaPathByID(MoviesCachePath, idStr)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Movie cache not found"})
+		return
+	}
+
+	// Mark downloaded extras using shared logic
+	MarkDownloadedExtras(results, moviePath, "type", "title")
+
+	c.JSON(http.StatusOK, gin.H{"extras": results})
 }
 
 func getRadarrSettingsHandler(c *gin.Context) {

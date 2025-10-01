@@ -28,8 +28,9 @@ func DownloadYouTubeExtra(moviePath, extraType, extraTitle, extraURL string) (*E
 		return nil, fmt.Errorf("Failed to extract YouTube ID: %w", err)
 	}
 
-	// Create output directory if needed
-	outDir := filepath.Join(moviePath, extraType)
+	// Canonicalize the extra type for folder naming
+	canonicalType := canonicalizeExtraType(extraType, extraTitle)
+	outDir := filepath.Join(moviePath, canonicalType)
 	if err := os.MkdirAll(outDir, 0755); err != nil {
 		return nil, fmt.Errorf("Failed to create output dir '%s': %w", outDir, err)
 	}

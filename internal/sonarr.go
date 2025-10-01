@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"time"
@@ -10,18 +11,54 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var getSonarrPosterHandler = getImageHandler("sonarr", "serieId", "/poster-500.jpg")
+var getSonarrPosterHandler = getImageHandler("sonarr", "id", "/poster-500.jpg")
 
-var getSonarrBannerHandler = getImageHandler("sonarr", "serieId", "/fanart-1280.jpg")
+var getSonarrBannerHandler = getImageHandler("sonarr", "id", "/fanart-1280.jpg")
 
-func getSonarrSeriesHandler(c *gin.Context) {
+func getSonarrHandler(c *gin.Context) {
 	cachePath := SeriesCachePath
 	series, err := loadCache(cachePath)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Series cache not found"})
 		return
 	}
-	c.JSON(200, gin.H{"series": series})
+	// If id query param is present, filter for that series only
+	idParam := c.Query("id")
+	var filtered []map[string]interface{}
+	if idParam != "" {
+		for _, s := range series {
+			if id, ok := s["id"]; ok && fmt.Sprintf("%v", id) == idParam {
+				filtered = append(filtered, s)
+				break
+			}
+		}
+	} else {
+		filtered = series
+	}
+	// Removed extras download check from list endpoint; should only be done in detail endpoint
+	c.JSON(200, gin.H{"series": filtered})
+}
+
+func getSeriesExtrasHandler(c *gin.Context) {
+	idStr := c.Param("id")
+	var id int
+	fmt.Sscanf(idStr, "%d", &id)
+	results, err := SearchExtras("tv", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	seriesPath, err := FindMediaPathByID(SeriesCachePath, idStr)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Series cache not found"})
+		return
+	}
+
+	// Mark downloaded extras using shared logic
+	MarkDownloadedExtras(results, seriesPath, "type", "title")
+
+	c.JSON(http.StatusOK, gin.H{"extras": results})
 }
 
 func getSonarrSettingsHandler(c *gin.Context) {
