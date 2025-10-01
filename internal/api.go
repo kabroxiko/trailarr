@@ -8,6 +8,8 @@ import (
 	"os"
 	"strings"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -38,24 +40,24 @@ func RegisterRoutes(r *gin.Engine) {
 
 // Handler to get general settings (TMDB key)
 func getGeneralSettingsHandler(c *gin.Context) {
-	data, err := os.ReadFile("settings.json")
+	data, err := os.ReadFile("config.yml")
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"tmdbKey": ""})
 		return
 	}
 	var allSettings struct {
 		General struct {
-			TMDBApiKey string `json:"tmdbKey"`
-		} `json:"general"`
+			TMDBApiKey string `yaml:"tmdbKey"`
+		} `yaml:"general"`
 	}
-	_ = json.Unmarshal(data, &allSettings)
+	_ = yaml.Unmarshal(data, &allSettings)
 	c.JSON(http.StatusOK, gin.H{"tmdbKey": allSettings.General.TMDBApiKey})
 }
 
 // Handler to save general settings (TMDB key)
 func saveGeneralSettingsHandler(c *gin.Context) {
 	var req struct {
-		TMDBApiKey string `json:"tmdbKey"`
+		TMDBApiKey string `json:"tmdbKey" yaml:"tmdbKey"`
 	}
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
@@ -64,22 +66,22 @@ func saveGeneralSettingsHandler(c *gin.Context) {
 	// Read existing settings
 	var allSettings struct {
 		General struct {
-			TMDBApiKey string `json:"tmdbKey"`
-		} `json:"general"`
+			TMDBApiKey string `yaml:"tmdbKey"`
+		} `yaml:"general"`
 		Sonarr struct {
-			URL    string `json:"url"`
-			APIKey string `json:"apiKey"`
-		} `json:"sonarr"`
+			URL    string `yaml:"url"`
+			APIKey string `yaml:"apiKey"`
+		} `yaml:"sonarr"`
 		Radarr struct {
-			URL    string `json:"url"`
-			APIKey string `json:"apiKey"`
-		} `json:"radarr"`
+			URL    string `yaml:"url"`
+			APIKey string `yaml:"apiKey"`
+		} `yaml:"radarr"`
 	}
-	data, _ := os.ReadFile("settings.json")
-	_ = json.Unmarshal(data, &allSettings)
+	data, _ := os.ReadFile("config.yml")
+	_ = yaml.Unmarshal(data, &allSettings)
 	allSettings.General.TMDBApiKey = req.TMDBApiKey
-	out, _ := json.MarshalIndent(allSettings, "", "  ")
-	err := os.WriteFile("settings.json", out, 0644)
+	out, _ := yaml.Marshal(allSettings)
+	err := os.WriteFile("config.yml", out, 0644)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -91,14 +93,14 @@ func saveGeneralSettingsHandler(c *gin.Context) {
 func HandleRadarrPoster(c *gin.Context) {
 	movieId := c.Param("movieId")
 	// Load Radarr settings
-	data, err := os.ReadFile("settings.json")
+	data, err := os.ReadFile("config.yml")
 	var allSettings struct {
 		Radarr struct {
-			URL    string `json:"url"`
-			APIKey string `json:"apiKey"`
-		} `json:"radarr"`
+			URL    string `yaml:"url"`
+			APIKey string `yaml:"apiKey"`
+		} `yaml:"radarr"`
 	}
-	if err := json.Unmarshal(data, &allSettings); err != nil {
+	if err := yaml.Unmarshal(data, &allSettings); err != nil {
 		c.String(http.StatusInternalServerError, "Invalid Radarr settings")
 		return
 	}
@@ -138,14 +140,14 @@ func HandleRadarrPoster(c *gin.Context) {
 func HandleRadarrBanner(c *gin.Context) {
 	movieId := c.Param("movieId")
 	// Load Radarr settings
-	data, err := os.ReadFile("settings.json")
+	data, err := os.ReadFile("config.yml")
 	var allSettings struct {
 		Radarr struct {
-			URL    string `json:"url"`
-			APIKey string `json:"apiKey"`
-		} `json:"radarr"`
+			URL    string `yaml:"url"`
+			APIKey string `yaml:"apiKey"`
+		} `yaml:"radarr"`
 	}
-	if err := json.Unmarshal(data, &allSettings); err != nil {
+	if err := yaml.Unmarshal(data, &allSettings); err != nil {
 		c.String(http.StatusInternalServerError, "Invalid Radarr settings")
 		return
 	}
@@ -185,14 +187,14 @@ func HandleRadarrBanner(c *gin.Context) {
 func HandleSonarrBanner(c *gin.Context) {
 	seriesId := c.Param("seriesId")
 	// Load Sonarr settings
-	data, err := os.ReadFile("settings.json")
+	data, err := os.ReadFile("config.yml")
 	var allSettings struct {
 		Sonarr struct {
-			URL    string `json:"url"`
-			APIKey string `json:"apiKey"`
-		} `json:"sonarr"`
+			URL    string `yaml:"url"`
+			APIKey string `yaml:"apiKey"`
+		} `yaml:"sonarr"`
 	}
-	if err := json.Unmarshal(data, &allSettings); err != nil {
+	if err := yaml.Unmarshal(data, &allSettings); err != nil {
 		c.String(http.StatusInternalServerError, "Invalid Sonarr settings")
 		return
 	}
@@ -232,14 +234,14 @@ func HandleSonarrBanner(c *gin.Context) {
 func HandleSonarrPoster(c *gin.Context) {
 	seriesId := c.Param("seriesId")
 	// Load Sonarr settings
-	data, err := os.ReadFile("settings.json")
+	data, err := os.ReadFile("config.yml")
 	var allSettings struct {
 		Sonarr struct {
-			URL    string `json:"url"`
-			APIKey string `json:"apiKey"`
-		} `json:"sonarr"`
+			URL    string `yaml:"url"`
+			APIKey string `yaml:"apiKey"`
+		} `yaml:"sonarr"`
 	}
-	if err := json.Unmarshal(data, &allSettings); err != nil {
+	if err := yaml.Unmarshal(data, &allSettings); err != nil {
 		c.String(http.StatusInternalServerError, "Invalid Sonarr settings")
 		return
 	}
@@ -313,18 +315,18 @@ func HandleSonarrPoster(c *gin.Context) {
 
 // Handler to get Sonarr settings
 func getSonarrSettingsHandler(c *gin.Context) {
-	data, err := os.ReadFile("settings.json")
+	data, err := os.ReadFile("config.yml")
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"url": "", "apiKey": ""})
 		return
 	}
 	var allSettings struct {
 		Sonarr struct {
-			URL    string `json:"url"`
-			APIKey string `json:"apiKey"`
-		} `json:"sonarr"`
+			URL    string `yaml:"url"`
+			APIKey string `yaml:"apiKey"`
+		} `yaml:"sonarr"`
 	}
-	if err := json.Unmarshal(data, &allSettings); err != nil {
+	if err := yaml.Unmarshal(data, &allSettings); err != nil {
 		c.JSON(http.StatusOK, gin.H{"url": "", "apiKey": ""})
 		return
 	}
@@ -334,8 +336,8 @@ func getSonarrSettingsHandler(c *gin.Context) {
 // Handler to save Sonarr settings
 func saveSonarrSettingsHandler(c *gin.Context) {
 	var req struct {
-		URL    string `json:"url"`
-		APIKey string `json:"apiKey"`
+		URL    string `yaml:"url"`
+		APIKey string `yaml:"apiKey"`
 	}
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
@@ -344,20 +346,20 @@ func saveSonarrSettingsHandler(c *gin.Context) {
 	// Read existing settings
 	var allSettings struct {
 		Sonarr struct {
-			URL    string `json:"url"`
-			APIKey string `json:"apiKey"`
-		} `json:"sonarr"`
+			URL    string `yaml:"url"`
+			APIKey string `yaml:"apiKey"`
+		} `yaml:"sonarr"`
 		Radarr struct {
-			URL    string `json:"url"`
-			APIKey string `json:"apiKey"`
-		} `json:"radarr"`
+			URL    string `yaml:"url"`
+			APIKey string `yaml:"apiKey"`
+		} `yaml:"radarr"`
 	}
-	data, _ := os.ReadFile("settings.json")
-	_ = json.Unmarshal(data, &allSettings)
+	data, _ := os.ReadFile("config.yml")
+	_ = yaml.Unmarshal(data, &allSettings)
 	allSettings.Sonarr.URL = req.URL
 	allSettings.Sonarr.APIKey = req.APIKey
-	out, _ := json.MarshalIndent(allSettings, "", "  ")
-	err := os.WriteFile("settings.json", out, 0644)
+	out, _ := yaml.Marshal(allSettings)
+	err := os.WriteFile("config.yml", out, 0644)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -386,8 +388,8 @@ func HandleSonarrSeries(c *gin.Context) {
 		}
 	}
 
-	// Load Sonarr settings
-	data, err := os.ReadFile("settings.json")
+	// Load Sonarr settings from config.yml (YAML)
+	data, err := os.ReadFile("config.yml")
 	if err != nil {
 		fmt.Println("[HandleSonarrSeries] Sonarr settings not found")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Sonarr settings not found"})
@@ -395,11 +397,11 @@ func HandleSonarrSeries(c *gin.Context) {
 	}
 	var allSettings struct {
 		Sonarr struct {
-			URL    string `json:"url"`
-			APIKey string `json:"apiKey"`
-		} `json:"sonarr"`
+			URL    string `yaml:"url"`
+			APIKey string `yaml:"apiKey"`
+		} `yaml:"sonarr"`
 	}
-	if err := json.Unmarshal(data, &allSettings); err != nil {
+	if err := yaml.Unmarshal(data, &allSettings); err != nil {
 		fmt.Println("[HandleSonarrSeries] Invalid Sonarr settings")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid Sonarr settings"})
 		return
@@ -540,18 +542,18 @@ func getRadarrMoviesHandler(c *gin.Context) {
 
 // Handler to get Radarr settings
 func getRadarrSettingsHandler(c *gin.Context) {
-	data, err := os.ReadFile("settings.json")
+	data, err := os.ReadFile("config.yml")
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"url": "", "apiKey": ""})
 		return
 	}
 	var allSettings struct {
 		Radarr struct {
-			URL    string `json:"url"`
-			APIKey string `json:"apiKey"`
-		} `json:"radarr"`
+			URL    string `yaml:"url"`
+			APIKey string `yaml:"apiKey"`
+		} `yaml:"radarr"`
 	}
-	if err := json.Unmarshal(data, &allSettings); err != nil {
+	if err := yaml.Unmarshal(data, &allSettings); err != nil {
 		c.JSON(http.StatusOK, gin.H{"url": "", "apiKey": ""})
 		return
 	}
@@ -561,8 +563,8 @@ func getRadarrSettingsHandler(c *gin.Context) {
 // Handler to save Radarr settings
 func saveRadarrSettingsHandler(c *gin.Context) {
 	var req struct {
-		URL    string `json:"url"`
-		APIKey string `json:"apiKey"`
+		URL    string `yaml:"url"`
+		APIKey string `yaml:"apiKey"`
 	}
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
@@ -571,20 +573,20 @@ func saveRadarrSettingsHandler(c *gin.Context) {
 	// Read existing settings
 	var allSettings struct {
 		Sonarr struct {
-			URL    string `json:"url"`
-			APIKey string `json:"apiKey"`
-		} `json:"sonarr"`
+			URL    string `yaml:"url"`
+			APIKey string `yaml:"apiKey"`
+		} `yaml:"sonarr"`
 		Radarr struct {
-			URL    string `json:"url"`
-			APIKey string `json:"apiKey"`
-		} `json:"radarr"`
+			URL    string `yaml:"url"`
+			APIKey string `yaml:"apiKey"`
+		} `yaml:"radarr"`
 	}
-	data, _ := os.ReadFile("settings.json")
-	_ = json.Unmarshal(data, &allSettings)
+	data, _ := os.ReadFile("config.yml")
+	_ = yaml.Unmarshal(data, &allSettings)
 	allSettings.Radarr.URL = req.URL
 	allSettings.Radarr.APIKey = req.APIKey
-	out, _ := json.MarshalIndent(allSettings, "", "  ")
-	err := os.WriteFile("settings.json", out, 0644)
+	out, _ := yaml.Marshal(allSettings)
+	err := os.WriteFile("config.yml", out, 0644)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -635,19 +637,19 @@ func downloadExtraHandler(c *gin.Context) {
 
 // SyncRadarrMoviesAndMediaCover syncs Radarr movie list and MediaCover folder
 func SyncRadarrMoviesAndMediaCover() {
-	// Load Radarr settings
-	data, err := os.ReadFile("settings.json")
+	// Load Radarr settings from config.yml (YAML)
+	data, err := os.ReadFile("config.yml")
 	if err != nil {
 		fmt.Println("[Sync] Radarr settings not found")
 		return
 	}
 	var allSettings struct {
 		Radarr struct {
-			URL    string `json:"url"`
-			APIKey string `json:"apiKey"`
-		} `json:"radarr"`
+			URL    string `yaml:"url"`
+			APIKey string `yaml:"apiKey"`
+		} `yaml:"radarr"`
 	}
-	if err := json.Unmarshal(data, &allSettings); err != nil {
+	if err := yaml.Unmarshal(data, &allSettings); err != nil {
 		fmt.Println("[Sync] Invalid Radarr settings")
 		return
 	}
