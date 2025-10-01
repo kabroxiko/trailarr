@@ -117,7 +117,8 @@ function MovieDetails({ movies, loading }) {
                                       extraTitle: extra.title,
                                       url: typeof extra.url === 'string' ? extra.url : (extra.url && extra.url.url ? extra.url.url : '')
                                     });
-                                    // Optionally handle error or success here (no alert)
+                                    // Mark as existing immediately after successful download
+                                    setExistingExtras(prev => [...prev, { type: extra.type, title: extra.title }]);
                                   } catch (e) {
                                     alert('Download failed: ' + (e.message || e));
                                   }
