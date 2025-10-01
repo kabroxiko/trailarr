@@ -25,36 +25,44 @@ function MovieDetails({ movies }) {
     }
   };
   return (
-    <div style={{ display: 'flex', gap: 32 }}>
-      <div style={{ minWidth: 300 }}>
-        <img
-          src={`/mediacover/${movie.id}/poster-500.jpg`}
-          alt={movie.title}
-          style={{ width: 300, height: 450, objectFit: 'cover', borderRadius: 12, marginBottom: 16, background: '#222' }}
-          onError={e => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/300x450?text=No+Poster'; }}
-        />
-        <button style={{ marginTop: 8, background: '#eee', border: 'none', borderRadius: 6, padding: '0.5em 1em', cursor: 'pointer' }} onClick={() => navigate('/movies')}>Back to list</button>
-        <button style={{ marginTop: 8, marginLeft: 8, background: '#a855f7', color: '#fff', border: 'none', borderRadius: 6, padding: '0.5em 1em', cursor: 'pointer' }} onClick={handleSearchExtras} disabled={loading}>
-          {loading ? 'Searching...' : 'Search Extras'}
-        </button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, border: '2px solid #22c55e', padding: '0.5em' }}>
+        <div
+          style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 'bold', color: '#a855f7', fontSize: 18 }}
+          onClick={handleSearchExtras}
+        >
+          <span style={{ fontSize: 20, display: 'inline-block' }}>🔎</span>
+          <span>{loading ? 'Searching...' : 'Search'}</span>
+        </div>
+        <button style={{ background: '#eee', border: 'none', borderRadius: 6, padding: '0.5em 1em', cursor: 'pointer', fontWeight: 'bold' }} onClick={() => navigate('/movies')}>Back to list</button>
       </div>
-      <div style={{ flex: 1 }}>
-        <h2 style={{ color: '#a855f7', margin: 0 }}>{movie.title}</h2>
-        <div style={{ marginBottom: 8, color: '#888', textAlign: 'left' }}>{movie.year} &bull; {movie.path}</div>
-        <div style={{ marginBottom: 16, color: '#333' }}>Movie extras would be listed here.</div>
-        {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
-        {extras.length > 0 && (
-          <ul style={{ marginTop: 16, textAlign: 'left', paddingLeft: 0 }}>
-            {extras.map((extra, idx) => (
-              <li key={idx}>
-                {typeof extra === 'object' && extra.type ? (
-                  <span style={{ fontWeight: 'bold', marginRight: 8 }}>{extra.type}:</span>
-                ) : null}
-                {typeof extra === 'object' && extra.title ? extra.title : String(extra)}
-              </li>
-            ))}
-          </ul>
-        )}
+  <div style={{ display: 'flex', gap: 32, border: '2px dotted #f59e42', padding: '0.5em' }}>
+        <div style={{ minWidth: 300 }}>
+          <img
+            src={`/mediacover/${movie.id}/poster-500.jpg`}
+            alt={movie.title}
+            style={{ width: 300, height: 450, objectFit: 'cover', borderRadius: 12, marginBottom: 16, background: '#222' }}
+            onError={e => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/300x450?text=No+Poster'; }}
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <h2 style={{ color: '#a855f7', margin: 0 }}>{movie.title}</h2>
+          <div style={{ marginBottom: 8, color: '#888', textAlign: 'left' }}>{movie.year} &bull; {movie.path}</div>
+          <div style={{ marginBottom: 16, color: '#333' }}>Movie extras would be listed here.</div>
+          {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
+          {extras.length > 0 && (
+            <ul style={{ marginTop: 16, textAlign: 'left', paddingLeft: 0 }}>
+              {extras.map((extra, idx) => (
+                <li key={idx}>
+                  {typeof extra === 'object' && extra.type ? (
+                    <span style={{ fontWeight: 'bold', marginRight: 8 }}>{extra.type}:</span>
+                  ) : null}
+                  {typeof extra === 'object' && extra.title ? extra.title : String(extra)}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -74,7 +82,7 @@ function App() {
   const [plexError, setPlexError] = useState('');
   const [radarrMovies, setRadarrMovies] = useState([]);
   const [radarrMoviesError, setRadarrMoviesError] = useState('');
-  const [selectedSection, setSelectedSection] = useState('Movies');
+  const [selectedSection, setSelectedSection] = useState('');
   const [selectedSettingsSub, setSelectedSettingsSub] = useState('General');
   const [radarrUrl, setRadarrUrl] = useState('');
   const [radarrApiKey, setRadarrApiKey] = useState('');
@@ -218,9 +226,12 @@ function App() {
     background: darkMode ? '#18181b' : '#fff',
     color: darkMode ? '#e5e7eb' : '#222'
   }}>
-        <div style={{ marginBottom: '2em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+  <div style={{ marginBottom: '2em', display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ color: '#a855f7', margin: 0 }}>{selectedSection}</h2>
-          <input type="search" placeholder="Search" style={{ padding: '0.5em', borderRadius: 6, border: '1px solid #e5e7eb', width: 200 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, justifyContent: 'flex-end', padding: '0.5em' }}>
+            <input type="search" placeholder="Search movies" style={{ padding: '0.5em', borderRadius: 6, border: '1px solid #e5e7eb', width: 200, marginLeft: 'auto', textAlign: 'right' }} />
+            <span style={{ fontSize: 20, color: '#a855f7' }}>🔎</span>
+          </div>
         </div>
 
         {/* Settings > Radarr submenu content */}
