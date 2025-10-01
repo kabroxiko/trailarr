@@ -19,6 +19,17 @@ function MovieDetails({ movies, loading }) {
     return () => window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', listener);
   }, []);
 
+  // Fetch extras from TMDB when movie details are loaded
+  useEffect(() => {
+    if (!movie) return;
+    setSearchLoading(true);
+    setError('');
+    searchExtras(movie.title)
+      .then(res => setExtras(res.extras || []))
+      .catch(() => setError('Failed to search extras'))
+      .finally(() => setSearchLoading(false));
+  }, [movie]);
+
   if (loading) return <div>Loading movie details...</div>;
   if (!movie) return <div>Movie not found</div>;
 
