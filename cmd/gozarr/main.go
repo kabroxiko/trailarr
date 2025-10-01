@@ -61,6 +61,7 @@ func getAllTasksStatus() gin.HandlerFunc {
 		schedules := []gin.H{
 			{
 				"type":          TaskSyncWithRadarr,
+				"name":          TaskSyncWithRadarr,
 				"interval":      TaskSyncWithRadarrInterval,
 				"lastExecution": syncRadarrStatus.LastExecution,
 				"lastDuration":  syncRadarrStatus.LastDuration.String(),
