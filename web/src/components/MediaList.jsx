@@ -19,6 +19,9 @@ export default function MediaList({ items, darkMode, type }) {
               <img
                 key={item.id + '-' + type}
                 src={type === 'series' ? `/api/sonarr/poster/${item.id}` : `/api/radarr/poster/${item.id}`}
+                width={48}
+                height={72}
+                loading="lazy"
                 style={{ width: 48, height: 72, objectFit: 'cover', borderRadius: 2, background: '#222', boxShadow: '0 1px 4px rgba(0,0,0,0.18)' }}
                 onError={e => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/48x72?text=No+Poster'; }}
               />
