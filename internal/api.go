@@ -148,66 +148,30 @@ func HandleSonarrBanner(c *gin.Context) {
 	if strings.HasSuffix(apiBase, "/") {
 		apiBase = strings.TrimRight(apiBase, "/")
 	}
-	// Fetch series info from Sonarr to get banner path
-	req, err := http.NewRequest("GET", apiBase+"/api/v3/series/"+seriesId, nil)
+	// Try local MediaCover first
+	localPath := "/var/lib/extrazarr/MediaCover/" + seriesId + "/banner.jpg"
+	if _, err := os.Stat(localPath); err == nil {
+		c.File(localPath)
+		return
+	}
+	// Fallback to Sonarr API
+	bannerUrl := apiBase + "/MediaCover/" + seriesId + "/banner.jpg"
+	req, err := http.NewRequest("GET", bannerUrl, nil)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Error creating request")
+		c.String(http.StatusInternalServerError, "Error creating banner request")
 		return
 	}
 	req.Header.Set("X-Api-Key", sonarrSettings.APIKey)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil || resp.StatusCode != 200 {
-		c.String(http.StatusBadGateway, "Failed to fetch series info from Sonarr")
+		c.String(http.StatusBadGateway, "Failed to fetch banner image from Sonarr")
 		return
 	}
 	defer resp.Body.Close()
-	var series map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&series); err != nil {
-		c.String(http.StatusInternalServerError, "Failed to decode Sonarr response")
-		return
-	}
-	// Find banner path in images array
-	images, ok := series["images"].([]interface{})
-	var bannerUrl string
-	if ok {
-		for _, img := range images {
-			m, ok := img.(map[string]interface{})
-			if ok && m["coverType"] == "banner" {
-				if remoteUrl, ok := m["remoteUrl"].(string); ok && remoteUrl != "" {
-					bannerUrl = remoteUrl
-					break
-				}
-				if url, ok := m["url"].(string); ok && url != "" {
-					bannerUrl = apiBase + url
-					break
-				}
-			}
-		}
-	}
-	if bannerUrl == "" {
-		c.String(http.StatusNotFound, "No banner found for series")
-		return
-	}
-	// Proxy the banner image
-	bannerReq, err := http.NewRequest("GET", bannerUrl, nil)
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Error creating banner request")
-		return
-	}
-	// If banner is local, add API key
-	if strings.HasPrefix(bannerUrl, apiBase) {
-		bannerReq.Header.Set("X-Api-Key", sonarrSettings.APIKey)
-	}
-	bannerResp, err := client.Do(bannerReq)
-	if err != nil || bannerResp.StatusCode != 200 {
-		c.String(http.StatusBadGateway, "Failed to fetch banner image")
-		return
-	}
-	defer bannerResp.Body.Close()
-	c.Header("Content-Type", bannerResp.Header.Get("Content-Type"))
+	c.Header("Content-Type", resp.Header.Get("Content-Type"))
 	c.Status(http.StatusOK)
-	io.Copy(c.Writer, bannerResp.Body)
+	io.Copy(c.Writer, resp.Body)
 }
 
 // Handler for /api/sonarr/poster/:seriesId

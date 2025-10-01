@@ -103,7 +103,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
         width: '100%',
         position: 'relative',
         background,
-        minHeight: 210,
+        minHeight: 420,
         display: 'flex',
         flexDirection: 'row',
         alignItems: 'center',
@@ -124,8 +124,8 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
             src={mediaType === 'tv'
               ? `/api/sonarr/poster/${media.id}`
               : `/api/radarr/poster/${media.id}`}
-            style={{ width: 120, height: 180, objectFit: 'cover', borderRadius: 2, background: '#222', boxShadow: '0 1px 4px rgba(0,0,0,0.18)' }}
-            onError={e => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/120x180?text=No+Poster'; }}
+            style={{ height: 370, objectFit: 'cover', borderRadius: 4, background: '#222', boxShadow: '0 2px 8px rgba(0,0,0,0.22)' }}
+            onError={e => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/180x270?text=No+Poster'; }}
           />
         </div>
         <div style={{ flex: 1, zIndex: 2, display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', marginLeft: 32 }}>
