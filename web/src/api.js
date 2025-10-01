@@ -18,8 +18,8 @@ export async function getRadarrSettings() {
 	return await res.json();
 }
 
-export async function searchExtras(movieTitle) {
-	const res = await fetch(`/api/extras/search?movie=${encodeURIComponent(movieTitle)}`);
+export async function searchExtras({ mediaType, id }) {
+	const res = await fetch(`/api/extras/search?mediaType=${encodeURIComponent(mediaType)}&id=${encodeURIComponent(id)}`);
 	if (!res.ok) throw new Error('Failed to search extras');
 	return await res.json();
 }
