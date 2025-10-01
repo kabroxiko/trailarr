@@ -4,7 +4,14 @@ export async function fetchPlexItems() {
 	if (!res.ok) throw new Error('Failed to fetch Plex items');
 	return await res.json();
 }
+
 // API functions for Gin backend
+
+export async function getRadarrSettings() {
+	const res = await fetch('/api/settings/radarr');
+	if (!res.ok) throw new Error('Failed to fetch Radarr settings');
+	return await res.json();
+}
 
 export async function searchExtras(movieTitle) {
 	const res = await fetch(`/api/extras/search?movie=${encodeURIComponent(movieTitle)}`);
