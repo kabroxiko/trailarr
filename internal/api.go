@@ -74,16 +74,20 @@ func existingExtrasHandler(c *gin.Context) {
 func getRadarrMoviesHandler(c *gin.Context) {
 	// Serve movies from cache (only movies with downloaded posters)
 	cachePath := "/var/lib/extrazarr/movies_cache.json"
+	fmt.Println("[getRadarrMoviesHandler] cachePath:", cachePath)
 	cacheData, err := os.ReadFile(cachePath)
 	if err != nil {
+		fmt.Println("[getRadarrMoviesHandler] Error reading cache:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Movie cache not found"})
 		return
 	}
 	var movies []map[string]interface{}
 	if err := json.Unmarshal(cacheData, &movies); err != nil {
+		fmt.Println("[getRadarrMoviesHandler] Error decoding cache:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode movie cache"})
 		return
 	}
+	fmt.Printf("[getRadarrMoviesHandler] Loaded %d movies from cache\n", len(movies))
 	c.JSON(http.StatusOK, gin.H{"movies": movies})
 }
 
@@ -296,7 +300,17 @@ func SyncRadarrMoviesAndMediaCover() {
 
 	// Save only movies with downloaded posters to cache
 	cachePath = "/var/lib/extrazarr/movies_cache.json"
+	tmpCachePath := cachePath + ".tmp"
 	cacheData, _ = json.MarshalIndent(downloadedMovies, "", "  ")
-	_ = os.WriteFile(cachePath, cacheData, 0644)
-	fmt.Println("[Sync] Cached", len(downloadedMovies), "movies with posters.")
+	// Write to a temporary file first
+	if err := os.WriteFile(tmpCachePath, cacheData, 0644); err != nil {
+		fmt.Println("[Sync] Error writing temp cache file:", err)
+	} else {
+		// Atomically replace the cache file only after successful write
+		if err := os.Rename(tmpCachePath, cachePath); err != nil {
+			fmt.Println("[Sync] Error replacing cache file:", err)
+		} else {
+			fmt.Println("[Sync] Cached", len(downloadedMovies), "movies with posters.")
+		}
+	}
 }
