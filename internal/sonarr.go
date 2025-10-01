@@ -1,310 +1,201 @@
 package internal
 
 import (
-	"encoding/json"
-	"fmt"
-	"io"
 	"net/http"
 	"os"
-	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/gin-gonic/gin"
 )
 
-// Handler for /api/sonarr/poster/:seriesId
-func getSonarrPosterHandler(c *gin.Context) {
-	seriesId := c.Param("seriesId")
-	sonarrSettings, err := getSonarrSettings()
-	if err != nil {
-		c.String(http.StatusInternalServerError, ErrInvalidSonarrSettings)
-		return
-	}
-	apiBase := trimTrailingSlash(sonarrSettings.URL)
-	posterUrl, err := getSonarrSeriesPosterUrl(apiBase, sonarrSettings.APIKey, seriesId)
-	if err != nil {
-		c.String(http.StatusNotFound, err.Error())
-		return
-	}
-	if err := proxyImage(c, posterUrl, apiBase, sonarrSettings.APIKey); err != nil {
-		c.String(http.StatusBadGateway, err.Error())
-	}
-}
+var getSonarrPosterHandler = getImageHandler("sonarr", "serieId", "/poster-500.jpg")
 
-// Handler for /api/sonarr/banner/:seriesId
-func getSonarrBannerHandler(c *gin.Context) {
-	seriesId := c.Param("seriesId")
-	// Load Sonarr settings
-	data, err := os.ReadFile(ConfigPath)
-	var allSettings struct {
-		Sonarr struct {
-			URL    string `yaml:"url"`
-			APIKey string `yaml:"apiKey"`
-		} `yaml:"sonarr"`
-	}
-	if err := yaml.Unmarshal(data, &allSettings); err != nil {
-		c.String(http.StatusInternalServerError, ErrInvalidSonarrSettings)
-		return
-	}
-	sonarrSettings := allSettings.Sonarr
-	// Remove trailing slash from URL if present
-	apiBase := sonarrSettings.URL
-	if strings.HasSuffix(apiBase, "/") {
-		apiBase = strings.TrimRight(apiBase, "/")
-	}
-	// Try local MediaCover first
-	localPath := MediaCoverPath + seriesId + "/banner.jpg"
-	if _, err := os.Stat(localPath); err == nil {
-		c.File(localPath)
-		return
-	}
-	// Fallback to Sonarr API
-	bannerUrl := apiBase + RemoteMediaCoverPath + seriesId + "/banner.jpg"
-	req, err := http.NewRequest("GET", bannerUrl, nil)
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Error creating banner request")
-		return
-	}
-	req.Header.Set(HeaderApiKey, sonarrSettings.APIKey)
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil || resp.StatusCode != 200 {
-		c.String(http.StatusBadGateway, "Failed to fetch banner image from Sonarr")
-		return
-	}
-	defer resp.Body.Close()
-	c.Header(HeaderContentType, resp.Header.Get(HeaderContentType))
-	c.Status(http.StatusOK)
-	io.Copy(c.Writer, resp.Body)
-}
+var getSonarrBannerHandler = getImageHandler("sonarr", "serieId", "/fanart-1280.jpg")
 
-func getSonarrSettings() (struct {
-	URL    string
-	APIKey string
-}, error) {
-	data, err := os.ReadFile(ConfigPath)
-	var allSettings struct {
-		Sonarr struct {
-			URL    string `yaml:"url"`
-			APIKey string `yaml:"apiKey"`
-		} `yaml:"sonarr"`
-	}
-	if err != nil {
-		return struct {
-			URL    string
-			APIKey string
-		}{}, err
-	}
-	if err := yaml.Unmarshal(data, &allSettings); err != nil {
-		return struct {
-			URL    string
-			APIKey string
-		}{}, err
-	}
-	return struct {
-		URL    string
-		APIKey string
-	}{
-		URL:    allSettings.Sonarr.URL,
-		APIKey: allSettings.Sonarr.APIKey,
-	}, nil
-}
-
-func trimTrailingSlash(url string) string {
-	if strings.HasSuffix(url, "/") {
-		return strings.TrimRight(url, "/")
-	}
-	return url
-}
-
-func getSonarrSeriesPosterUrl(apiBase, apiKey, seriesId string) (string, error) {
-	req, err := http.NewRequest("GET", apiBase+"/api/v3/series/"+seriesId, nil)
-	if err != nil {
-		return "", fmt.Errorf("Error creating request")
-	}
-	req.Header.Set(HeaderApiKey, apiKey)
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil || resp.StatusCode != 200 {
-		return "", fmt.Errorf("Failed to fetch series info from Sonarr")
-	}
-	defer resp.Body.Close()
-	var series map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&series); err != nil {
-		return "", fmt.Errorf("Failed to decode Sonarr response")
-	}
-	images, ok := series["images"].([]interface{})
-	if !ok {
-		return "", fmt.Errorf("No poster found for series")
-	}
-	posterUrl, found := findPosterUrl(images, apiBase)
-	if !found {
-		return "", fmt.Errorf("No poster found for series")
-	}
-	return posterUrl, nil
-}
-
-func findPosterUrl(images []interface{}, apiBase string) (string, bool) {
-	for _, img := range images {
-		m, ok := img.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if m["coverType"] == "poster" {
-			if remoteUrl, ok := m["remoteUrl"].(string); ok && remoteUrl != "" {
-				return remoteUrl, true
-			}
-			if url, ok := m["url"].(string); ok && url != "" {
-				return apiBase + url, true
-			}
-		}
-	}
-	return "", false
-}
-
-func proxyImage(c *gin.Context, imageUrl, apiBase, apiKey string) error {
-	req, err := http.NewRequest("GET", imageUrl, nil)
-	if err != nil {
-		return fmt.Errorf("Error creating poster request")
-	}
-	if strings.HasPrefix(imageUrl, apiBase) {
-		req.Header.Set(HeaderApiKey, apiKey)
-	}
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil || resp.StatusCode != 200 {
-		return fmt.Errorf("Failed to fetch poster image")
-	}
-	defer resp.Body.Close()
-	c.Header(HeaderContentType, resp.Header.Get(HeaderContentType))
-	c.Status(http.StatusOK)
-	_, copyErr := io.Copy(c.Writer, resp.Body)
-	return copyErr
-}
-
-// Handler for /api/sonarr/series
 func getSonarrSeriesHandler(c *gin.Context) {
 	cachePath := SeriesCachePath
-	if series, ok := loadSonarrSeriesFromCache(cachePath); ok {
-		c.JSON(http.StatusOK, gin.H{"series": series})
+	series, err := loadCache(cachePath)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Series cache not found"})
 		return
 	}
+	c.JSON(200, gin.H{"series": series})
+}
 
-	sonarrSettings, err := loadSonarrSettings()
+func getSonarrSettingsHandler(c *gin.Context) {
+	data, err := os.ReadFile(ConfigPath)
 	if err != nil {
-		fmt.Println("[getSonarrSeriesHandler] Sonarr settings not found or invalid:", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Sonarr settings not found"})
+		c.JSON(http.StatusOK, gin.H{"url": "", "apiKey": ""})
 		return
 	}
+	var allSettings struct {
+		Sonarr struct {
+			URL    string `yaml:"url"`
+			APIKey string `yaml:"apiKey"`
+		} `yaml:"sonarr"`
+	}
+	if err := yaml.Unmarshal(data, &allSettings); err != nil {
+		c.JSON(http.StatusOK, gin.H{"url": "", "apiKey": ""})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"url": allSettings.Sonarr.URL, "apiKey": allSettings.Sonarr.APIKey})
+}
 
-	apiBase := trimTrailingSlash(sonarrSettings.URL)
-	series, err := fetchAndFilterSonarrSeries(apiBase, sonarrSettings.APIKey)
+func saveSonarrSettingsHandler(c *gin.Context) {
+	var req struct {
+		URL    string `yaml:"url"`
+		APIKey string `yaml:"apiKey"`
+	}
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": ErrInvalidRequest})
+		return
+	}
+	var allSettings struct {
+		Sonarr struct {
+			URL    string `yaml:"url"`
+			APIKey string `yaml:"apiKey"`
+		} `yaml:"sonarr"`
+		Radarr struct {
+			URL    string `yaml:"url"`
+			APIKey string `yaml:"apiKey"`
+		} `yaml:"radarr"`
+	}
+	data, _ := os.ReadFile(ConfigPath)
+	_ = yaml.Unmarshal(data, &allSettings)
+	allSettings.Sonarr.URL = req.URL
+	allSettings.Sonarr.APIKey = req.APIKey
+	out, _ := yaml.Marshal(allSettings)
+	err := os.WriteFile(ConfigPath, out, 0644)
 	if err != nil {
-		fmt.Println("[getSonarrSeriesHandler] Error fetching or decoding series:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
-	cacheData, _ := json.MarshalIndent(series, "", "  ")
-	_ = os.WriteFile(cachePath, cacheData, 0644)
-	c.JSON(http.StatusOK, gin.H{"series": series})
+	c.JSON(http.StatusOK, gin.H{"status": "saved"})
 }
 
-func loadSonarrSeriesFromCache(cachePath string) ([]SonarrSeries, bool) {
-	cacheData, err := os.ReadFile(cachePath)
-	if err != nil {
-		return nil, false
-	}
-	var series []SonarrSeries
-	if err := json.Unmarshal(cacheData, &series); err != nil {
-		return nil, false
-	}
-	return series, true
+// Sync queue item and status for Sonarr
+
+// SyncSonarrQueueItem tracks a Sonarr sync operation
+type SyncSonarrQueueItem struct {
+	Queued   time.Time
+	Started  time.Time
+	Ended    time.Time
+	Duration time.Duration
+	Status   string
+	Error    string
 }
 
-func loadSonarrSettings() (struct {
-	URL    string
-	APIKey string
-}, error) {
-	data, err := os.ReadFile(ConfigPath)
-	if err != nil {
-		return struct {
-			URL    string
-			APIKey string
-		}{}, err
-	}
-	var allSettings struct {
-		Sonarr struct {
-			URL    string `yaml:"url"`
-			APIKey string `yaml:"apiKey"`
-		} `yaml:"sonarr"`
-	}
-	if err := yaml.Unmarshal(data, &allSettings); err != nil {
-		return struct {
-			URL    string
-			APIKey string
-		}{}, err
-	}
-	return struct {
-		URL    string
-		APIKey string
-	}{
-		URL:    allSettings.Sonarr.URL,
-		APIKey: allSettings.Sonarr.APIKey,
-	}, nil
+// syncSonarrStatus tracks last sync status and times for Sonarr
+var syncSonarrStatus = struct {
+	LastExecution time.Time
+	LastDuration  time.Duration
+	NextExecution time.Time
+	LastError     string
+	Queue         []SyncSonarrQueueItem
+}{
+	Queue: make([]SyncSonarrQueueItem, 0),
 }
 
-func fetchAndFilterSonarrSeries(apiBase, apiKey string) ([]SonarrSeries, error) {
-	req, err := http.NewRequest("GET", apiBase+"/api/v3/series", nil)
+// Handler to force sync Sonarr
+func ForceSyncSonarr() {
+	println("[FORCE] Executing Sync Sonarr...")
+	item := SyncSonarrQueueItem{
+		Queued: time.Now(),
+		Status: "queued",
+	}
+	syncSonarrStatus.Queue = append(syncSonarrStatus.Queue, item)
+	item.Started = time.Now()
+	item.Status = "running"
+	err := SyncSonarrImages()
+	item.Ended = time.Now()
+	item.Duration = item.Ended.Sub(item.Started)
+	if err == nil {
+		item.Status = "done"
+	} else {
+		item.Status = "error"
+	}
 	if err != nil {
-		return nil, fmt.Errorf("Error creating request: %w", err)
+		item.Error = err.Error()
+		item.Status = "error"
+		syncSonarrStatus.LastError = err.Error()
+		println("[FORCE] Sync Sonarr error:", err.Error())
+	} else {
+		println("[FORCE] Sync Sonarr completed successfully.")
 	}
-	req.Header.Set(HeaderApiKey, apiKey)
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("Error fetching series: %w", err)
+	syncSonarrStatus.LastExecution = item.Ended
+	syncSonarrStatus.LastDuration = item.Duration
+	syncSonarrStatus.NextExecution = item.Ended.Add(15 * time.Minute)
+	if len(syncSonarrStatus.Queue) > 10 {
+		syncSonarrStatus.Queue = syncSonarrStatus.Queue[len(syncSonarrStatus.Queue)-10:]
 	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	fmt.Printf("[getSonarrSeriesHandler] Raw response body: %s\n", string(body))
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("Sonarr API error: %d", resp.StatusCode)
-	}
-	var allSeries []map[string]interface{}
-	if err := json.Unmarshal(body, &allSeries); err != nil {
-		return nil, fmt.Errorf("Failed to decode Sonarr response: %w", err)
-	}
-	return filterDownloadedSonarrSeries(allSeries), nil
 }
 
-func filterDownloadedSonarrSeries(allSeries []map[string]interface{}) []SonarrSeries {
-	series := make([]SonarrSeries, 0)
-	for _, s := range allSeries {
-		stats, ok := s["statistics"].(map[string]interface{})
-		if !ok {
-			continue
-		}
-		episodeFileCount, ok := stats["episodeFileCount"].(float64)
-		if !ok || episodeFileCount < 1 {
-			continue
-		}
-		id, ok := s["id"].(float64)
-		if !ok {
-			continue
-		}
-		title, _ := s["title"].(string)
-		year, _ := s["year"].(float64)
-		path, _ := s["path"].(string)
-		overview, _ := s["overview"].(string)
-		series = append(series, SonarrSeries{
-			ID:       int(id),
-			Title:    title,
-			Year:     int(year),
-			Path:     path,
-			Overview: overview,
+// Background sync for Sonarr
+func BackgroundSyncSonarr() {
+	BackgroundSync(
+		15*time.Minute,
+		SyncSonarrImages,
+		func(item interface{}) {
+			syncSonarrStatus.Queue = append(syncSonarrStatus.Queue, *item.(*SyncSonarrQueueItem))
+		},
+		func() interface{} {
+			return &SyncSonarrQueueItem{Queued: time.Now(), Status: "queued"}
+		},
+		func(item interface{}, started, ended time.Time, duration time.Duration, status, errStr string) {
+			i := item.(*SyncSonarrQueueItem)
+			i.Started = started
+			i.Ended = ended
+			i.Duration = duration
+			i.Status = status
+			i.Error = errStr
+			if status == "error" {
+				syncSonarrStatus.LastError = errStr
+			}
+			syncSonarrStatus.LastExecution = ended
+			syncSonarrStatus.LastDuration = duration
+			syncSonarrStatus.NextExecution = ended.Add(15 * time.Minute)
+		},
+		func() {
+			if len(syncSonarrStatus.Queue) > 10 {
+				syncSonarrStatus.Queue = syncSonarrStatus.Queue[len(syncSonarrStatus.Queue)-10:]
+			}
+		},
+	)
+}
+
+// Exported Sonarr status getters for main.go
+func SonarrLastExecution() time.Time     { return syncSonarrStatus.LastExecution }
+func SonarrLastDuration() time.Duration  { return syncSonarrStatus.LastDuration }
+func SonarrNextExecution() time.Time     { return syncSonarrStatus.NextExecution }
+func SonarrLastError() string            { return syncSonarrStatus.LastError }
+func SonarrQueue() []SyncSonarrQueueItem { return syncSonarrStatus.Queue }
+
+// Exported handler for Sonarr status
+func GetSonarrStatusHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"scheduled": gin.H{
+				"name":          "Sync with Sonarr",
+				"interval":      "15 minutes",
+				"lastExecution": SonarrLastExecution(),
+				"lastDuration":  SonarrLastDuration().String(),
+				"nextExecution": SonarrNextExecution(),
+				"lastError":     SonarrLastError(),
+			},
+			"queue": SonarrQueue(),
 		})
 	}
-	return series
+}
+
+func SyncSonarrImages() error {
+	return SyncMediaCacheJson("sonarr", "/api/v3/series", SeriesCachePath, func(m map[string]interface{}) bool {
+		stats, ok := m["statistics"].(map[string]interface{})
+		if !ok {
+			return false
+		}
+		episodeFileCount, ok := stats["episodeFileCount"].(float64)
+		return ok && episodeFileCount >= 1
+	})
 }
