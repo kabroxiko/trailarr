@@ -20,6 +20,11 @@ function App() {
     return () => window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', listener);
   }, []);
   const [selectedSection, setSelectedSection] = useState('Movies');
+
+  // Reset search when changing main section (Movies/Series)
+  useEffect(() => {
+    setSearch('');
+  }, [selectedSection]);
   const [selectedSettingsSub, setSelectedSettingsSub] = useState('General');
 
   // Sonarr series state
