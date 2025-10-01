@@ -71,6 +71,10 @@ func RegisterRoutes(r *gin.Engine) {
 	r.GET("/api/settings/general", getGeneralSettingsHandler)
 	r.POST("/api/settings/general", saveGeneralSettingsHandler)
 
+	// Extra types config endpoints
+	r.GET("/api/settings/extratypes", GetExtraTypesConfigHandler)
+	r.POST("/api/settings/extratypes", SaveExtraTypesConfigHandler)
+
 	// Server-side file browser for directory picker
 	r.GET("/api/files/list", ListServerFoldersHandler)
 }
