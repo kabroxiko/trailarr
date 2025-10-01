@@ -31,7 +31,7 @@ func RegisterRoutes(r *gin.Engine) {
 	movieMappings, err := GetPathMappings("radarr")
 	if err == nil && len(movieMappings) > 0 {
 		for _, m := range movieMappings {
-			if m[1] != "" {
+			if len(m) > 1 && m[1] != "" {
 				defaultMoviePath = m[1]
 				break
 			}
@@ -46,7 +46,7 @@ func RegisterRoutes(r *gin.Engine) {
 	seriesMappings, err := GetPathMappings("sonarr")
 	if err == nil && len(seriesMappings) > 0 {
 		for _, m := range seriesMappings {
-			if m[1] != "" {
+			if len(m) > 1 && m[1] != "" {
 				defaultSeriesPath = m[1]
 				break
 			}

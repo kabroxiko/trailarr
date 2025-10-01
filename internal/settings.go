@@ -306,8 +306,8 @@ func loadMediaSettings(section string) (MediaSettings, error) {
 	return MediaSettings{URL: sec["url"], APIKey: sec["apiKey"]}, nil
 }
 
-// GetPathMappings reads pathMappings for a section ("radarr" or "sonarr") from config.yml and returns as [][2]string
-func GetPathMappings(section string) ([][2]string, error) {
+// GetPathMappings reads pathMappings for a section ("radarr" or "sonarr") from config.yml and returns as [][]string
+func GetPathMappings(section string) ([][]string, error) {
 	data, err := os.ReadFile(ConfigPath)
 	if err != nil {
 		return nil, err
@@ -317,7 +317,7 @@ func GetPathMappings(section string) ([][2]string, error) {
 		return nil, err
 	}
 	sec, _ := config[section].(map[string]interface{})
-	var mappings [][2]string
+	var mappings [][]string
 	if sec != nil {
 		if pm, ok := sec["pathMappings"].([]interface{}); ok {
 			for _, m := range pm {
@@ -325,7 +325,7 @@ func GetPathMappings(section string) ([][2]string, error) {
 					from, _ := mMap["from"].(string)
 					to, _ := mMap["to"].(string)
 					if from != "" && to != "" {
-						mappings = append(mappings, [2]string{from, to})
+						mappings = append(mappings, []string{from, to})
 					}
 				}
 			}
