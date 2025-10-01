@@ -66,7 +66,7 @@ func FetchPlexLibrary() ([]PlexItem, error) {
 }
 
 // Placeholder for extras search and download logic
-func SearchExtras(movieTitle string) ([]string, error) {
+func SearchExtras(movieTitle string) ([]map[string]string, error) {
 	// TMDB API integration
 	tmdbKey := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 	tmdbURL := fmt.Sprintf("https://api.themoviedb.org/3/search/movie?api_key=%s&query=%s", tmdbKey, movieTitle)
@@ -107,6 +107,7 @@ func SearchExtras(movieTitle string) ([]string, error) {
 	var videosResult struct {
 		Results []struct {
 			Name string `json:"name"`
+			Type string `json:"type"`
 			Site string `json:"site"`
 			Key  string `json:"key"`
 		} `json:"results"`
@@ -114,16 +115,32 @@ func SearchExtras(movieTitle string) ([]string, error) {
 	if err := json.Unmarshal(body, &videosResult); err != nil {
 		return nil, err
 	}
-	extras := []string{}
+	extras := []map[string]string{}
 	for _, v := range videosResult.Results {
 		if v.Site == "YouTube" {
-			extras = append(extras, fmt.Sprintf("https://www.youtube.com/watch?v=%s", v.Key))
+			extraType := v.Type
+			if extraType == "" {
+				// fallback: try to infer from name
+				if name := v.Name; name != "" {
+					extraType = name
+				} else {
+					extraType = "Video"
+				}
+			}
+			extras = append(extras, map[string]string{
+				"type":  extraType,
+				"title": v.Name,
+				"url":   fmt.Sprintf("https://www.youtube.com/watch?v=%s", v.Key),
+			})
 		}
 	}
 
 	// YouTube search (no API key, basic search URL)
-	// This just returns a search URL for now
-	extras = append(extras, fmt.Sprintf("https://www.youtube.com/results?search_query=%s+trailer", movieTitle))
+	extras = append(extras, map[string]string{
+		"type":  "YouTube Search",
+		"title": "Search for trailers",
+		"url":   fmt.Sprintf("https://www.youtube.com/results?search_query=%s+trailer", movieTitle),
+	})
 	return extras, nil
 }
 

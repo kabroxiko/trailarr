@@ -44,9 +44,14 @@ function MovieDetails({ movies }) {
         <div style={{ marginBottom: 16, color: '#333' }}>Movie extras would be listed here.</div>
         {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
         {extras.length > 0 && (
-          <ul style={{ marginTop: 16 }}>
+          <ul style={{ marginTop: 16, textAlign: 'left', paddingLeft: 0 }}>
             {extras.map((extra, idx) => (
-              <li key={idx}>{extra}</li>
+              <li key={idx}>
+                {typeof extra === 'object' && extra.type ? (
+                  <span style={{ fontWeight: 'bold', marginRight: 8 }}>{extra.type}:</span>
+                ) : null}
+                {typeof extra === 'object' && extra.title ? extra.title : String(extra)}
+              </li>
             ))}
           </ul>
         )}
