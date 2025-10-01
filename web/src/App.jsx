@@ -180,10 +180,13 @@ function App() {
         ) : (
           <div style={{ display: 'flex', gap: 32 }}>
             <div style={{ minWidth: 300 }}>
-              {/* Placeholder for movie poster */}
-              <div style={{ width: 300, height: 450, background: '#222', borderRadius: 12, marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 32 }}>
-                {selectedMovie.title[0]}
-              </div>
+              {/* Movie poster from Radarr cache */}
+              <img
+                src={`/mediacover/${selectedMovie.id}/poster-500.jpg`}
+                alt={selectedMovie.title}
+                style={{ width: 300, height: 450, objectFit: 'cover', borderRadius: 12, marginBottom: 16, background: '#222' }}
+                onError={e => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/300x450?text=No+Poster'; }}
+              />
               <button style={{ marginTop: 8, background: '#eee', border: 'none', borderRadius: 6, padding: '0.5em 1em', cursor: 'pointer' }} onClick={() => setSelectedMovie(null)}>Back to list</button>
             </div>
             <div style={{ flex: 1 }}>
