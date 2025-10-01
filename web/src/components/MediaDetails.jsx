@@ -5,6 +5,60 @@ import { faPlay, faDownload } from '@fortawesome/free-solid-svg-icons';
 import { useParams } from 'react-router-dom';
 import { getExtras } from '../api';
 
+// Spinner and YouTubeEmbed component
+function Spinner() {
+  return (
+    <div style={{
+      position: 'absolute',
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%)',
+      zIndex: 10,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'rgba(0,0,0,0.2)',
+      borderRadius: 8,
+      padding: 16,
+    }}>
+      <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="24" cy="24" r="20" stroke="#a855f7" strokeWidth="4" opacity="0.2" />
+        <path d="M44 24c0-11.046-8.954-20-20-20" stroke="#a855f7" strokeWidth="4" strokeLinecap="round" />
+      </svg>
+    </div>
+  );
+}
+
+function YoutubeEmbed({ videoId }) {
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    setLoading(true);
+  }, [videoId]);
+  return (
+    <div style={{ width: '100%', height: '100%', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {loading && <Spinner />}
+      <iframe
+        src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1`}
+        title="YouTube video player"
+        frameBorder="0"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowFullScreen
+        loading="lazy"
+        style={{
+          borderRadius: 8,
+          background: '#000',
+          width: '100%',
+          height: '100%',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+        }}
+        onLoad={() => setLoading(false)}
+      />
+    </div>
+  );
+}
+
 export default function MediaDetails({ mediaItems, loading, mediaType }) {
   const [youtubeModal, setYoutubeModal] = useState({ open: false, videoId: '' });
 
@@ -412,24 +466,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
                               overflow: 'hidden',
                             }}>
                               <button onClick={() => setYoutubeModal({ open: false, videoId: '' })} style={{ position: 'absolute', top: 8, right: 12, background: 'transparent', color: '#fff', border: 'none', fontSize: 28, cursor: 'pointer', zIndex: 2 }} title="Close">×</button>
-                              <div style={{ width: '100%', height: '100%', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <iframe
-                                  src={`https://www.youtube.com/embed/${youtubeModal.videoId}?autoplay=1`}
-                                  title="YouTube video player"
-                                  frameBorder="0"
-                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                  allowFullScreen
-                                  style={{
-                                    borderRadius: 8,
-                                    background: '#000',
-                                    width: '100%',
-                                    height: '100%',
-                                    position: 'absolute',
-                                    top: 0,
-                                    left: 0,
-                                  }}
-                                />
-                              </div>
+                              <YoutubeEmbed videoId={youtubeModal.videoId} />
                             </div>
                           </div>
                         )}
