@@ -41,7 +41,19 @@ function MovieDetails({ movies, loading }) {
   }, [movie]);
 
   if (loading) return <div>Loading movie details...</div>;
-  if (!movie) return <div>Movie not found</div>;
+  if (!movie) {
+    return (
+      <div>
+        Movie not found
+        <pre style={{ background: '#eee', color: '#222', padding: 8, marginTop: 12, fontSize: 13 }}>
+          Debug info:
+          id: {String(id)}
+          movies.length: {movies ? movies.length : 'undefined'}
+          movies: {JSON.stringify(movies, null, 2)}
+        </pre>
+      </div>
+    );
+  }
 
   const handleSearchExtras = async () => {
     setSearchLoading(true);
