@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -19,7 +20,44 @@ func RegisterRoutes(r *gin.Engine) {
 	r.GET("/api/settings/radarr", getRadarrSettingsHandler)
 	r.GET("/api/extras/search", searchExtrasHandler)
 	r.POST("/api/extras/download", downloadExtraHandler)
-	r.GET("/api/plex", plexItemsHandler)
+	r.GET("/api/extras/existing", existingExtrasHandler)
+}
+
+// Handler to list existing extras for a movie path
+func existingExtrasHandler(c *gin.Context) {
+	moviePath := c.Query("moviePath")
+	if moviePath == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "moviePath required"})
+		return
+	}
+	// Scan subfolders for .mp4 files and their metadata
+	var existing []map[string]string
+	entries, err := os.ReadDir(moviePath)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"existing": []map[string]string{}})
+		return
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		subdir := moviePath + "/" + entry.Name()
+		files, _ := os.ReadDir(subdir)
+		for _, f := range files {
+			if !f.IsDir() && strings.HasSuffix(f.Name(), ".mp4") {
+				metaFile := subdir + "/" + strings.TrimSuffix(f.Name(), ".mp4") + ".mp4.json"
+				var meta struct{ Type, Title string }
+				if metaBytes, err := os.ReadFile(metaFile); err == nil {
+					_ = json.Unmarshal(metaBytes, &meta)
+				}
+				existing = append(existing, map[string]string{
+					"type":  entry.Name(),
+					"title": meta.Title,
+				})
+			}
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"existing": existing})
 }
 
 // Handler to fetch movies from Radarr
