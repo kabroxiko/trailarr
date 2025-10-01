@@ -55,7 +55,7 @@ function App() {
     } else if (path.startsWith('/wanted/series')) {
       setSelectedSection('Wanted');
       setSelectedSettingsSub('Series');
-    } else if (path.startsWith('/movies')) {
+    } else if (path === '/' || path.match(/^\/[0-9a-zA-Z_-]+$/)) {
       setSelectedSection('Movies');
     } else if (path.startsWith('/series')) {
       setSelectedSection('Series');
@@ -204,7 +204,7 @@ function App() {
                   );
                 })()
               } />
-              <Route path="/movies" element={
+              <Route path="/" element={
                 (() => {
                   const { titleMatches, overviewMatches } = getSearchSections(movies);
                   return (

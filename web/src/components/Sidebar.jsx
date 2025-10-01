@@ -19,7 +19,7 @@ export default function Sidebar({ selectedSection, setSelectedSection, selectedS
       <nav>
         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {[
-            { name: 'Movies', icon: <FontAwesomeIcon icon={faFilm} color={darkMode ? '#e5e7eb' : '#333'} />, route: '/movies' },
+            { name: 'Movies', icon: <FontAwesomeIcon icon={faFilm} color={darkMode ? '#e5e7eb' : '#333'} />, route: '/' },
             { name: 'Series', icon: <FontAwesomeIcon icon={faCog} color={darkMode ? '#e5e7eb' : '#333'} />, route: '/series' },
             { name: 'History', icon: <FontAwesomeIcon icon={faHistory} color={darkMode ? '#e5e7eb' : '#333'} />, route: '/history' },
             { name: 'Wanted', icon: <FontAwesomeIcon icon={faStar} color={darkMode ? '#e5e7eb' : '#333'} />},
