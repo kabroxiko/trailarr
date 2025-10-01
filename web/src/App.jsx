@@ -6,6 +6,7 @@ import Sidebar from './components/Sidebar';
 import GeneralSettings from './components/GeneralSettings';
 import Tasks from './components/Tasks';
 import HistoryPage from './components/HistoryPage';
+import Wanted from './components/Wanted';
 import { Routes, Route } from 'react-router-dom';
 import { Navigate } from 'react-router-dom';
 import './App.css';
@@ -360,6 +361,7 @@ function App() {
               <Route path="/settings/general" element={<GeneralSettings />} />
               <Route path="/" element={<Navigate to="/movies" replace />} />
               <Route path="/system/tasks" element={<Tasks />} />
+              <Route path="/wanted" element={<Wanted darkMode={darkMode} />} />
             </Routes>
           </div>
         </main>

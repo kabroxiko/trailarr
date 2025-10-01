@@ -252,3 +252,23 @@ func SyncSonarrImages() error {
 	)
 	return nil
 }
+
+// Lists series without any downloaded trailer extra
+func GetSeriesWithoutTrailerExtraHandler(c *gin.Context) {
+	cachePath := SeriesCachePath
+	series, err := loadCache(cachePath)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Series cache not found"})
+		return
+	}
+	trailerSet := findMediaWithTrailers("/mnt/unionfs/Media/TV")
+	var result []map[string]interface{}
+	for _, s := range series {
+		path, ok := s["path"].(string)
+		if !ok || trailerSet[path] {
+			continue
+		}
+		result = append(result, s)
+	}
+	c.JSON(200, gin.H{"series": result})
+}
