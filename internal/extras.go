@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"strings"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/kkdai/youtube/v2"
 )
 
@@ -91,16 +93,16 @@ func FetchPlexLibrary() ([]PlexItem, error) {
 
 // Placeholder for extras search and download logic
 func SearchExtras(mediaType string, id int) ([]map[string]string, error) {
-	// Read TMDB key from settings.json
+	// Read TMDB key from config.yml
 	var tmdbKey string
-	settingsData, err := os.ReadFile("settings.json")
+	settingsData, err := os.ReadFile("config.yml")
 	if err == nil {
 		var allSettings struct {
 			General struct {
-				TMDBKey string `json:"tmdbKey"`
-			} `json:"general"`
+				TMDBKey string `yaml:"tmdbKey"`
+			} `yaml:"general"`
 		}
-		if err := json.Unmarshal(settingsData, &allSettings); err == nil {
+		if err := yaml.Unmarshal(settingsData, &allSettings); err == nil {
 			tmdbKey = allSettings.General.TMDBKey
 		}
 	}
