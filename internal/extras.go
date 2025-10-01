@@ -7,9 +7,73 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
+
+// Handler to delete an extra and record history
+func deleteExtraHandler(c *gin.Context) {
+	var req struct {
+		MediaType  string `json:"mediaType"`
+		MediaId    int    `json:"mediaId"`
+		ExtraType  string `json:"extraType"`
+		ExtraTitle string `json:"extraTitle"`
+	}
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": ErrInvalidRequest})
+		return
+	}
+	// Resolve media path from mediaType and mediaId
+	var cachePath string
+	if req.MediaType == "movie" {
+		cachePath = MoviesCachePath
+	} else if req.MediaType == "tv" {
+		cachePath = SeriesCachePath
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid mediaType"})
+		return
+	}
+	mediaPath, err := FindMediaPathByID(cachePath, fmt.Sprintf("%d", req.MediaId))
+	if err != nil || mediaPath == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Media not found"})
+		return
+	}
+	// Get media title from cache
+	var mediaTitle string
+	items, err := loadCache(cachePath)
+	if err == nil {
+		for _, m := range items {
+			if mid, ok := m["id"]; ok && fmt.Sprintf("%v", mid) == fmt.Sprintf("%d", req.MediaId) {
+				if t, ok := m["title"].(string); ok {
+					mediaTitle = t
+				}
+				break
+			}
+		}
+	}
+	extraDir := mediaPath + "/" + req.ExtraType
+	extraFile := extraDir + "/" + SanitizeFilename(req.ExtraTitle) + ".mp4"
+	metaFile := extraDir + "/" + SanitizeFilename(req.ExtraTitle) + ".mp4.json"
+	err1 := os.Remove(extraFile)
+	err2 := os.Remove(metaFile)
+	if err1 != nil && err2 != nil {
+		fmt.Printf("[deleteExtraHandler] Failed to delete extra: file error: %v, meta error: %v\n", err1, err2)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete extra", "detail": fmt.Sprintf("file error: %v, meta error: %v", err1, err2)})
+		return
+	}
+	// Record history event
+	event := HistoryEvent{
+		Action:     "delete",
+		Title:      mediaTitle,
+		MediaType:  req.MediaType,
+		ExtraType:  req.ExtraType,
+		ExtraTitle: req.ExtraTitle,
+		Date:       time.Now(),
+	}
+	_ = AppendHistoryEvent(event)
+	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+}
 
 type ExtraType string
 
@@ -170,5 +234,36 @@ func downloadExtraHandler(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	// Record history event
+	var mediaTitle string
+	// Try to resolve title from cache
+	var cachePath string
+	if strings.Contains(req.MoviePath, "/Movies/") {
+		cachePath = MoviesCachePath
+	} else if strings.Contains(req.MoviePath, "/Series/") {
+		cachePath = SeriesCachePath
+	}
+	if cachePath != "" {
+		items, err := loadCache(cachePath)
+		if err == nil {
+			for _, m := range items {
+				if p, ok := m["path"].(string); ok && p == req.MoviePath {
+					if t, ok := m["title"].(string); ok {
+						mediaTitle = t
+					}
+					break
+				}
+			}
+		}
+	}
+	event := HistoryEvent{
+		Action:     "download",
+		Title:      mediaTitle,
+		MediaType:  "movie", // Could be "movie" or "tv"; adjust as needed
+		ExtraType:  req.ExtraType,
+		ExtraTitle: req.ExtraTitle,
+		Date:       time.Now(),
+	}
+	_ = AppendHistoryEvent(event)
 	c.JSON(http.StatusOK, gin.H{"status": "downloaded", "meta": meta})
 }

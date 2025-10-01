@@ -19,3 +19,5 @@ type SonarrSeries struct {
 	Path     string `json:"path"`
 	Overview string `json:"overview"`
 }
+
+// HistoryEvent struct is now in history.go
