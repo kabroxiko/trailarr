@@ -183,6 +183,7 @@ export default function Tasks() {
       <table style={tableStyle}>
         <thead>
           <tr>
+            <th style={thStyle}></th>
             <th style={thStyle}>Name</th>
             <th style={thStyle}>Queued</th>
             <th style={thStyle}>Started</th>
@@ -192,14 +193,35 @@ export default function Tasks() {
         </thead>
         <tbody>
           {queues.length === 0 ? (
-            <tr><td colSpan={5} style={tdStyle}>No queue items</td></tr>
+            <tr><td colSpan={6} style={tdStyle}>No queue items</td></tr>
           ) : queues.map((item, idx) => (
             <tr key={idx}>
+              <td style={{...tdStyle, textAlign: 'center'}}>
+                {(() => {
+                  if (!item.Status) return <span title="Unknown">-</span>;
+                  if (item.Status === 'success') return <span title="Success" style={{color:'#28a745'}}>&#x2714;</span>;
+                  if (item.Status === 'running') return <span title="Running" style={{color:'#007bff'}}>&#x25D4;</span>;
+                  if (item.Status === 'failed') return <span title="Failed" style={{color:'#dc3545'}}>&#x2716;</span>;
+                  return <span title={item.Status}>{item.Status}</span>;
+                })()}
+              </td>
               <td style={tdStyle}>{item.type}</td>
               <td style={tdStyle}>{item.Queued ? new Date(item.Queued).toLocaleString() : '-'}</td>
               <td style={tdStyle}>{item.Started ? new Date(item.Started).toLocaleString() : '-'}</td>
               <td style={tdStyle}>{item.Ended ? new Date(item.Ended).toLocaleString() : '-'}</td>
-              <td style={tdStyle}>{item.Duration ? (typeof item.Duration === 'string' ? item.Duration : `${item.Duration} ms`) : '-'}</td>
+              <td style={tdStyle}>{(() => {
+                if (!item.Duration) return '-';
+                if (typeof item.Duration === 'number') {
+                  // If > 1s, show seconds, else show ms
+                  if (item.Duration >= 1e9) {
+                    return `${(item.Duration / 1e9).toFixed(2)} s`;
+                  } else {
+                    return `${Math.round(item.Duration / 1e6)} ms`;
+                  }
+                }
+                // If string, fallback to previous logic
+                return item.Duration;
+              })()}</td>
             </tr>
           ))}
         </tbody>
