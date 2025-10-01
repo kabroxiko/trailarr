@@ -376,9 +376,9 @@ function App() {
                     <div
                       style={{
                         textDecoration: 'none',
-                        background: selectedSection === name ? (darkMode ? '#d6b4f7' : '#f3e8ff') : 'none',
+                        background: selectedSection === name ? (darkMode ? '#333' : '#f3f4f6') : 'none',
                         border: 'none',
-                        color: selectedSection === name ? (darkMode ? '#6d28d9' : '#e5e7eb') : (darkMode ? '#e5e7eb' : '#333'),
+                        color: selectedSection === name ? (darkMode ? '#a855f7' : '#6d28d9') : (darkMode ? '#e5e7eb' : '#333'),
                         fontWeight: selectedSection === name ? 'bold' : 'normal',
                         width: '100%',
                         textAlign: 'left',
