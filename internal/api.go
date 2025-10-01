@@ -22,6 +22,158 @@ func RegisterRoutes(r *gin.Engine) {
 	r.GET("/api/extras/search", searchExtrasHandler)
 	r.POST("/api/extras/download", downloadExtraHandler)
 	r.GET("/api/extras/existing", existingExtrasHandler)
+	r.GET("/api/sonarr/series", HandleSonarrSeries)
+	r.POST("/api/settings/sonarr", saveSonarrSettingsHandler)
+	r.GET("/api/settings/sonarr", getSonarrSettingsHandler)
+}
+
+// Handler to get Sonarr settings
+func getSonarrSettingsHandler(c *gin.Context) {
+	data, err := os.ReadFile("sonarr.json")
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"url": "", "apiKey": ""})
+		return
+	}
+	var settings struct {
+		URL    string `json:"url"`
+		APIKey string `json:"apiKey"`
+	}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		c.JSON(http.StatusOK, gin.H{"url": "", "apiKey": ""})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"url": settings.URL, "apiKey": settings.APIKey})
+}
+
+// Handler to save Sonarr settings
+func saveSonarrSettingsHandler(c *gin.Context) {
+	var req struct {
+		URL    string `json:"url"`
+		APIKey string `json:"apiKey"`
+	}
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+	// Save to a config file (sonarr.json)
+	data := []byte(fmt.Sprintf(`{"url": "%s", "apiKey": "%s"}`, req.URL, req.APIKey))
+	err := os.WriteFile("sonarr.json", data, 0644)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "saved"})
+}
+
+// --- Sonarr Series API ---
+type SonarrSeries struct {
+	ID     int                    `json:"id"`
+	Title  string                 `json:"title"`
+	Year   int                    `json:"year"`
+	Path   string                 `json:"path"`
+	Images []map[string]interface{} `json:"images"`
+}
+
+// Handler for /api/sonarr/series
+func HandleSonarrSeries(c *gin.Context) {
+	// Serve series from cache (only series with downloaded posters)
+	cachePath := "/var/lib/extrazarr/series_cache.json"
+	cacheData, err := os.ReadFile(cachePath)
+	if err == nil {
+		var series []SonarrSeries
+		if err := json.Unmarshal(cacheData, &series); err == nil {
+			c.JSON(http.StatusOK, gin.H{"series": series})
+			return
+		}
+	}
+
+	// Load Sonarr settings
+	data, err := os.ReadFile("sonarr.json")
+	if err != nil {
+		fmt.Println("[HandleSonarrSeries] Sonarr settings not found")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Sonarr settings not found"})
+		return
+	}
+	var settings struct {
+		URL    string `json:"url"`
+		APIKey string `json:"apiKey"`
+	}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		fmt.Println("[HandleSonarrSeries] Invalid Sonarr settings")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid Sonarr settings"})
+		return
+	}
+
+	// Fetch series from Sonarr
+	// Remove trailing slash from URL if present
+	apiBase := settings.URL
+	if strings.HasSuffix(apiBase, "/") {
+		apiBase = strings.TrimRight(apiBase, "/")
+	}
+	req, err := http.NewRequest("GET", apiBase+"/api/v3/series", nil)
+	if err != nil {
+		fmt.Println("[HandleSonarrSeries] Error creating request:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating request"})
+		return
+	}
+	req.Header.Set("X-Api-Key", settings.APIKey)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Println("[HandleSonarrSeries] Error fetching series:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error fetching series", "details": err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	fmt.Printf("[HandleSonarrSeries] Raw response body: %s\n", string(body))
+	if resp.StatusCode != 200 {
+		fmt.Printf("[HandleSonarrSeries] Sonarr API error: %d\n", resp.StatusCode)
+		return
+	}
+	var allSeries []map[string]interface{}
+	if err := json.Unmarshal(body, &allSeries); err != nil {
+		fmt.Println("[HandleSonarrSeries] Failed to decode Sonarr response:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode Sonarr response", "details": err.Error(), "body": string(body)})
+		return
+	}
+	// Filter only series with downloaded episodes (statistics.episodeFileCount > 0)
+	series := make([]SonarrSeries, 0)
+	for _, s := range allSeries {
+		stats, ok := s["statistics"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		episodeFileCount, ok := stats["episodeFileCount"].(float64)
+		if !ok || episodeFileCount < 1 {
+			continue
+		}
+		id, ok := s["id"].(float64)
+		if !ok {
+			continue
+		}
+		title, _ := s["title"].(string)
+		year, _ := s["year"].(float64)
+		path, _ := s["path"].(string)
+		images, _ := s["images"].([]interface{})
+		var imgArr []map[string]interface{}
+		for _, img := range images {
+			if imgMap, ok := img.(map[string]interface{}); ok {
+				imgArr = append(imgArr, imgMap)
+			}
+		}
+		series = append(series, SonarrSeries{
+			ID:     int(id),
+			Title:  title,
+			Year:   int(year),
+			Path:   path,
+			Images: imgArr,
+		})
+	}
+	// Save series to cache file
+	cacheData, _ = json.MarshalIndent(series, "", "  ")
+	_ = os.WriteFile(cachePath, cacheData, 0644)
+	c.JSON(http.StatusOK, gin.H{"series": series})
 }
 
 // Handler to list existing extras for a movie path
