@@ -13,6 +13,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	ConfigPath      = "/var/lib/extrazarr/config/config.yml"
+	MoviesCachePath = "/var/lib/extrazarr/movies_cache.json"
+	MediaCoverPath  = "/var/lib/extrazarr/MediaCover/"
+	SeriesCachePath = "/var/lib/extrazarr/series_cache.json"
+)
+
 // RegisterRoutes registers all API endpoints to the Gin router
 func RegisterRoutes(r *gin.Engine) {
 	// Serve static files for movie posters
@@ -40,7 +47,7 @@ func RegisterRoutes(r *gin.Engine) {
 
 // Handler to get general settings (TMDB key)
 func getGeneralSettingsHandler(c *gin.Context) {
-	data, err := os.ReadFile("config.yml")
+	data, err := os.ReadFile(ConfigPath)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"tmdbKey": ""})
 		return
@@ -77,11 +84,11 @@ func saveGeneralSettingsHandler(c *gin.Context) {
 			APIKey string `yaml:"apiKey"`
 		} `yaml:"radarr"`
 	}
-	data, _ := os.ReadFile("config.yml")
+	data, _ := os.ReadFile(ConfigPath)
 	_ = yaml.Unmarshal(data, &allSettings)
 	allSettings.General.TMDBApiKey = req.TMDBApiKey
 	out, _ := yaml.Marshal(allSettings)
-	err := os.WriteFile("config.yml", out, 0644)
+	err := os.WriteFile(ConfigPath, out, 0644)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -93,7 +100,7 @@ func saveGeneralSettingsHandler(c *gin.Context) {
 func HandleRadarrPoster(c *gin.Context) {
 	movieId := c.Param("movieId")
 	// Load Radarr settings
-	data, err := os.ReadFile("config.yml")
+	data, err := os.ReadFile(ConfigPath)
 	var allSettings struct {
 		Radarr struct {
 			URL    string `yaml:"url"`
@@ -111,7 +118,7 @@ func HandleRadarrPoster(c *gin.Context) {
 		apiBase = strings.TrimRight(apiBase, "/")
 	}
 	// Try local MediaCover first
-	localPath := "/var/lib/extrazarr/MediaCover/" + movieId + "/poster-500.jpg"
+	localPath := MediaCoverPath + movieId + "/poster-500.jpg"
 	if _, err := os.Stat(localPath); err == nil {
 		c.File(localPath)
 		return
@@ -140,7 +147,7 @@ func HandleRadarrPoster(c *gin.Context) {
 func HandleRadarrBanner(c *gin.Context) {
 	movieId := c.Param("movieId")
 	// Load Radarr settings
-	data, err := os.ReadFile("config.yml")
+	data, err := os.ReadFile(ConfigPath)
 	var allSettings struct {
 		Radarr struct {
 			URL    string `yaml:"url"`
@@ -158,7 +165,7 @@ func HandleRadarrBanner(c *gin.Context) {
 		apiBase = strings.TrimRight(apiBase, "/")
 	}
 	// Try local MediaCover first
-	localPath := "/var/lib/extrazarr/MediaCover/" + movieId + "/fanart-1280.jpg"
+	localPath := MediaCoverPath + movieId + "/fanart-1280.jpg"
 	if _, err := os.Stat(localPath); err == nil {
 		c.File(localPath)
 		return
@@ -187,7 +194,7 @@ func HandleRadarrBanner(c *gin.Context) {
 func HandleSonarrBanner(c *gin.Context) {
 	seriesId := c.Param("seriesId")
 	// Load Sonarr settings
-	data, err := os.ReadFile("config.yml")
+	data, err := os.ReadFile(ConfigPath)
 	var allSettings struct {
 		Sonarr struct {
 			URL    string `yaml:"url"`
@@ -205,7 +212,7 @@ func HandleSonarrBanner(c *gin.Context) {
 		apiBase = strings.TrimRight(apiBase, "/")
 	}
 	// Try local MediaCover first
-	localPath := "/var/lib/extrazarr/MediaCover/" + seriesId + "/banner.jpg"
+	localPath := MediaCoverPath + seriesId + "/banner.jpg"
 	if _, err := os.Stat(localPath); err == nil {
 		c.File(localPath)
 		return
@@ -234,7 +241,7 @@ func HandleSonarrBanner(c *gin.Context) {
 func HandleSonarrPoster(c *gin.Context) {
 	seriesId := c.Param("seriesId")
 	// Load Sonarr settings
-	data, err := os.ReadFile("config.yml")
+	data, err := os.ReadFile(ConfigPath)
 	var allSettings struct {
 		Sonarr struct {
 			URL    string `yaml:"url"`
@@ -315,7 +322,7 @@ func HandleSonarrPoster(c *gin.Context) {
 
 // Handler to get Sonarr settings
 func getSonarrSettingsHandler(c *gin.Context) {
-	data, err := os.ReadFile("config.yml")
+	data, err := os.ReadFile(ConfigPath)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"url": "", "apiKey": ""})
 		return
@@ -354,12 +361,12 @@ func saveSonarrSettingsHandler(c *gin.Context) {
 			APIKey string `yaml:"apiKey"`
 		} `yaml:"radarr"`
 	}
-	data, _ := os.ReadFile("config.yml")
+	data, _ := os.ReadFile(ConfigPath)
 	_ = yaml.Unmarshal(data, &allSettings)
 	allSettings.Sonarr.URL = req.URL
 	allSettings.Sonarr.APIKey = req.APIKey
 	out, _ := yaml.Marshal(allSettings)
-	err := os.WriteFile("config.yml", out, 0644)
+	err := os.WriteFile(ConfigPath, out, 0644)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -378,7 +385,7 @@ type SonarrSeries struct {
 // Handler for /api/sonarr/series
 func HandleSonarrSeries(c *gin.Context) {
 	// Serve series from cache (only series with downloaded posters)
-	cachePath := "/var/lib/extrazarr/series_cache.json"
+	cachePath := SeriesCachePath
 	cacheData, err := os.ReadFile(cachePath)
 	if err == nil {
 		var series []SonarrSeries
@@ -389,7 +396,7 @@ func HandleSonarrSeries(c *gin.Context) {
 	}
 
 	// Load Sonarr settings from config.yml (YAML)
-	data, err := os.ReadFile("config.yml")
+	data, err := os.ReadFile(ConfigPath)
 	if err != nil {
 		fmt.Println("[HandleSonarrSeries] Sonarr settings not found")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Sonarr settings not found"})
@@ -522,7 +529,7 @@ func existingExtrasHandler(c *gin.Context) {
 // Handler to fetch movies from Radarr
 func getRadarrMoviesHandler(c *gin.Context) {
 	// Serve movies from cache (only movies with downloaded posters)
-	cachePath := "/var/lib/extrazarr/movies_cache.json"
+	cachePath := MoviesCachePath
 	fmt.Println("[getRadarrMoviesHandler] cachePath:", cachePath)
 	cacheData, err := os.ReadFile(cachePath)
 	if err != nil {
@@ -542,7 +549,7 @@ func getRadarrMoviesHandler(c *gin.Context) {
 
 // Handler to get Radarr settings
 func getRadarrSettingsHandler(c *gin.Context) {
-	data, err := os.ReadFile("config.yml")
+	data, err := os.ReadFile(ConfigPath)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"url": "", "apiKey": ""})
 		return
@@ -581,12 +588,12 @@ func saveRadarrSettingsHandler(c *gin.Context) {
 			APIKey string `yaml:"apiKey"`
 		} `yaml:"radarr"`
 	}
-	data, _ := os.ReadFile("config.yml")
+	data, _ := os.ReadFile(ConfigPath)
 	_ = yaml.Unmarshal(data, &allSettings)
 	allSettings.Radarr.URL = req.URL
 	allSettings.Radarr.APIKey = req.APIKey
 	out, _ := yaml.Marshal(allSettings)
-	err := os.WriteFile("config.yml", out, 0644)
+	err := os.WriteFile(ConfigPath, out, 0644)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -636,12 +643,13 @@ func downloadExtraHandler(c *gin.Context) {
 }
 
 // SyncRadarrMoviesAndMediaCover syncs Radarr movie list and MediaCover folder
-func SyncRadarrMoviesAndMediaCover() {
+func SyncRadarrMoviesAndMediaCover() error {
+	var syncErr error
 	// Load Radarr settings from config.yml (YAML)
-	data, err := os.ReadFile("config.yml")
+	data, err := os.ReadFile(ConfigPath)
 	if err != nil {
 		fmt.Println("[Sync] Radarr settings not found")
-		return
+		return fmt.Errorf("Radarr settings not found: %w", err)
 	}
 	var allSettings struct {
 		Radarr struct {
@@ -651,32 +659,32 @@ func SyncRadarrMoviesAndMediaCover() {
 	}
 	if err := yaml.Unmarshal(data, &allSettings); err != nil {
 		fmt.Println("[Sync] Invalid Radarr settings")
-		return
+		return fmt.Errorf("Invalid Radarr settings: %w", err)
 	}
 	settings := allSettings.Radarr
 	// Always fetch movies from Radarr and refresh cache
-	cachePath := "/var/lib/extrazarr/movies_cache.json"
+	cachePath := MoviesCachePath
 	req, err := http.NewRequest("GET", settings.URL+"/api/v3/movie", nil)
 	if err != nil {
 		fmt.Println("[Sync] Error creating request:", err)
-		return
+		return fmt.Errorf("Error creating request: %w", err)
 	}
 	req.Header.Set("X-Api-Key", settings.APIKey)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Println("[Sync] Error fetching movies:", err)
-		return
+		return fmt.Errorf("Error fetching movies: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		fmt.Println("[Sync] Radarr API error:", resp.StatusCode)
-		return
+		return fmt.Errorf("Radarr API error: %d", resp.StatusCode)
 	}
 	var allMovies []map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&allMovies); err != nil {
 		fmt.Println("[Sync] Failed to decode Radarr response:", err)
-		return
+		return fmt.Errorf("Failed to decode Radarr response: %w", err)
 	}
 	// Filter only downloaded movies (hasFile == true)
 	movies := make([]map[string]interface{}, 0)
@@ -714,6 +722,7 @@ func SyncRadarrMoviesAndMediaCover() {
 		resp, err := client.Get(posterUrl)
 		if err != nil {
 			fmt.Println("[Sync] Failed to download poster for movie", idStr, err)
+			syncErr = err
 		} else {
 			defer resp.Body.Close()
 			if resp.StatusCode == 200 {
@@ -725,9 +734,11 @@ func SyncRadarrMoviesAndMediaCover() {
 						downloadedMovies = append(downloadedMovies, movie)
 					} else {
 						fmt.Println("[Sync] Error saving poster for movie", idStr, err)
+						syncErr = err
 					}
 				} else {
 					fmt.Println("[Sync] Error creating file for poster", posterPath, err)
+					syncErr = err
 				}
 			} else {
 				fmt.Println("[Sync] Poster not found for movie", idStr)
@@ -738,6 +749,7 @@ func SyncRadarrMoviesAndMediaCover() {
 		respFanart, err := client.Get(fanartUrl)
 		if err != nil {
 			fmt.Println("[Sync] Failed to download fanart for movie", idStr, err)
+			syncErr = err
 			continue
 		}
 		defer respFanart.Body.Close()
@@ -748,9 +760,11 @@ func SyncRadarrMoviesAndMediaCover() {
 				out.Close()
 				if err != nil {
 					fmt.Println("[Sync] Error saving fanart for movie", idStr, err)
+					syncErr = err
 				}
 			} else {
 				fmt.Println("[Sync] Error creating file for fanart", fanartPath, err)
+				syncErr = err
 			}
 		} else {
 			fmt.Println("[Sync] Fanart not found for movie", idStr)
@@ -764,12 +778,15 @@ func SyncRadarrMoviesAndMediaCover() {
 	// Write to a temporary file first
 	if err := os.WriteFile(tmpCachePath, cacheData, 0644); err != nil {
 		fmt.Println("[Sync] Error writing temp cache file:", err)
+		syncErr = err
 	} else {
 		// Atomically replace the cache file only after successful write
 		if err := os.Rename(tmpCachePath, cachePath); err != nil {
 			fmt.Println("[Sync] Error replacing cache file:", err)
+			syncErr = err
 		} else {
 			fmt.Println("[Sync] Cached", len(downloadedMovies), "movies with posters.")
 		}
 	}
+	return syncErr
 }

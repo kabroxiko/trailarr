@@ -95,7 +95,7 @@ func FetchPlexLibrary() ([]PlexItem, error) {
 func SearchExtras(mediaType string, id int) ([]map[string]string, error) {
 	// Read TMDB key from config.yml
 	var tmdbKey string
-	settingsData, err := os.ReadFile("config.yml")
+	settingsData, err := os.ReadFile(ConfigPath)
 	if err == nil {
 		var allSettings struct {
 			General struct {
@@ -112,7 +112,7 @@ func SearchExtras(mediaType string, id int) ([]map[string]string, error) {
 	var tmdbId int
 	if mediaType == "movie" {
 		// Lookup TMDB id from Radarr
-		radarrCache := "/var/lib/extrazarr/movies_cache.json"
+		radarrCache := MoviesCachePath
 		cacheData, err := os.ReadFile(radarrCache)
 		if err != nil {
 			return nil, fmt.Errorf("Failed to read Radarr cache: %w", err)
@@ -134,7 +134,7 @@ func SearchExtras(mediaType string, id int) ([]map[string]string, error) {
 		}
 	} else if mediaType == "tv" {
 		// Lookup title from Sonarr
-		sonarrCache := "/var/lib/extrazarr/series_cache.json"
+		sonarrCache := SeriesCachePath
 		cacheData, err := os.ReadFile(sonarrCache)
 		if err != nil {
 			return nil, fmt.Errorf("Failed to read Sonarr cache: %w", err)
