@@ -82,6 +82,10 @@ var syncSonarrStatus = struct {
 
 // Handler to force sync Sonarr
 func ForceSyncSonarr() {
+	if !GetAutoDownloadExtras() {
+		println("[FORCE] Auto download of extras is disabled by general settings. Skipping forced Sonarr sync.")
+		return
+	}
 	// Use generic ForceSyncMedia from media.go
 	// Only use GlobalSyncQueue for persistence and display
 	ForceSyncMedia(

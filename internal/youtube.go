@@ -1,14 +1,14 @@
 package internal
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/kkdai/youtube/v2"
+	go_ytdlp "github.com/lrstanley/go-ytdlp"
 )
 
 type ExtraDownloadMetadata struct {
@@ -21,6 +21,10 @@ type ExtraDownloadMetadata struct {
 }
 
 func DownloadYouTubeExtra(moviePath, extraType, extraTitle, extraURL string) (*ExtraDownloadMetadata, error) {
+	if !GetAutoDownloadExtras() {
+		fmt.Printf("[DownloadYouTubeExtra] Auto download of extras is disabled by general settings. Skipping download for %s\n", extraTitle)
+		return nil, nil
+	}
 	fmt.Printf("Downloading YouTube extra: type=%s, title=%s, url=%s\n", extraType, extraTitle, extraURL)
 	// Extract YouTube ID
 	youtubeID, err := ExtractYouTubeID(extraURL)
@@ -43,27 +47,19 @@ func DownloadYouTubeExtra(moviePath, extraType, extraTitle, extraURL string) (*E
 	}
 	outFile := filepath.Join(outDir, fmt.Sprintf("%s.mp4", safeTitle))
 
-	// Download using kkdai/youtube
-	client := youtube.Client{}
-	video, err := client.GetVideo(youtubeID)
+	// Download using yt-dlp via go-ytdlp
+	// Correct usage based on go-ytdlp docs
+	// https://github.com/lrstanley/go-ytdlp#simple
+	// MustInstall ensures yt-dlp binary is available
+	go_ytdlp.MustInstall(context.Background(), nil)
+	cmd := go_ytdlp.New().
+		Output(outFile).
+		FormatSort("res,ext:mp4:m4a").
+		RecodeVideo("mp4")
+
+	_, err = cmd.Run(context.Background(), extraURL)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to get video info for YouTube ID '%s': %w", youtubeID, err)
-	}
-	formats := video.Formats.WithAudioChannels()
-	if len(formats) == 0 {
-		return nil, fmt.Errorf("No downloadable video format found for YouTube ID '%s'", youtubeID)
-	}
-	stream, _, err := client.GetStream(video, &formats[0])
-	if err != nil {
-		return nil, fmt.Errorf("Failed to get stream for YouTube ID '%s': %w", youtubeID, err)
-	}
-	f, err := os.Create(outFile)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to create file '%s': %w", outFile, err)
-	}
-	defer f.Close()
-	if _, err := io.Copy(f, stream); err != nil {
-		return nil, fmt.Errorf("Failed to save video to '%s': %w", outFile, err)
+		return nil, fmt.Errorf("yt-dlp download failed: %w", err)
 	}
 
 	meta := &ExtraDownloadMetadata{
@@ -74,7 +70,6 @@ func DownloadYouTubeExtra(moviePath, extraType, extraTitle, extraURL string) (*E
 		Status:    "downloaded",
 		URL:       extraURL,
 	}
-	// Optionally, save metadata to a file (e.g., outFile+".json")
 	metaFile := outFile + ".json"
 	metaBytes, _ := json.MarshalIndent(meta, "", "  ")
 	_ = os.WriteFile(metaFile, metaBytes, 0644)
