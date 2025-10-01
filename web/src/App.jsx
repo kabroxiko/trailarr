@@ -283,10 +283,10 @@ function App() {
         <>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ background: '#f3e8ff' }}>
-                <th style={{ textAlign: 'left', padding: '0.5em' }}>Title</th>
-                <th style={{ textAlign: 'left', padding: '0.5em' }}>Year</th>
-                <th style={{ textAlign: 'left', padding: '0.5em' }}>Path</th>
+              <tr style={{ background: darkMode ? '#23232a' : '#f3e8ff' }}>
+                <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Title</th>
+                <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Year</th>
+                <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Path</th>
               </tr>
             </thead>
             <tbody>
@@ -312,10 +312,10 @@ function App() {
       <>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ background: '#f3e8ff' }}>
-              <th style={{ textAlign: 'left', padding: '0.5em' }}>Name</th>
-              <th style={{ textAlign: 'left', padding: '0.5em' }}>Language</th>
-              <th style={{ textAlign: 'left', padding: '0.5em' }}>Extras</th>
+            <tr style={{ background: darkMode ? '#23232a' : '#f3e8ff' }}>
+              <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Name</th>
+              <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Language</th>
+              <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Extras</th>
             </tr>
           </thead>
           <tbody>
