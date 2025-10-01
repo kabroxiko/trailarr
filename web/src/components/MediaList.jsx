@@ -6,11 +6,13 @@ export default function MediaList({ items, darkMode, type }) {
     <div
       style={{
         display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 0px))',
         gap: '2rem 1.5rem',
         padding: '1.5rem 1rem',
         width: '100%',
         boxSizing: 'border-box',
+        justifyContent: 'flex-start',
+        gridAutoFlow: 'unset',
       }}
     >
       {items.map((item) => (
