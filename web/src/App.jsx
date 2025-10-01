@@ -170,8 +170,8 @@ function App() {
                   {radarrMoviesError && <div style={{ color: 'red', marginTop: '1em' }}>{radarrMoviesError}</div>}
                 </>
               } />
-              <Route path="/movies/:id" element={<MediaDetails mediaItems={radarrMovies} loading={radarrMoviesLoading} />} />
-              <Route path="/series/:id" element={<MediaDetails mediaItems={sonarrSeries} loading={sonarrSeriesLoading} />} />
+              <Route path="/movies/:id" element={<MediaDetails mediaItems={radarrMovies} loading={radarrMoviesLoading} mediaType="movie" />} />
+              <Route path="/series/:id" element={<MediaDetails mediaItems={sonarrSeries} loading={sonarrSeriesLoading} mediaType="tv" />} />
               <Route path="/settings/radarr" element={
                 <div style={{
                   background: darkMode ? '#23232a' : '#fff',

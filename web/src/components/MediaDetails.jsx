@@ -4,7 +4,7 @@ import { faBookmark } from '@fortawesome/free-solid-svg-icons';
 import { useParams } from 'react-router-dom';
 import { searchExtras } from '../api';
 
-export default function MediaDetails({ mediaItems, loading }) {
+export default function MediaDetails({ mediaItems, loading, mediaType }) {
   const { id } = useParams();
   const media = mediaItems.find(m => String(m.id) === id);
   const [extras, setExtras] = useState([]);
@@ -27,7 +27,7 @@ export default function MediaDetails({ mediaItems, loading }) {
       .then(res => {
         setExtras(res.extras || []);
         if (media.path) {
-          let paramName = isSeriesDetail ? 'seriesPath' : 'moviePath';
+          let paramName = mediaType === 'tv' ? 'seriesPath' : 'moviePath';
           fetch(`/api/extras/existing?${paramName}=${encodeURIComponent(media.path)}`)
             .then(r => r.json())
             .then(data => setExistingExtras(data.existing || []))
@@ -36,7 +36,7 @@ export default function MediaDetails({ mediaItems, loading }) {
       })
       .catch(() => setError('Failed to search extras'))
       .finally(() => setSearchLoading(false));
-  }, [media]);
+  }, [media, mediaType]);
 
   if (loading) return <div>Loading media details...</div>;
   if (!media) {
@@ -66,9 +66,8 @@ export default function MediaDetails({ mediaItems, loading }) {
     }
   };
 
-  const isSeriesDetail = window.location.pathname.startsWith('/series/');
   let background;
-  if (isSeriesDetail) {
+  if (mediaType === 'tv') {
     background = `url(/api/sonarr/banner/${media.id}) center center/cover no-repeat`;
   } else {
     background = `url(/api/radarr/banner/${media.id}) center center/cover no-repeat`;
@@ -122,7 +121,7 @@ export default function MediaDetails({ mediaItems, loading }) {
         }} />
         <div style={{ minWidth: 150, zIndex: 2, display: 'flex', justifyContent: 'flex-start', alignItems: 'center', height: '100%', padding: '0 0 0 32px' }}>
           <img
-            src={isSeriesDetail
+            src={mediaType === 'tv'
               ? `/api/sonarr/poster/${media.id}`
               : `/api/radarr/poster/${media.id}`}
             style={{ width: 120, height: 180, objectFit: 'cover', borderRadius: 2, background: '#222', boxShadow: '0 1px 4px rgba(0,0,0,0.18)' }}
