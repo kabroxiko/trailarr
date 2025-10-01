@@ -1,125 +1,26 @@
 package internal
 
 import (
-	"encoding/json"
-	"fmt"
-	"io"
 	"net/http"
 	"os"
-	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/gin-gonic/gin"
 )
 
-func getRadarrPosterHandler(c *gin.Context) {
-	movieId := c.Param("movieId")
-	// Load Radarr settings
-	data, err := os.ReadFile(ConfigPath)
-	var allSettings struct {
-		Radarr struct {
-			URL    string `yaml:"url"`
-			APIKey string `yaml:"apiKey"`
-		} `yaml:"radarr"`
-	}
-	if err := yaml.Unmarshal(data, &allSettings); err != nil {
-		c.String(http.StatusInternalServerError, "Invalid Radarr settings")
-		return
-	}
-	radarrSettings := allSettings.Radarr
-	// Remove trailing slash from URL if present
-	apiBase := radarrSettings.URL
-	if strings.HasSuffix(apiBase, "/") {
-		apiBase = strings.TrimRight(apiBase, "/")
-	}
-	// Try local MediaCover first
-	localPath := MediaCoverPath + movieId + "/poster-500.jpg"
-	if _, err := os.Stat(localPath); err == nil {
-		c.File(localPath)
-		return
-	}
-	// Fallback to Radarr API
-	posterUrl := apiBase + RemoteMediaCoverPath + movieId + "/poster-500.jpg"
-	req, err := http.NewRequest("GET", posterUrl, nil)
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Error creating poster request")
-		return
-	}
-	req.Header.Set(HeaderApiKey, radarrSettings.APIKey)
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil || resp.StatusCode != 200 {
-		c.String(http.StatusBadGateway, "Failed to fetch poster image from Radarr")
-		return
-	}
-	defer resp.Body.Close()
-	c.Header(HeaderContentType, resp.Header.Get(HeaderContentType))
-	c.Status(http.StatusOK)
-	io.Copy(c.Writer, resp.Body)
-}
+var getRadarrPosterHandler = getImageHandler("radarr", "movieId", "/poster-500.jpg")
 
-func getRadarrBannerHandler(c *gin.Context) {
-	movieId := c.Param("movieId")
-	// Load Radarr settings
-	data, err := os.ReadFile(ConfigPath)
-	var allSettings struct {
-		Radarr struct {
-			URL    string `yaml:"url"`
-			APIKey string `yaml:"apiKey"`
-		} `yaml:"radarr"`
-	}
-	if err := yaml.Unmarshal(data, &allSettings); err != nil {
-		c.String(http.StatusInternalServerError, "Invalid Radarr settings")
-		return
-	}
-	radarrSettings := allSettings.Radarr
-	// Remove trailing slash from URL if present
-	apiBase := radarrSettings.URL
-	if strings.HasSuffix(apiBase, "/") {
-		apiBase = strings.TrimRight(apiBase, "/")
-	}
-	// Try local MediaCover first
-	localPath := MediaCoverPath + movieId + "/fanart-1280.jpg"
-	if _, err := os.Stat(localPath); err == nil {
-		c.File(localPath)
-		return
-	}
-	// Fallback to Radarr API
-	bannerUrl := apiBase + RemoteMediaCoverPath + movieId + "/fanart-1280.jpg"
-	req, err := http.NewRequest("GET", bannerUrl, nil)
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Error creating banner request")
-		return
-	}
-	req.Header.Set(HeaderApiKey, radarrSettings.APIKey)
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil || resp.StatusCode != 200 {
-		c.String(http.StatusBadGateway, "Failed to fetch banner image from Radarr")
-		return
-	}
-	defer resp.Body.Close()
-	c.Header(HeaderContentType, resp.Header.Get(HeaderContentType))
-	c.Status(http.StatusOK)
-}
+var getRadarrBannerHandler = getImageHandler("radarr", "movieId", "/fanart-1280.jpg")
 
 func getRadarrMoviesHandler(c *gin.Context) {
 	cachePath := MoviesCachePath
-	fmt.Println("[getRadarrMoviesHandler] cachePath:", cachePath)
-	cacheData, err := os.ReadFile(cachePath)
+	movies, err := loadCache(cachePath)
 	if err != nil {
-		fmt.Println("[getRadarrMoviesHandler] Error reading cache:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Movie cache not found"})
 		return
 	}
-	var movies []map[string]interface{}
-	if err := json.Unmarshal(cacheData, &movies); err != nil {
-		fmt.Println("[getRadarrMoviesHandler] Error decoding cache:", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode movie cache"})
-		return
-	}
-	fmt.Printf("[getRadarrMoviesHandler] Loaded %d movies from cache\n", len(movies))
 	c.JSON(http.StatusOK, gin.H{"movies": movies})
 }
 
@@ -174,156 +75,119 @@ func saveRadarrSettingsHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "saved"})
 }
 
-func SyncRadarrMoviesAndMediaCover() error {
-	settings, err := loadRadarrSettings()
-	if err != nil {
-		fmt.Println("[Sync] Radarr settings not found or invalid:", err)
-		return err
-	}
-	movies, err := fetchDownloadedRadarrMovies(settings)
-	if err != nil {
-		fmt.Println("[Sync] Error fetching movies:", err)
-		return err
-	}
-	if err := cacheMovies(movies, MoviesCachePath); err != nil {
-		fmt.Println("[Sync] Error caching movies:", err)
-		return err
-	}
-	fmt.Println("[Sync] Synced", len(movies), "downloaded movies to cache.")
-	downloadedMovies, err := downloadMovieImages(settings, movies)
-	if err != nil {
-		fmt.Println("[Sync] Error downloading images:", err)
-	}
-	if err := atomicCacheMovies(downloadedMovies, "/var/lib/extrazarr/movies_cache.json"); err != nil {
-		fmt.Println("[Sync] Error updating cache with posters:", err)
-		return err
-	}
-	fmt.Println("[Sync] Cached", len(downloadedMovies), "movies with posters.")
-	return err
+// Sync queue item and status for Radarr
+
+// SyncRadarrQueueItem tracks a Radarr sync operation
+type SyncRadarrQueueItem struct {
+	Queued   time.Time
+	Started  time.Time
+	Ended    time.Time
+	Duration time.Duration
+	Status   string
+	Error    string
 }
 
-func loadRadarrSettings() (struct {
-	URL    string
-	APIKey string
-}, error) {
-	data, err := os.ReadFile(ConfigPath)
-	if err != nil {
-		return struct {
-			URL    string
-			APIKey string
-		}{}, fmt.Errorf("Radarr settings not found: %w", err)
-	}
-	var allSettings struct {
-		Radarr struct {
-			URL    string `yaml:"url"`
-			APIKey string `yaml:"apiKey"`
-		} `yaml:"radarr"`
-	}
-	if err := yaml.Unmarshal(data, &allSettings); err != nil {
-		return struct {
-			URL    string
-			APIKey string
-		}{}, fmt.Errorf("Invalid Radarr settings: %w", err)
-	}
-	return struct {
-		URL    string
-		APIKey string
-	}{
-		URL:    allSettings.Radarr.URL,
-		APIKey: allSettings.Radarr.APIKey,
-	}, nil
+// syncRadarrStatus tracks last sync status and times for Radarr
+var syncRadarrStatus = struct {
+	LastExecution time.Time
+	LastDuration  time.Duration
+	NextExecution time.Time
+	LastError     string
+	Queue         []SyncRadarrQueueItem
+}{
+	Queue: make([]SyncRadarrQueueItem, 0),
 }
 
-func fetchDownloadedRadarrMovies(settings struct{ URL, APIKey string }) ([]map[string]interface{}, error) {
-	req, err := http.NewRequest("GET", settings.URL+"/api/v3/movie", nil)
+// Handler to force sync Radarr
+func ForceSyncRadarr() {
+	println("[FORCE] Executing Sync Radarr...")
+	item := SyncRadarrQueueItem{
+		Queued: time.Now(),
+		Status: "queued",
+	}
+	syncRadarrStatus.Queue = append(syncRadarrStatus.Queue, item)
+	item.Started = time.Now()
+	item.Status = "running"
+	err := SyncRadarrImages()
+	item.Ended = time.Now()
+	item.Duration = item.Ended.Sub(item.Started)
+	item.Status = "done"
 	if err != nil {
-		return nil, fmt.Errorf("Error creating request: %w", err)
+		item.Error = err.Error()
+		item.Status = "error"
+		syncRadarrStatus.LastError = err.Error()
+		println("[FORCE] Sync Radarr error:", err.Error())
+	} else {
+		println("[FORCE] Sync Radarr completed successfully.")
 	}
-	req.Header.Set(HeaderApiKey, settings.APIKey)
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("Error fetching movies: %w", err)
+	syncRadarrStatus.LastExecution = item.Ended
+	syncRadarrStatus.LastDuration = item.Duration
+	syncRadarrStatus.NextExecution = item.Ended.Add(15 * time.Minute)
+	if len(syncRadarrStatus.Queue) > 10 {
+		syncRadarrStatus.Queue = syncRadarrStatus.Queue[len(syncRadarrStatus.Queue)-10:]
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("Radarr API error: %d", resp.StatusCode)
-	}
-	var allMovies []map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&allMovies); err != nil {
-		return nil, fmt.Errorf("Failed to decode Radarr response: %w", err)
-	}
-	movies := make([]map[string]interface{}, 0)
-	for _, m := range allMovies {
-		if hasFile, ok := m["hasFile"].(bool); ok && hasFile {
-			movies = append(movies, m)
-		}
-	}
-	return movies, nil
 }
 
-func cacheMovies(movies []map[string]interface{}, cachePath string) error {
-	cacheData, err := json.MarshalIndent(movies, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(cachePath, cacheData, 0644)
+// Background sync for Radarr
+func BackgroundSyncRadarr() {
+	BackgroundSync(
+		15*time.Minute,
+		SyncRadarrImages,
+		func(item interface{}) {
+			syncRadarrStatus.Queue = append(syncRadarrStatus.Queue, *item.(*SyncRadarrQueueItem))
+		},
+		func() interface{} {
+			return &SyncRadarrQueueItem{Queued: time.Now(), Status: "queued"}
+		},
+		func(item interface{}, started, ended time.Time, duration time.Duration, status, errStr string) {
+			i := item.(*SyncRadarrQueueItem)
+			i.Started = started
+			i.Ended = ended
+			i.Duration = duration
+			i.Status = status
+			i.Error = errStr
+			if status == "error" {
+				syncRadarrStatus.LastError = errStr
+			}
+			syncRadarrStatus.LastExecution = ended
+			syncRadarrStatus.LastDuration = duration
+			syncRadarrStatus.NextExecution = ended.Add(15 * time.Minute)
+		},
+		func() {
+			if len(syncRadarrStatus.Queue) > 10 {
+				syncRadarrStatus.Queue = syncRadarrStatus.Queue[len(syncRadarrStatus.Queue)-10:]
+			}
+		},
+	)
 }
 
-func downloadMovieImages(settings struct{ URL, APIKey string }, movies []map[string]interface{}) ([]map[string]interface{}, error) {
-	client := &http.Client{}
-	downloadedMovies := make([]map[string]interface{}, 0)
-	for _, movie := range movies {
-		id, ok := movie["id"].(float64)
-		if !ok {
-			continue
-		}
-		idStr := fmt.Sprintf("%d", int(id))
-		posterUrl := fmt.Sprintf("%s/MediaCover/%s/poster-500.jpg", settings.URL, idStr)
-		fanartUrl := fmt.Sprintf("%s/MediaCover/%s/fanart-1280.jpg", settings.URL, idStr)
-		posterPath := fmt.Sprintf("/var/lib/extrazarr/MediaCover/%s/poster-500.jpg", idStr)
-		fanartPath := fmt.Sprintf("/var/lib/extrazarr/MediaCover/%s/fanart-1280.jpg", idStr)
-		os.MkdirAll(fmt.Sprintf("/var/lib/extrazarr/MediaCover/%s", idStr), 0755)
-		if downloadImage(client, posterUrl, posterPath) {
-			downloadedMovies = append(downloadedMovies, movie)
-		}
-		downloadImage(client, fanartUrl, fanartPath)
+// Exported Radarr status getters for main.go
+func RadarrLastExecution() time.Time     { return syncRadarrStatus.LastExecution }
+func RadarrLastDuration() time.Duration  { return syncRadarrStatus.LastDuration }
+func RadarrNextExecution() time.Time     { return syncRadarrStatus.NextExecution }
+func RadarrLastError() string            { return syncRadarrStatus.LastError }
+func RadarrQueue() []SyncRadarrQueueItem { return syncRadarrStatus.Queue }
+
+// Exported handler for Radarr status
+func GetRadarrStatusHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"scheduled": gin.H{
+				"name":          "Sync with Radarr",
+				"interval":      "15 minutes",
+				"lastExecution": RadarrLastExecution(),
+				"lastDuration":  RadarrLastDuration().String(),
+				"nextExecution": RadarrNextExecution(),
+				"lastError":     RadarrLastError(),
+			},
+			"queue": RadarrQueue(),
+		})
 	}
-	return downloadedMovies, nil
 }
 
-func downloadImage(client *http.Client, url, path string) bool {
-	resp, err := client.Get(url)
-	if err != nil {
-		fmt.Println("[Sync] Failed to download image:", url, err)
-		return false
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		fmt.Println("[Sync] Image not found:", url)
-		return false
-	}
-	out, err := os.Create(path)
-	if err != nil {
-		fmt.Println("[Sync] Error creating file for image:", path, err)
-		return false
-	}
-	defer out.Close()
-	if _, err = io.Copy(out, resp.Body); err != nil {
-		fmt.Println("[Sync] Error saving image:", path, err)
-		return false
-	}
-	return true
-}
-
-func atomicCacheMovies(movies []map[string]interface{}, cachePath string) error {
-	tmpCachePath := cachePath + ".tmp"
-	cacheData, err := json.MarshalIndent(movies, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(tmpCachePath, cacheData, 0644); err != nil {
-		return err
-	}
-	return os.Rename(tmpCachePath, cachePath)
+func SyncRadarrImages() error {
+	return SyncMediaCacheJson("radarr", "/api/v3/movie", MoviesCachePath, func(m map[string]interface{}) bool {
+		hasFile, ok := m["hasFile"].(bool)
+		return ok && hasFile
+	})
 }

@@ -1,0 +1,192 @@
+package internal
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+
+	"gopkg.in/yaml.v3"
+
+	"github.com/gin-gonic/gin"
+)
+
+// Generic poster handler for Radarr and Sonarr
+func getImageHandler(section string, idParam string, fileSuffix string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param(idParam)
+		settings, err := loadMediaSettings(section)
+		if err != nil {
+			c.String(500, "Invalid %s settings", section)
+			return
+		}
+		apiBase := trimTrailingSlash(settings.URL)
+		localPath := MediaCoverPath + id + fileSuffix
+		if _, err := os.Stat(localPath); err == nil {
+			c.File(localPath)
+			return
+		}
+		posterUrl := apiBase + RemoteMediaCoverPath + id + fileSuffix
+		if err := proxyImage(c, posterUrl, apiBase, settings.APIKey); err != nil {
+			c.String(502, "Failed to fetch poster image from %s", section)
+		}
+	}
+}
+
+// Common settings struct for both Radarr and Sonarr
+// Use this for loading settings generically
+type MediaSettings struct {
+	URL    string `yaml:"url"`
+	APIKey string `yaml:"apiKey"`
+}
+
+// Loads settings for a given section ("radarr" or "sonarr")
+func loadMediaSettings(section string) (MediaSettings, error) {
+	data, err := os.ReadFile(ConfigPath)
+	if err != nil {
+		return MediaSettings{}, fmt.Errorf("settings not found: %w", err)
+	}
+	var allSettings map[string]map[string]string
+	if err := yaml.Unmarshal(data, &allSettings); err != nil {
+		return MediaSettings{}, fmt.Errorf("invalid settings: %w", err)
+	}
+	sec, ok := allSettings[section]
+	if !ok {
+		return MediaSettings{}, fmt.Errorf("section %s not found", section)
+	}
+	return MediaSettings{URL: sec["url"], APIKey: sec["apiKey"]}, nil
+}
+
+// Trims trailing slash from a URL
+func trimTrailingSlash(url string) string {
+	if strings.HasSuffix(url, "/") {
+		return strings.TrimRight(url, "/")
+	}
+	return url
+}
+
+// Proxies an image from a remote API, optionally setting API key header
+func proxyImage(c *gin.Context, imageUrl, apiBase, apiKey string) error {
+	req, err := http.NewRequest("GET", imageUrl, nil)
+	if err != nil {
+		return fmt.Errorf("Error creating image request")
+	}
+	if strings.HasPrefix(imageUrl, apiBase) {
+		req.Header.Set(HeaderApiKey, apiKey)
+	}
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		return fmt.Errorf("Failed to fetch image")
+	}
+	defer resp.Body.Close()
+	c.Header(HeaderContentType, resp.Header.Get(HeaderContentType))
+	c.Status(http.StatusOK)
+	_, copyErr := io.Copy(c.Writer, resp.Body)
+	return copyErr
+}
+
+// Loads a JSON cache file into a generic slice
+func loadCache(path string) ([]map[string]interface{}, error) {
+	cacheData, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var items []map[string]interface{}
+	if err := json.Unmarshal(cacheData, &items); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+// Writes a generic slice to a JSON cache file
+func writeCache(items []map[string]interface{}, path string) error {
+	cacheData, err := json.MarshalIndent(items, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, cacheData, 0644)
+}
+
+// Move SyncMediaCacheJson to media.go for shared use
+// Generic sync function for Radarr/Sonarr
+// Syncs only the JSON cache for Radarr/Sonarr, not the media files themselves
+// Pass section ("radarr" or "sonarr"), apiPath (e.g. "/api/v3/movie"), cachePath, and a filter function for items
+func SyncMediaCacheJson(section, apiPath, cachePath string, filter func(map[string]interface{}) bool) error {
+	data, err := os.ReadFile(ConfigPath)
+	if err != nil {
+		return fmt.Errorf("%s settings not found: %w", section, err)
+	}
+	var allSettings map[string]map[string]string
+	if err := yaml.Unmarshal(data, &allSettings); err != nil {
+		return fmt.Errorf("invalid %s settings: %w", section, err)
+	}
+	settings, ok := allSettings[section]
+	if !ok {
+		return fmt.Errorf("section %s not found in config", section)
+	}
+	url := settings["url"]
+	apiKey := settings["apiKey"]
+	req, err := http.NewRequest("GET", url+apiPath, nil)
+	if err != nil {
+		return fmt.Errorf("error creating request: %w", err)
+	}
+	req.Header.Set(HeaderApiKey, apiKey)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("error fetching %s: %w", section, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("%s API error: %d", section, resp.StatusCode)
+	}
+	var allItems []map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&allItems); err != nil {
+		return fmt.Errorf("failed to decode %s response: %w", section, err)
+	}
+	items := make([]map[string]interface{}, 0)
+	for _, m := range allItems {
+		if filter(m) {
+			items = append(items, m)
+		}
+	}
+	cacheData, _ := json.MarshalIndent(items, "", "  ")
+	_ = os.WriteFile(cachePath, cacheData, 0644)
+	fmt.Printf("[Sync%s] Synced %d items to cache.\n", section, len(items))
+	return nil
+}
+
+// Generic background sync for Radarr/Sonarr
+func BackgroundSync(
+	interval time.Duration,
+	syncFunc func() error,
+	queueAppend func(item interface{}),
+	itemFactory func() interface{},
+	itemUpdate func(item interface{}, started, ended time.Time, duration time.Duration, status, errStr string),
+	queueTrim func(),
+) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		item := itemFactory()
+		queueAppend(item)
+		started := time.Now()
+		itemUpdate(item, started, started, 0, "running", "")
+		err := syncFunc()
+		ended := time.Now()
+		duration := ended.Sub(started)
+		status := "done"
+		errStr := ""
+		if err != nil {
+			status = "error"
+			errStr = err.Error()
+		}
+		itemUpdate(item, started, ended, duration, status, errStr)
+		queueTrim()
+		<-ticker.C
+	}
+}
