@@ -121,6 +121,13 @@ func SearchExtras(movieTitle string) ([]map[string]string, error) {
 		return nil, err
 	}
 	extras := []map[string]string{}
+	extraTypes := map[string]bool{
+		"Behind The Scenes": true,
+		"Featurettes":       true,
+		"Scenes":            true,
+		"Trailers":          true,
+		"Others":            true,
+	}
 	for _, v := range videosResult.Results {
 		if v.Site == "YouTube" {
 			extraType := v.Type
@@ -131,6 +138,18 @@ func SearchExtras(movieTitle string) ([]map[string]string, error) {
 				} else {
 					extraType = "Video"
 				}
+			}
+			// Canonicalize type
+			if extraTypes["Behind The Scenes"] && extraType == "Behind the Scenes" {
+				extraType = "Behind The Scenes"
+			} else if extraTypes["Featurettes"] && extraType == "Featurette" {
+				extraType = "Featurettes"
+			} else if extraTypes["Scenes"] && extraType == "Clip" {
+				extraType = "Scenes"
+			} else if extraTypes["Trailers"] && (extraType == "Trailer" || extraType == "Teaser") {
+				extraType = "Trailers"
+			} else if extraTypes["Others"] && extraType == "Bloopers" {
+				extraType = "Others"
 			}
 			extras = append(extras, map[string]string{
 				"type":  extraType,
