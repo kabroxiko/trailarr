@@ -13,7 +13,7 @@ import (
 // RegisterRoutes registers all API endpoints to the Gin router
 func RegisterRoutes(r *gin.Engine) {
 	// Serve static files for movie posters
-	r.Static("/mediacover", "/mnt/unionfs/extrazarr/MediaCover")
+	r.Static("/mediacover", "/var/lib/extrazarr/MediaCover")
 	r.GET("/api/radarr/movies", getRadarrMoviesHandler)
 	r.POST("/api/settings/radarr", saveRadarrSettingsHandler)
 	r.GET("/api/settings/radarr", getRadarrSettingsHandler)
@@ -25,7 +25,7 @@ func RegisterRoutes(r *gin.Engine) {
 // Handler to fetch movies from Radarr
 func getRadarrMoviesHandler(c *gin.Context) {
 	// Serve movies from cache (only movies with downloaded posters)
-	cachePath := "/mnt/unionfs/extrazarr/movies_cache.json"
+	cachePath := "/var/lib/extrazarr/movies_cache.json"
 	cacheData, err := os.ReadFile(cachePath)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Movie cache not found"})
@@ -132,7 +132,7 @@ func SyncRadarrMoviesAndMediaCover() {
 		return
 	}
 	// Read movies from cache file
-	cachePath := "/mnt/unionfs/extrazarr/movies_cache.json"
+	cachePath := "/var/lib/extrazarr/movies_cache.json"
 	cacheData, err := os.ReadFile(cachePath)
 	var movies []map[string]interface{}
 	if err != nil {
@@ -193,9 +193,9 @@ func SyncRadarrMoviesAndMediaCover() {
 		}
 		idStr := fmt.Sprintf("%d", int(id))
 		posterUrl := fmt.Sprintf("%s/MediaCover/%s/poster-500.jpg", settings.URL, idStr)
-		localPath := fmt.Sprintf("/mnt/unionfs/extrazarr/MediaCover/%s/poster-500.jpg", idStr)
+		localPath := fmt.Sprintf("/var/lib/extrazarr/MediaCover/%s/poster-500.jpg", idStr)
 
-		os.MkdirAll(fmt.Sprintf("/mnt/unionfs/extrazarr/MediaCover/%s", idStr), 0755)
+		os.MkdirAll(fmt.Sprintf("/var/lib/extrazarr/MediaCover/%s", idStr), 0755)
 
 		resp, err := client.Get(posterUrl)
 		if err != nil {
@@ -223,7 +223,7 @@ func SyncRadarrMoviesAndMediaCover() {
 	}
 
 	// Save only movies with downloaded posters to cache
-	cachePath = "/mnt/unionfs/extrazarr/movies_cache.json"
+	cachePath = "/var/lib/extrazarr/movies_cache.json"
 	cacheData, _ = json.MarshalIndent(downloadedMovies, "", "  ")
 	_ = os.WriteFile(cachePath, cacheData, 0644)
 	fmt.Println("[Sync] Cached", len(downloadedMovies), "movies with posters.")
