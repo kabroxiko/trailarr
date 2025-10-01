@@ -91,7 +91,22 @@ func FetchPlexLibrary() ([]PlexItem, error) {
 
 // Placeholder for extras search and download logic
 func SearchExtras(mediaType string, id int) ([]map[string]string, error) {
-	tmdbKey := "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+	// Read TMDB key from settings.json
+	var tmdbKey string
+	settingsData, err := os.ReadFile("settings.json")
+	if err == nil {
+		var allSettings struct {
+			General struct {
+				TMDBKey string `json:"tmdbKey"`
+			} `json:"general"`
+		}
+		if err := json.Unmarshal(settingsData, &allSettings); err == nil {
+			tmdbKey = allSettings.General.TMDBKey
+		}
+	}
+	if tmdbKey == "" {
+		return nil, fmt.Errorf("TMDB key not set in general settings")
+	}
 	var tmdbId int
 	if mediaType == "movie" {
 		// Lookup TMDB id from Radarr

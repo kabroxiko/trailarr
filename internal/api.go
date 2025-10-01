@@ -31,6 +31,60 @@ func RegisterRoutes(r *gin.Engine) {
 	// Radarr poster and banner proxy endpoints
 	r.GET("/api/radarr/poster/:movieId", HandleRadarrPoster)
 	r.GET("/api/radarr/banner/:movieId", HandleRadarrBanner)
+	// General settings (TMDB key)
+	r.GET("/api/settings/general", getGeneralSettingsHandler)
+	r.POST("/api/settings/general", saveGeneralSettingsHandler)
+}
+
+// Handler to get general settings (TMDB key)
+func getGeneralSettingsHandler(c *gin.Context) {
+	data, err := os.ReadFile("settings.json")
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"tmdbKey": ""})
+		return
+	}
+	var allSettings struct {
+		General struct {
+			TMDBApiKey string `json:"tmdbKey"`
+		} `json:"general"`
+	}
+	_ = json.Unmarshal(data, &allSettings)
+	c.JSON(http.StatusOK, gin.H{"tmdbKey": allSettings.General.TMDBApiKey})
+}
+
+// Handler to save general settings (TMDB key)
+func saveGeneralSettingsHandler(c *gin.Context) {
+	var req struct {
+		TMDBApiKey string `json:"tmdbKey"`
+	}
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+	// Read existing settings
+	var allSettings struct {
+		General struct {
+			TMDBApiKey string `json:"tmdbKey"`
+		} `json:"general"`
+		Sonarr struct {
+			URL    string `json:"url"`
+			APIKey string `json:"apiKey"`
+		} `json:"sonarr"`
+		Radarr struct {
+			URL    string `json:"url"`
+			APIKey string `json:"apiKey"`
+		} `json:"radarr"`
+	}
+	data, _ := os.ReadFile("settings.json")
+	_ = json.Unmarshal(data, &allSettings)
+	allSettings.General.TMDBApiKey = req.TMDBApiKey
+	out, _ := json.MarshalIndent(allSettings, "", "  ")
+	err := os.WriteFile("settings.json", out, 0644)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "saved"})
 }
 
 // Handler for /api/radarr/poster/:movieId

@@ -4,13 +4,11 @@ import SeriesTable from './components/SeriesTable';
 import MediaDetails from './components/MediaDetails';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faFilm, faHistory, faStar, faBan, faCog, faServer, faBookmark } from '@fortawesome/free-solid-svg-icons';
+import GeneralSettings from './components/GeneralSettings';
 import { Routes, Route, Link, useParams } from 'react-router-dom';
 import { Navigate } from 'react-router-dom';
 import './App.css';
 import { fetchPlexItems, getRadarrSettings, getRadarrMovies } from './api';
-// ...existing code...
 
 function App() {
   const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -322,31 +320,7 @@ function App() {
                   {sonarrStatus && <div style={{ marginTop: '1em', color: '#22c55e' }}>{sonarrStatus}</div>}
                 </div>
               } />
-              <Route path="/settings" element={
-                selectedSettingsSub === 'Radarr' ? null : (
-                  <>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr style={{ background: darkMode ? '#23232a' : '#f3e8ff' }}>
-                          <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Name</th>
-                          <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Language</th>
-                          <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9' }}>Extras</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {plexItems.map((item, idx) => (
-                          <tr key={idx} style={{ borderBottom: '1px solid #f3e8ff' }}>
-                            <td style={{ padding: '0.5em' }}>{item.Title}</td>
-                            <td style={{ padding: '0.5em' }}>{item.Language}</td>
-                            <td style={{ padding: '0.5em' }}>{item.Extras.length > 0 ? item.Extras.join(', ') : <span style={{ color: '#bbb' }}>None</span>}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {plexError && <div style={{ color: 'red', marginTop: '1em' }}>{plexError}</div>}
-                  </>
-                )
-              } />
+              <Route path="/settings/general" element={<GeneralSettings />} />
               <Route path="/" element={<Navigate to="/movies" replace />} />
             </Routes>
           </div>
