@@ -1,5 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faFilm, faHistory, faStar, faBan, faCog, faServer, faBookmark } from '@fortawesome/free-solid-svg-icons';
 import { Routes, Route, Link, useParams } from 'react-router-dom';
 import './App.css';
 import { searchExtras, downloadExtra, fetchPlexItems, getRadarrSettings, getRadarrMovies } from './api';
@@ -163,9 +165,7 @@ function MovieDetails({ movies, loading }) {
         </div>
         <div style={{ flex: 1, zIndex: 2, display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', marginLeft: 32 }}>
           <h2 style={{ color: '#fff', margin: 0, fontSize: 22, fontWeight: 500, textShadow: '0 1px 2px #000', letterSpacing: 0.2, textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 8 }}>
-              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-            </svg>
+            <FontAwesomeIcon icon={faBookmark} color="#eee" style={{ marginRight: 8 }} />
             {movie.title}
           </h2>
           <div style={{ marginBottom: 6, color: '#e5e7eb', textAlign: 'left', fontSize: 13, textShadow: '0 1px 2px #000' }}>{movie.year} &bull; {movie.path}</div>
@@ -333,47 +333,13 @@ function App() {
           <nav>
             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
               {[
-                { name: 'Series', icon: (
-                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="3" y="5" width="14" height="10" rx="2" fill={darkMode ? '#e5e7eb' : '#333'} />
-                    <rect x="7" y="15" width="6" height="2" rx="1" fill={darkMode ? '#e5e7eb' : '#333'} />
-                  </svg>
-                ) },
-                { name: 'Movies', icon: (
-                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="4" y="5" width="12" height="10" rx="2" fill={darkMode ? '#e5e7eb' : '#333'} />
-                    <circle cx="10" cy="10" r="3" fill={darkMode ? '#e5e7eb' : '#333'} />
-                  </svg>
-                ) },
-                { name: 'History', icon: (
-                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="10" cy="10" r="8" stroke={darkMode ? '#e5e7eb' : '#333'} strokeWidth="2" />
-                    <path d="M10 6v4l3 3" stroke={darkMode ? '#e5e7eb' : '#333'} strokeWidth="2" strokeLinecap="round" />
-                  </svg>
-                ) },
-                { name: 'Wanted', icon: (
-                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <polygon points="10,3 12,8 17,8 13,11 15,16 10,13 5,16 7,11 3,8 8,8" fill={darkMode ? '#e5e7eb' : '#333'} />
-                  </svg>
-                ) },
-                { name: 'Blacklist', icon: (
-                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="4" y="4" width="12" height="12" rx="2" fill={darkMode ? '#e5e7eb' : '#333'} />
-                    <line x1="6" y1="6" x2="14" y2="14" stroke="#e5e7eb" strokeWidth="2" />
-                  </svg>
-                ) },
-                { name: 'Settings', icon: (
-                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="10" cy="10" r="7" stroke={darkMode ? '#e5e7eb' : '#333'} strokeWidth="2" />
-                    <circle cx="10" cy="10" r="3" fill={darkMode ? '#e5e7eb' : '#333'} />
-                  </svg>
-                ) },
-                { name: 'System', icon: (
-                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="3" y="5" width="14" height="10" rx="2" fill={darkMode ? '#e5e7eb' : '#333'} />
-                    <rect x="7" y="15" width="6" height="2" rx="1" fill={darkMode ? '#e5e7eb' : '#333'} />
-                  </svg>
-                ) }
+                { name: 'Series', icon: <FontAwesomeIcon icon={faCog} color={darkMode ? '#e5e7eb' : '#333'} /> },
+                { name: 'Movies', icon: <FontAwesomeIcon icon={faFilm} color={darkMode ? '#e5e7eb' : '#333'} /> },
+                { name: 'History', icon: <FontAwesomeIcon icon={faHistory} color={darkMode ? '#e5e7eb' : '#333'} /> },
+                { name: 'Wanted', icon: <FontAwesomeIcon icon={faStar} color={darkMode ? '#e5e7eb' : '#333'} /> },
+                { name: 'Blacklist', icon: <FontAwesomeIcon icon={faBan} color={darkMode ? '#e5e7eb' : '#333'} /> },
+                { name: 'Settings', icon: <FontAwesomeIcon icon={faCog} color={darkMode ? '#e5e7eb' : '#333'} /> },
+                { name: 'System', icon: <FontAwesomeIcon icon={faServer} color={darkMode ? '#e5e7eb' : '#333'} /> }
               ].map(({ name, icon }) => (
                 <li key={name} style={{ marginBottom: 16 }}>
                   {name === 'Settings' ? (
@@ -557,7 +523,7 @@ function App() {
                   </>
                 )
               } />
-              <Route path="/" element={<div>Welcome to Trailarr</div>} />
+              <Route path="/" element={<Navigate to="/movies" replace />} />
             </Routes>
           </div>
         </main>
