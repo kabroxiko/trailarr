@@ -1,10 +1,11 @@
 package internal
 
 const (
-	ConfigPath               = "/var/lib/extrazarr/config/config.yml"
-	MoviesCachePath          = "/var/lib/extrazarr/movies_cache.json"
-	MediaCoverPath           = "/var/lib/extrazarr/MediaCover/"
-	SeriesCachePath          = "/var/lib/extrazarr/series_cache.json"
+	TrailarrRoot             = "/var/lib/trailarr"
+	ConfigPath               = TrailarrRoot + "/config/config.yml"
+	MoviesCachePath          = TrailarrRoot + "/movies_cache.json"
+	MediaCoverPath           = TrailarrRoot + "/MediaCover/"
+	SeriesCachePath          = TrailarrRoot + "/series_cache.json"
 	ErrInvalidSonarrSettings = "Invalid Sonarr settings"
 	RemoteMediaCoverPath     = "/MediaCover/"
 	HeaderApiKey             = "X-Api-Key"
