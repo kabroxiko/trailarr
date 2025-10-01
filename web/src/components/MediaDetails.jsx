@@ -5,6 +5,22 @@ import { useParams } from 'react-router-dom';
 import { getExtras } from '../api';
 
 export default function MediaDetails({ mediaItems, loading, mediaType }) {
+  const [youtubeModal, setYoutubeModal] = useState({ open: false, videoId: '' });
+
+  // Close modal on outside click or Escape
+  useEffect(() => {
+    if (!youtubeModal.open) return;
+    const handleKey = (e) => { if (e.key === 'Escape') setYoutubeModal({ open: false, videoId: '' }); };
+    const handleClick = (e) => {
+      if (e.target.classList.contains('youtube-modal-backdrop')) setYoutubeModal({ open: false, videoId: '' });
+    };
+    window.addEventListener('keydown', handleKey);
+    window.addEventListener('mousedown', handleClick);
+    return () => {
+      window.removeEventListener('keydown', handleKey);
+      window.removeEventListener('mousedown', handleClick);
+    };
+  }, [youtubeModal.open]);
   const { id } = useParams();
   const media = mediaItems.find(m => String(m.id) === id);
   const [extras, setExtras] = useState([]);
@@ -269,9 +285,63 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
                     <div style={{ fontWeight: 600, fontSize: titleFontSize, color: darkMode ? '#e5e7eb' : '#222', textAlign: 'center', marginBottom: 4, height: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', width: '100%' }}>{displayTitle}</div>
                     <div style={{ fontSize: 13, color: '#888', marginBottom: 2 }}>{extra.year || ''}</div>
                     <div style={{ fontSize: 13, color: downloaded ? '#22c55e' : '#ef4444', fontWeight: 'bold', marginBottom: 6 }}>{downloaded ? 'Downloaded' : 'Not downloaded'}</div>
-                    {extra.url ? (
+                    {extra.url && (extra.url.includes('youtube.com/watch?v=') || extra.url.includes('youtu.be/')) ? (
+                      <button
+                        style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4, padding: '0.25em 0.75em', cursor: 'pointer', fontWeight: 'bold', fontSize: 13, marginBottom: 8 }}
+                        onClick={() => {
+                          let youtubeID = '';
+                          if (extra.url.includes('youtube.com/watch?v=')) {
+                            youtubeID = extra.url.split('v=')[1]?.split('&')[0] || '';
+                          } else if (extra.url.includes('youtu.be/')) {
+                            youtubeID = extra.url.split('youtu.be/')[1]?.split(/[?&]/)[0] || '';
+                          }
+                          if (youtubeID) setYoutubeModal({ open: true, videoId: youtubeID });
+                        }}
+                      >View</button>
+                    ) : extra.url ? (
                       <a href={extra.url} target="_blank" rel="noopener noreferrer" style={{ color: darkMode ? '#e5e7eb' : '#6d28d9', textDecoration: 'underline', fontSize: 13, marginBottom: 8 }}>View</a>
                     ) : null}
+  {/* YouTube Modal */}
+  {youtubeModal.open && (
+    <div className="youtube-modal-backdrop" style={{
+      position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.7)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <div style={{
+        position: 'relative',
+        background: '#18181b',
+        borderRadius: 12,
+        boxShadow: '0 2px 24px #000',
+        padding: 0,
+        width: '90vw',
+        maxWidth: 800,
+        aspectRatio: '16/9',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+      }}>
+        <button onClick={() => setYoutubeModal({ open: false, videoId: '' })} style={{ position: 'absolute', top: 8, right: 12, background: 'transparent', color: '#fff', border: 'none', fontSize: 28, cursor: 'pointer', zIndex: 2 }} title="Close">×</button>
+        <div style={{ width: '100%', height: '100%', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <iframe
+            src={`https://www.youtube.com/embed/${youtubeModal.videoId}?autoplay=1`}
+            title="YouTube video player"
+            frameBorder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            style={{
+              borderRadius: 8,
+              background: '#000',
+              width: '100%',
+              height: '100%',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  )}
                     {extra.url && (extra.url.includes('youtube.com/watch?v=') || extra.url.includes('youtu.be/')) ? (
                       <button
                         style={{ background: downloaded ? '#888' : '#a855f7', color: '#fff', border: 'none', borderRadius: 4, padding: '0.25em 0.75em', cursor: downloaded ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: 13, marginTop: 4 }}
