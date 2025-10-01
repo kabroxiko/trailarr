@@ -141,14 +141,15 @@ function App() {
       });
   }, []);
 
-  // Filter logic for movies and series
-  const filterItems = (items) => {
-    if (!search.trim()) return items;
+  // Separate search results into title and overview matches
+  const getSearchSections = (items) => {
+    if (!search.trim()) return { titleMatches: items, overviewMatches: [] };
     const q = search.trim().toLowerCase();
-    return items.filter(item =>
-      (item.title && item.title.toLowerCase().includes(q)) ||
-      (item.overview && item.overview.toLowerCase().includes(q))
+    const titleMatches = items.filter(item => item.title && item.title.toLowerCase().includes(q));
+    const overviewMatches = items.filter(item =>
+      !titleMatches.includes(item) && item.overview && item.overview.toLowerCase().includes(q)
     );
+    return { titleMatches, overviewMatches };
   };
 
   return (
@@ -168,16 +169,44 @@ function App() {
           <div style={{ background: darkMode ? '#23232a' : '#fff', borderRadius: 8, boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb', padding: '0em', width: '100%', maxWidth: '100%', flex: 1, overflowY: 'auto', overflowX: 'hidden', color: darkMode ? '#e5e7eb' : '#222' }}>
             <Routes>
               <Route path="/series" element={
-                <>
-                  <MediaList items={filterItems(sonarrSeries)} darkMode={darkMode} type="series" />
-                  {sonarrSeriesError && <div style={{ color: 'red', marginTop: '1em' }}>{sonarrSeriesError}</div>}
-                </>
+                (() => {
+                  const { titleMatches, overviewMatches } = getSearchSections(sonarrSeries);
+                  return (
+                    <>
+                      {search.trim() ? (
+                        <>
+                          <div style={{ margin: '1.5em 0 0.5em 1em', fontWeight: 600, fontSize: 18 }}>Title Matches</div>
+                          <MediaList items={titleMatches} darkMode={darkMode} type="series" />
+                          <div style={{ margin: '1.5em 0 0.5em 1em', fontWeight: 600, fontSize: 18 }}>Overview Matches</div>
+                          <MediaList items={overviewMatches} darkMode={darkMode} type="series" />
+                        </>
+                      ) : (
+                        <MediaList items={sonarrSeries} darkMode={darkMode} type="series" />
+                      )}
+                      {sonarrSeriesError && <div style={{ color: 'red', marginTop: '1em' }}>{sonarrSeriesError}</div>}
+                    </>
+                  );
+                })()
               } />
               <Route path="/movies" element={
-                <>
-                  <MediaList items={filterItems(radarrMovies)} darkMode={darkMode} type="movie" />
-                  {radarrMoviesError && <div style={{ color: 'red', marginTop: '1em' }}>{radarrMoviesError}</div>}
-                </>
+                (() => {
+                  const { titleMatches, overviewMatches } = getSearchSections(radarrMovies);
+                  return (
+                    <>
+                      {search.trim() ? (
+                        <>
+                          <div style={{ margin: '1.5em 0 0.5em 1em', fontWeight: 600, fontSize: 18 }}>Title Matches</div>
+                          <MediaList items={titleMatches} darkMode={darkMode} type="movie" />
+                          <div style={{ margin: '1.5em 0 0.5em 1em', fontWeight: 600, fontSize: 18 }}>Overview Matches</div>
+                          <MediaList items={overviewMatches} darkMode={darkMode} type="movie" />
+                        </>
+                      ) : (
+                        <MediaList items={radarrMovies} darkMode={darkMode} type="movie" />
+                      )}
+                      {radarrMoviesError && <div style={{ color: 'red', marginTop: '1em' }}>{radarrMoviesError}</div>}
+                    </>
+                  );
+                })()
               } />
               <Route path="/movies/:id" element={<MediaDetails mediaItems={radarrMovies} loading={radarrMoviesLoading} mediaType="movie" />} />
               <Route path="/series/:id" element={<MediaDetails mediaItems={sonarrSeries} loading={sonarrSeriesLoading} mediaType="tv" />} />
