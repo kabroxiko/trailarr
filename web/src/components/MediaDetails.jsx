@@ -139,7 +139,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
         minHeight: 420,
         display: 'flex',
         flexDirection: 'row',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         boxSizing: 'border-box',
         padding: 0,
       }}>
@@ -152,7 +152,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
           background: 'rgba(0,0,0,0.55)',
           zIndex: 1,
         }} />
-        <div style={{ minWidth: 150, zIndex: 2, display: 'flex', justifyContent: 'flex-start', alignItems: 'center', height: '100%', padding: '0 0 0 32px' }}>
+        <div style={{ minWidth: 150, zIndex: 2, display: 'flex', justifyContent: 'flex-start', alignItems: 'flex-start', height: '100%', padding: '32px 32px' }}>
           <img
             src={mediaType === 'tv'
               ? `/api/sonarr/poster/${media.id}`
@@ -161,9 +161,9 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
             onError={e => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/180x270?text=No+Poster'; }}
           />
         </div>
-        <div style={{ flex: 1, zIndex: 2, display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', marginLeft: 32 }}>
-          <h2 style={{ color: '#fff', margin: 0, fontSize: 22, fontWeight: 500, textShadow: '0 1px 2px #000', letterSpacing: 0.2, textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <FontAwesomeIcon icon={faBookmark} color="#eee" style={{ marginRight: 8 }} />
+        <div style={{ flex: 1, zIndex: 2, display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', height: '100%', marginLeft: 32, marginTop: 32 }}>
+          <h2 style={{ color: '#fff', margin: 0, fontSize: 32, fontWeight: 600, textShadow: '0 1px 2px #000', letterSpacing: 0.2, textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <FontAwesomeIcon icon={faBookmark} color="#eee" style={{ marginLeft: -10 }} />
             {media.title}
           </h2>
           {media.overview && (
