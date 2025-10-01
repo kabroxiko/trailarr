@@ -45,20 +45,18 @@ func getAllTasksStatus() gin.HandlerFunc {
 		}
 		// Build queues array as []map[string]interface{} with type field
 		queues := make([]map[string]interface{}, 0)
-		for _, item := range internal.RadarrQueue() {
+		for _, item := range internal.GlobalSyncQueue {
+			var queueType string
+			switch item.TaskName {
+			case "radarr":
+				queueType = TaskSyncWithRadarr
+			case "sonarr":
+				queueType = TaskSyncWithSonarr
+			default:
+				queueType = item.TaskName
+			}
 			queues = append(queues, map[string]interface{}{
-				"type":     TaskSyncWithRadarr,
-				"Queued":   item.Queued,
-				"Started":  item.Started,
-				"Ended":    item.Ended,
-				"Duration": item.Duration,
-				"Status":   item.Status,
-				"Error":    item.Error,
-			})
-		}
-		for _, item := range internal.SonarrQueue() {
-			queues = append(queues, map[string]interface{}{
-				"type":     TaskSyncWithSonarr,
+				"type":     queueType,
 				"Queued":   item.Queued,
 				"Started":  item.Started,
 				"Ended":    item.Ended,

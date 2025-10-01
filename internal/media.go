@@ -12,14 +12,91 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+var GlobalSyncQueue []SyncQueueItem
+
+const queueFile = TrailarrRoot + "/queue.json"
+
 // Parametric force sync for Radarr/Sonarr
 type SyncQueueItem struct {
+	TaskName string
 	Queued   time.Time
 	Started  time.Time
 	Ended    time.Time
 	Duration time.Duration
 	Status   string
 	Error    string
+}
+
+func loadQueue() {
+	f, err := os.Open(queueFile)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	var q []SyncQueueItem
+	if err := json.NewDecoder(f).Decode(&q); err == nil {
+		GlobalSyncQueue = q
+	}
+}
+
+func saveQueue() {
+	// Only save if queue is non-empty
+	if len(GlobalSyncQueue) == 0 {
+		// Do not overwrite existing file with empty queue
+		return
+	}
+	f, err := os.Create(queueFile)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	// Convert zero time fields to nil for JSON output
+	type queueItemOut struct {
+		TaskName string         `json:"TaskName"`
+		Queued   time.Time      `json:"Queued"`
+		Started  *time.Time     `json:"Started"`
+		Ended    *time.Time     `json:"Ended"`
+		Duration *time.Duration `json:"Duration"`
+		Status   string         `json:"Status"`
+		Error    string         `json:"Error"`
+	}
+	out := make([]queueItemOut, 0, len(GlobalSyncQueue))
+	for _, item := range GlobalSyncQueue {
+		var startedPtr, endedPtr *time.Time
+		var durationPtr *time.Duration
+		if !item.Started.IsZero() {
+			startedPtr = &item.Started
+		}
+		if !item.Ended.IsZero() {
+			endedPtr = &item.Ended
+		}
+		// Duration is only valid if Started and Ended are set
+		if startedPtr != nil && endedPtr != nil && item.Duration > 0 {
+			durationPtr = &item.Duration
+		}
+		out = append(out, queueItemOut{
+			TaskName: item.TaskName,
+			Queued:   item.Queued,
+			Started:  startedPtr,
+			Ended:    endedPtr,
+			Duration: durationPtr,
+			Status:   item.Status,
+			Error:    item.Error,
+		})
+	}
+	_ = json.NewEncoder(f).Encode(out)
+}
+func init() {
+	loadQueue()
+	// Remove queued items with null Started/Ended
+	filtered := make([]SyncQueueItem, 0, len(GlobalSyncQueue))
+	for _, item := range GlobalSyncQueue {
+		if item.Status == "queued" && item.Started.IsZero() && item.Ended.IsZero() {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	GlobalSyncQueue = filtered
 }
 
 // ForceSyncMedia executes a sync for the given section ("radarr" or "sonarr")
@@ -31,44 +108,50 @@ func ForceSyncMedia(
 	section string,
 	syncFunc func() error,
 	timings map[string]int,
-	queue *[]SyncQueueItem,
 	lastError *string,
 	lastExecution *time.Time,
 	lastDuration *time.Duration,
 	nextExecution *time.Time,
 ) {
 	println("[FORCE] Executing Sync", section, "...")
+	// Truncate queue before adding new item to avoid idx out of range
+	if len(GlobalSyncQueue) >= 10 {
+		GlobalSyncQueue = GlobalSyncQueue[len(GlobalSyncQueue)-9:]
+	}
 	item := SyncQueueItem{
-		Queued: time.Now(),
-		Status: "queued",
+		TaskName: section,
+		Queued:   time.Now(),
+		Status:   "queued",
 	}
 	// Add initial queued item
-	*queue = append(*queue, item)
-	idx := len(*queue) - 1
+	GlobalSyncQueue = append(GlobalSyncQueue, item)
+	saveQueue()
+	idx := len(GlobalSyncQueue) - 1
 
 	// Update status to running and set Started
-	(*queue)[idx].Started = time.Now()
-	(*queue)[idx].Status = "running"
+	GlobalSyncQueue[idx].Started = time.Now()
+	GlobalSyncQueue[idx].Status = "running"
+	saveQueue()
 
 	err := syncFunc()
-	(*queue)[idx].Ended = time.Now()
-	(*queue)[idx].Duration = (*queue)[idx].Ended.Sub((*queue)[idx].Started)
+	GlobalSyncQueue[idx].Ended = time.Now()
+	GlobalSyncQueue[idx].Duration = GlobalSyncQueue[idx].Ended.Sub(GlobalSyncQueue[idx].Started)
+	saveQueue()
 	if err != nil {
-		(*queue)[idx].Error = err.Error()
-		(*queue)[idx].Status = "failed"
+		GlobalSyncQueue[idx].Error = err.Error()
+		GlobalSyncQueue[idx].Status = "failed"
+		saveQueue()
 		*lastError = err.Error()
 		println("[FORCE] Sync", section, "error:", err.Error())
 	} else {
-		(*queue)[idx].Status = "success"
+		GlobalSyncQueue[idx].Status = "success"
+		saveQueue()
 		println("[FORCE] Sync", section, "completed successfully.")
 	}
-	*lastExecution = (*queue)[idx].Ended
-	*lastDuration = (*queue)[idx].Duration
+	*lastExecution = GlobalSyncQueue[idx].Ended
+	*lastDuration = GlobalSyncQueue[idx].Duration
 	interval := timings[section]
-	*nextExecution = (*queue)[idx].Ended.Add(time.Duration(interval) * time.Minute)
-	if len(*queue) > 10 {
-		*queue = (*queue)[len(*queue)-10:]
-	}
+	*nextExecution = GlobalSyncQueue[idx].Ended.Add(time.Duration(interval) * time.Minute)
 }
 
 // Helper to fetch and cache poster image

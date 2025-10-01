@@ -60,6 +60,7 @@ func getMovieExtrasHandler(c *gin.Context) {
 
 // SyncRadarrQueueItem tracks a Radarr sync operation
 type SyncRadarrQueueItem struct {
+	TaskName string
 	Queued   time.Time
 	Started  time.Time
 	Ended    time.Time
@@ -82,30 +83,20 @@ var syncRadarrStatus = struct {
 // Handler to force sync Radarr
 func ForceSyncRadarr() {
 	// Use generic ForceSyncMedia from media.go
-	var tempQueue []SyncQueueItem
-	for _, item := range syncRadarrStatus.Queue {
-		tempQueue = append(tempQueue, SyncQueueItem{
-			Queued:   item.Queued,
-			Started:  item.Started,
-			Ended:    item.Ended,
-			Duration: item.Duration,
-			Status:   item.Status,
-			Error:    item.Error,
-		})
-	}
+	// Only use GlobalSyncQueue for persistence and display
 	ForceSyncMedia(
 		"radarr",
 		SyncRadarrImages,
 		Timings,
-		&tempQueue,
 		&syncRadarrStatus.LastError,
 		&syncRadarrStatus.LastExecution,
 		&syncRadarrStatus.LastDuration,
 		&syncRadarrStatus.NextExecution,
 	)
 	syncRadarrStatus.Queue = nil
-	for _, item := range tempQueue {
+	for _, item := range GlobalSyncQueue {
 		syncRadarrStatus.Queue = append(syncRadarrStatus.Queue, SyncRadarrQueueItem{
+			TaskName: item.TaskName,
 			Queued:   item.Queued,
 			Started:  item.Started,
 			Ended:    item.Ended,
@@ -114,40 +105,6 @@ func ForceSyncRadarr() {
 			Error:    item.Error,
 		})
 	}
-}
-
-// Background sync for Radarr
-func BackgroundSyncRadarr() {
-	interval := Timings["radarr"]
-	BackgroundSync(
-		time.Duration(interval)*time.Minute,
-		SyncRadarrImages,
-		func(item interface{}) {
-			syncRadarrStatus.Queue = append(syncRadarrStatus.Queue, *item.(*SyncRadarrQueueItem))
-		},
-		func() interface{} {
-			return &SyncRadarrQueueItem{Queued: time.Now(), Status: "queued"}
-		},
-		func(item interface{}, started, ended time.Time, duration time.Duration, status, errStr string) {
-			i := item.(*SyncRadarrQueueItem)
-			i.Started = started
-			i.Ended = ended
-			i.Duration = duration
-			i.Status = status
-			i.Error = errStr
-			if status == "error" {
-				syncRadarrStatus.LastError = errStr
-			}
-			syncRadarrStatus.LastExecution = ended
-			syncRadarrStatus.LastDuration = duration
-			syncRadarrStatus.NextExecution = ended.Add(time.Duration(interval) * time.Minute)
-		},
-		func() {
-			if len(syncRadarrStatus.Queue) > 10 {
-				syncRadarrStatus.Queue = syncRadarrStatus.Queue[len(syncRadarrStatus.Queue)-10:]
-			}
-		},
-	)
 }
 
 // Exported Radarr status getters for main.go
