@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 
-export default function MediaTable({ media, darkMode }) {
+export default function MediaList({ items, darkMode, type }) {
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
@@ -13,17 +13,17 @@ export default function MediaTable({ media, darkMode }) {
         </tr>
       </thead>
       <tbody>
-        {media.map((item, idx) => (
+        {items.map((item, idx) => (
           <tr key={idx} style={{ borderBottom: '1px solid #f3e8ff' }}>
             <td style={{ padding: '0.5em', textAlign: 'left' }}>
               <img
-                src={`/api/radarr/poster/${item.id}`}
+                src={type === 'series' ? `/api/sonarr/poster/${item.id}` : `/api/radarr/poster/${item.id}`}
                 style={{ width: 48, height: 72, objectFit: 'cover', borderRadius: 2, background: '#222', boxShadow: '0 1px 4px rgba(0,0,0,0.18)' }}
                 onError={e => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/48x72?text=No+Poster'; }}
               />
             </td>
             <td style={{ padding: '0.5em', textAlign: 'left' }}>
-              <Link to={`/movies/${item.id}`} style={{ color: '#a855f7', textDecoration: 'underline', cursor: 'pointer', fontWeight: 'bold', textAlign: 'left', display: 'block' }}>{item.title}</Link>
+              <Link to={type === 'series' ? `/series/${item.id}` : `/movies/${item.id}`} style={{ color: '#a855f7', textDecoration: 'underline', cursor: 'pointer', fontWeight: 'bold', textAlign: 'left', display: 'block' }}>{item.title}</Link>
             </td>
             <td style={{ padding: '0.5em', textAlign: 'left' }}>{item.year}</td>
             <td style={{ padding: '0.5em', textAlign: 'left' }}>{item.path}</td>
