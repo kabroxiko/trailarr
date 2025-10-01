@@ -195,7 +195,10 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
                     youtubeID = extra.url.split('youtu.be/')[1]?.split(/[?&]/)[0] || '';
                   }
                 }
-                const exists = existingExtras.some(e => e.type === extra.type && e.title === extra.title && e.youtube_id === youtubeID);
+                // Find matching existing extra and get its status
+                const match = existingExtras.find(e => e.type === extra.type && e.title === extra.title && e.youtube_id === youtubeID);
+                const status = match?.status || 'Not downloaded';
+                const exists = status === 'downloaded' || status === 'Downloaded';
                 return (
                   <tr key={idx} style={{ height: 32, background: exists ? (darkMode ? '#1e293b' : '#e0e7ff') : undefined }}>
                     <td style={{ padding: '0.5em 1em', textAlign: 'left', color: darkMode ? '#e5e7eb' : '#222', fontSize: 13 }}>{extra.type || ''}</td>
@@ -224,7 +227,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
                                 })
                               });
                               if (res.ok) {
-                                setExistingExtras(prev => [...prev, { type: extra.type, title: extra.title, youtube_id: youtubeID }]);
+                                setExistingExtras(prev => [...prev, { type: extra.type, title: extra.title, youtube_id: youtubeID, status: 'downloaded' }]);
                               } else {
                                 const data = await res.json();
                                 let msg = data?.error || 'Download failed';
@@ -246,7 +249,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
                         >Download</button>
                       ) : null}
                     </td>
-                    <td style={{ padding: '0.5em 1em', textAlign: 'left', color: exists ? '#22c55e' : '#ef4444', fontWeight: 'bold', fontSize: 13 }}>{exists ? 'Downloaded' : 'Not downloaded'}</td>
+                    <td style={{ padding: '0.5em 1em', textAlign: 'left', color: exists ? '#22c55e' : '#ef4444', fontWeight: 'bold', fontSize: 13 }}>{status}</td>
                   </tr>
                 );
               })}
