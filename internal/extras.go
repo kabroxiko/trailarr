@@ -10,9 +10,27 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-
 	"github.com/kkdai/youtube/v2"
 )
+
+// ExtractYouTubeID parses a YouTube URL and returns the video ID or an error
+func ExtractYouTubeID(url string) (string, error) {
+	if strings.Contains(url, "youtube.com/watch?v=") {
+		parts := strings.Split(url, "v=")
+		if len(parts) < 2 {
+			return "", fmt.Errorf("Could not extract YouTube video ID from URL: %s", url)
+		}
+		return strings.Split(parts[1], "&")[0], nil
+	} else if strings.Contains(url, "youtu.be/") {
+		parts := strings.Split(url, "/")
+		if len(parts) < 2 {
+			return "", fmt.Errorf("Could not extract YouTube video ID from URL: %s", url)
+		}
+		return parts[len(parts)-1], nil
+	}
+	return "", fmt.Errorf("Not a valid YouTube URL: %s", url)
+}
+
 
 // Plex API integration
 type PlexItem struct {
@@ -189,22 +207,9 @@ type ExtraDownloadMetadata struct {
 }
 
 func DownloadYouTubeExtra(moviePath, extraType, extraTitle, extraURL string) (*ExtraDownloadMetadata, error) {
-	// Extract YouTube video ID from URL
-	var youtubeID string
-	if strings.Contains(extraURL, "youtube.com/watch?v=") {
-		parts := strings.Split(extraURL, "v=")
-		if len(parts) < 2 {
-			return nil, fmt.Errorf("Could not extract YouTube video ID from URL: %s", extraURL)
-		}
-		youtubeID = strings.Split(parts[1], "&")[0]
-	} else if strings.Contains(extraURL, "youtu.be/") {
-		parts := strings.Split(extraURL, "/")
-		if len(parts) < 2 {
-			return nil, fmt.Errorf("Could not extract YouTube video ID from URL: %s", extraURL)
-		}
-		youtubeID = parts[len(parts)-1]
-	} else {
-		return nil, fmt.Errorf("Not a valid YouTube URL: %s", extraURL)
+	youtubeID, err := ExtractYouTubeID(extraURL)
+	if err != nil {
+		return nil, err
 	}
 	fmt.Printf("[DownloadYouTubeExtra] Requested URL: %s, Extracted YouTube ID: %s\n", extraURL, youtubeID)
 
@@ -215,7 +220,15 @@ func DownloadYouTubeExtra(moviePath, extraType, extraTitle, extraURL string) (*E
 	if err := os.MkdirAll(outDir, 0755); err != nil {
 		return nil, fmt.Errorf("Failed to create output dir '%s': %w", outDir, err)
 	}
-	outFile := filepath.Join(outDir, safeTitle+".mp4")
+	// Find existing files with same title to determine incremental index
+	files, _ := os.ReadDir(outDir)
+	count := 1
+	for _, f := range files {
+		if !f.IsDir() && strings.HasPrefix(f.Name(), safeTitle) && strings.HasSuffix(f.Name(), ".mp4") {
+			count++
+		}
+	}
+	outFile := filepath.Join(outDir, fmt.Sprintf("%s (%d).mp4", safeTitle, count))
 
 	// Download using kkdai/youtube
 	client := youtube.Client{}

@@ -94,7 +94,7 @@ function MovieDetails({ movies, loading }) {
               </thead>
               <tbody>
                 {(() => {
-                  // Track counts for repeated titles
+                  // Track counts and indexes for repeated titles
                   const titleCounts = {};
                   return extras.map((extra, idx) => {
                     const baseTitle = extra.title || String(extra);
@@ -102,8 +102,17 @@ function MovieDetails({ movies, loading }) {
                     // Only show incremental if there are duplicates
                     const totalCount = extras.filter(e => (e.title || String(e)) === baseTitle).length;
                     const displayTitle = totalCount > 1 ? `${baseTitle} (${titleCounts[baseTitle]})` : baseTitle;
-                    // Determine if this extra exists
-                    const exists = existingExtras.some(e => e.type === extra.type && e.title === extra.title);
+                    // Extract YouTubeID from extra.url
+                    let youtubeID = '';
+                    if (extra.url) {
+                      if (extra.url.includes('youtube.com/watch?v=')) {
+                        youtubeID = extra.url.split('v=')[1]?.split('&')[0] || '';
+                      } else if (extra.url.includes('youtu.be/')) {
+                        youtubeID = extra.url.split('youtu.be/')[1]?.split(/[?&]/)[0] || '';
+                      }
+                    }
+                    // Determine if this extra exists (by type, title, and youtube_id)
+                    const exists = existingExtras.some(e => e.type === extra.type && e.title === extra.title && e.youtube_id === youtubeID);
                     return (
                       <tr key={idx} style={{ borderBottom: darkMode ? '1px solid #333' : '1px solid #e5e7eb', background: exists ? (darkMode ? '#1e293b' : '#e0e7ff') : undefined }}>
                         <td style={{ padding: '0.5em', textAlign: 'left', color: darkMode ? '#e5e7eb' : '#222' }}>{extra.type || ''}</td>
@@ -125,8 +134,8 @@ function MovieDetails({ movies, loading }) {
                                         extraTitle: extra.title,
                                         url: typeof extra.url === 'string' ? extra.url : (extra.url && extra.url.url ? extra.url.url : '')
                                       });
-                                      // Mark as existing immediately after successful download
-                                      setExistingExtras(prev => [...prev, { type: extra.type, title: extra.title }]);
+                                      // Mark only this duplicate as existing
+                                      setExistingExtras(prev => [...prev, { type: extra.type, title: extra.title, youtube_id: youtubeID }]);
                                     } catch (e) {
                                       alert('Download failed: ' + (e.message || e));
                                     }
