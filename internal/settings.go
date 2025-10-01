@@ -293,18 +293,22 @@ func EnsureSyncTimingsConfig() (map[string]int, error) {
 func loadMediaSettings(section string) (MediaSettings, error) {
 	data, err := os.ReadFile(ConfigPath)
 	if err != nil {
+		TrailarrLog("Warn", "Settings", "settings not found: %v", err)
 		return MediaSettings{}, fmt.Errorf("settings not found: %w", err)
 	}
 	var allSettings map[string]interface{}
 	if err := yaml.Unmarshal(data, &allSettings); err != nil {
+		TrailarrLog("Warn", "Settings", "invalid settings: %v", err)
 		return MediaSettings{}, fmt.Errorf("invalid settings: %w", err)
 	}
 	secRaw, ok := allSettings[section]
 	if !ok {
+		TrailarrLog("Warn", "Settings", "section %s not found", section)
 		return MediaSettings{}, fmt.Errorf("section %s not found", section)
 	}
 	sec, ok := secRaw.(map[string]interface{})
 	if !ok {
+		TrailarrLog("Warn", "Settings", "section %s is not a map", section)
 		return MediaSettings{}, fmt.Errorf("section %s is not a map", section)
 	}
 	var url, apiKey string
@@ -358,6 +362,7 @@ func GetSectionUrlAndApiKey(section string) (string, string, error) {
 	}
 	sec, ok := config[section].(map[string]interface{})
 	if !ok {
+		TrailarrLog("Warn", "Settings", "section %s not found in config", section)
 		return "", "", fmt.Errorf("section %s not found in config", section)
 	}
 	url, _ := sec["url"].(string)
@@ -427,9 +432,9 @@ func GetSettingsHandler(section string) gin.HandlerFunc {
 			out, _ := yaml.Marshal(config)
 			err := os.WriteFile(ConfigPath, out, 0644)
 			if err != nil {
-				fmt.Printf("[ERROR] Failed to save updated config: %v\n", err)
+				TrailarrLog("Error", "Settings", "Failed to save updated config: %v", err)
 			} else {
-				fmt.Printf("[INFO] Updated config with new root folders\n")
+				TrailarrLog("Info", "Settings", "Updated config with new root folders")
 			}
 		}
 		c.JSON(http.StatusOK, gin.H{"url": url, "apiKey": apiKey, "pathMappings": mappings})
@@ -551,6 +556,7 @@ func FetchRootFolders(apiURL, apiKey string) ([]map[string]interface{}, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
+		TrailarrLog("Warn", "Settings", "API returned status %d", resp.StatusCode)
 		return nil, fmt.Errorf("API returned status %d", resp.StatusCode)
 	}
 	var folders []map[string]interface{}
@@ -582,6 +588,7 @@ func testMediaConnection(url, apiKey, mediaType string) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
+		TrailarrLog("Warn", "Settings", "API returned status %d", resp.StatusCode)
 		return fmt.Errorf("API returned status %d", resp.StatusCode)
 	}
 	return nil

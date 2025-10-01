@@ -243,11 +243,13 @@ func fetchAndCachePoster(localPath, posterUrl, section string) error {
 		if resp != nil {
 			resp.Body.Close()
 		}
+		TrailarrLog("Warn", "CacheMediaPosters", "Failed to fetch poster image from %s", section)
 		return fmt.Errorf("failed to fetch poster image from %s", section)
 	}
 	defer resp.Body.Close()
 	out, err := os.Create(localPath)
 	if err != nil {
+		TrailarrLog("Warn", "CacheMediaPosters", "Failed to cache poster image for %s", section)
 		return fmt.Errorf("failed to cache poster image for %s", section)
 	}
 	_, _ = io.Copy(out, resp.Body)
@@ -505,24 +507,29 @@ func writeWantedCache(section, cachePath, wantedPath string) error {
 func SyncMediaCacheJson(section, apiPath, cachePath string, filter func(map[string]interface{}) bool) error {
 	url, apiKey, err := GetSectionUrlAndApiKey(section)
 	if err != nil {
+		TrailarrLog("Warn", "SyncMediaCacheJson", "%s settings not found: %v", section, err)
 		return fmt.Errorf("%s settings not found: %w", section, err)
 	}
 	req, err := http.NewRequest("GET", url+apiPath, nil)
 	if err != nil {
+		TrailarrLog("Warn", "SyncMediaCacheJson", "error creating request: %v", err)
 		return fmt.Errorf("error creating request: %w", err)
 	}
 	req.Header.Set(HeaderApiKey, apiKey)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
+		TrailarrLog("Warn", "SyncMediaCacheJson", "error fetching %s: %v", section, err)
 		return fmt.Errorf("error fetching %s: %w", section, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
+		TrailarrLog("Warn", "SyncMediaCacheJson", "%s API error: %d", section, resp.StatusCode)
 		return fmt.Errorf("%s API error: %d", section, resp.StatusCode)
 	}
 	var allItems []map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&allItems); err != nil {
+		TrailarrLog("Warn", "SyncMediaCacheJson", "failed to decode %s response: %v", section, err)
 		return fmt.Errorf("failed to decode %s response: %w", section, err)
 	}
 	items := make([]map[string]interface{}, 0)
@@ -533,7 +540,7 @@ func SyncMediaCacheJson(section, apiPath, cachePath string, filter func(map[stri
 	}
 	cacheData, _ := json.MarshalIndent(items, "", "  ")
 	_ = os.WriteFile(cachePath, cacheData, 0644)
-	fmt.Printf("[Sync%s] Synced %d items to cache.\n", section, len(items))
+	TrailarrLog("Info", "SyncMediaCacheJson", "[Sync%s] Synced %d items to cache.", section, len(items))
 
 	// After syncing main cache, update wanted cache
 	var wantedPath string
