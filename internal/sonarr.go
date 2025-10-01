@@ -6,9 +6,9 @@ import (
 	"os"
 	"time"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/gin-gonic/gin"
+	"gopkg.in/yaml.v3"
+	// adjust to actual module path if needed
 )
 
 var getSonarrPosterHandler = getImageHandler("sonarr", "id", "/poster-500.jpg")
@@ -227,7 +227,7 @@ func GetSonarrStatusHandler() gin.HandlerFunc {
 }
 
 func SyncSonarrImages() error {
-	return SyncMediaCacheJson("sonarr", "/api/v3/series", SeriesCachePath, func(m map[string]interface{}) bool {
+	err := SyncMediaCacheJson("sonarr", "/api/v3/series", SeriesCachePath, func(m map[string]interface{}) bool {
 		stats, ok := m["statistics"].(map[string]interface{})
 		if !ok {
 			return false
@@ -235,4 +235,20 @@ func SyncSonarrImages() error {
 		episodeFileCount, ok := stats["episodeFileCount"].(float64)
 		return ok && episodeFileCount >= 1
 	})
+	if err != nil {
+		return err
+	}
+	series, err := loadCache(SeriesCachePath)
+	if err != nil {
+		return err
+	}
+	CacheMediaPosters(
+		"sonarr",
+		MediaCoverPath+"Series",
+		series,
+		"id",
+		[]string{"/poster-500.jpg", "/fanart-1280.jpg"},
+		true, // debug
+	)
+	return nil
 }

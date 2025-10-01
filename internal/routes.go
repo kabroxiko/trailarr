@@ -18,12 +18,7 @@ func RegisterRoutes(r *gin.Engine) {
 	r.POST("/api/settings/sonarr", saveSonarrSettingsHandler)
 	r.POST("/api/extras/download", downloadExtraHandler)
 	r.GET("/api/extras/existing", existingExtrasHandler)
-	// Sonarr poster and banner proxy endpoints
-	r.GET("/api/sonarr/poster/:id", getSonarrPosterHandler)
-	r.GET("/api/sonarr/banner/:id", getSonarrBannerHandler)
-	// Radarr poster and banner proxy endpoints
-	r.GET("/api/radarr/poster/:id", getRadarrPosterHandler)
-	r.GET("/api/radarr/banner/:id", getRadarrBannerHandler)
+	// Posters and banners are now served directly from /mediacover static path
 	// General settings (TMDB key)
 	r.GET("/api/settings/general", getGeneralSettingsHandler)
 	r.POST("/api/settings/general", saveGeneralSettingsHandler)

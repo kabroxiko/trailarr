@@ -73,9 +73,9 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
 
   let background;
   if (mediaType === 'tv') {
-    background = `url(/api/sonarr/banner/${media.id}) center center/cover no-repeat`;
+    background = `url(/mediacover/Series/${media.id}/fanart-1280.jpg) center center/cover no-repeat`;
   } else {
-    background = `url(/api/radarr/banner/${media.id}) center center/cover no-repeat`;
+    background = `url(/mediacover/Movies/${media.id}/fanart-1280.jpg) center center/cover no-repeat`;
   }
 
   return (
@@ -148,8 +148,8 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
         <div style={{ minWidth: 150, zIndex: 2, display: 'flex', justifyContent: 'flex-start', alignItems: 'flex-start', height: '100%', padding: '32px 32px' }}>
           <img
             src={mediaType === 'tv'
-              ? `/api/sonarr/poster/${media.id}`
-              : `/api/radarr/poster/${media.id}`}
+              ? `/mediacover/Series/${media.id}/poster-500.jpg`
+              : `/mediacover/Movies/${media.id}/poster-500.jpg`}
             style={{ height: 370, objectFit: 'cover', borderRadius: 4, background: '#222', boxShadow: '0 2px 8px rgba(0,0,0,0.22)' }}
             onError={e => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/180x270?text=No+Poster'; }}
           />

@@ -6,9 +6,9 @@ import (
 	"os"
 	"time"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/gin-gonic/gin"
+	"gopkg.in/yaml.v3"
+	// adjust to actual module path if needed
 )
 
 var getRadarrPosterHandler = getImageHandler("radarr", "id", "/poster-500.jpg")
@@ -223,8 +223,24 @@ func GetRadarrStatusHandler() gin.HandlerFunc {
 }
 
 func SyncRadarrImages() error {
-	return SyncMediaCacheJson("radarr", "/api/v3/movie", MoviesCachePath, func(m map[string]interface{}) bool {
+	err := SyncMediaCacheJson("radarr", "/api/v3/movie", MoviesCachePath, func(m map[string]interface{}) bool {
 		hasFile, ok := m["hasFile"].(bool)
 		return ok && hasFile
 	})
+	if err != nil {
+		return err
+	}
+	movies, err := loadCache(MoviesCachePath)
+	if err != nil {
+		return err
+	}
+	CacheMediaPosters(
+		"radarr",
+		MediaCoverPath+"Movies",
+		movies,
+		"id",
+		[]string{"/poster-500.jpg", "/fanart-1280.jpg"},
+		true, // debug
+	)
+	return nil
 }
