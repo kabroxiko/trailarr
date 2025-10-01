@@ -13,7 +13,7 @@ var getRadarrPosterHandler = getImageHandler("radarr", "id", "/poster-500.jpg")
 var getRadarrBannerHandler = getImageHandler("radarr", "id", "/fanart-1280.jpg")
 
 func getRadarrHandler(c *gin.Context) {
-	cachePath := MoviesCachePath
+	cachePath := TrailarrRoot + "/movies.json"
 	movies, err := loadCache(cachePath)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Movie cache not found"})
@@ -46,7 +46,7 @@ func getMovieExtrasHandler(c *gin.Context) {
 		return
 	}
 
-	moviePath, err := FindMediaPathByID(MoviesCachePath, idStr)
+	moviePath, err := FindMediaPathByID(TrailarrRoot+"/movies.json", idStr)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Movie cache not found"})
 		return
@@ -133,14 +133,14 @@ func GetRadarrStatusHandler() gin.HandlerFunc {
 }
 
 func SyncRadarrImages() error {
-	err := SyncMediaCacheJson("radarr", "/api/v3/movie", MoviesCachePath, func(m map[string]interface{}) bool {
+	err := SyncMediaCacheJson("radarr", "/api/v3/movie", TrailarrRoot+"/movies.json", func(m map[string]interface{}) bool {
 		hasFile, ok := m["hasFile"].(bool)
 		return ok && hasFile
 	})
 	if err != nil {
 		return err
 	}
-	movies, err := loadCache(MoviesCachePath)
+	movies, err := loadCache(TrailarrRoot + "/movies.json")
 	if err != nil {
 		return err
 	}
