@@ -8,7 +8,22 @@ function MovieDetails({ movies }) {
   const { id } = useParams();
   const movie = movies.find(m => String(m.id) === id);
   const navigate = useNavigate();
+  const [extras, setExtras] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   if (!movie) return <div>Movie not found</div>;
+  const handleSearchExtras = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await searchExtras(movie.title);
+      setExtras(res.extras || []);
+    } catch (e) {
+      setError('Failed to search extras');
+    } finally {
+      setLoading(false);
+    }
+  };
   return (
     <div style={{ display: 'flex', gap: 32 }}>
       <div style={{ minWidth: 300 }}>
@@ -19,11 +34,22 @@ function MovieDetails({ movies }) {
           onError={e => { e.target.onerror = null; e.target.src = 'https://via.placeholder.com/300x450?text=No+Poster'; }}
         />
         <button style={{ marginTop: 8, background: '#eee', border: 'none', borderRadius: 6, padding: '0.5em 1em', cursor: 'pointer' }} onClick={() => navigate('/movies')}>Back to list</button>
+        <button style={{ marginTop: 8, marginLeft: 8, background: '#a855f7', color: '#fff', border: 'none', borderRadius: 6, padding: '0.5em 1em', cursor: 'pointer' }} onClick={handleSearchExtras} disabled={loading}>
+          {loading ? 'Searching...' : 'Search Extras'}
+        </button>
       </div>
       <div style={{ flex: 1 }}>
         <h2 style={{ color: '#a855f7', margin: 0 }}>{movie.title}</h2>
         <div style={{ marginBottom: 8, color: '#888', textAlign: 'left' }}>{movie.year} &bull; {movie.path}</div>
         <div style={{ marginBottom: 16, color: '#333' }}>Movie extras would be listed here.</div>
+        {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
+        {extras.length > 0 && (
+          <ul style={{ marginTop: 16 }}>
+            {extras.map((extra, idx) => (
+              <li key={idx}>{extra}</li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );
