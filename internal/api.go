@@ -14,10 +14,15 @@ import (
 )
 
 const (
-	ConfigPath      = "/var/lib/extrazarr/config/config.yml"
-	MoviesCachePath = "/var/lib/extrazarr/movies_cache.json"
-	MediaCoverPath  = "/var/lib/extrazarr/MediaCover/"
-	SeriesCachePath = "/var/lib/extrazarr/series_cache.json"
+	ConfigPath               = "/var/lib/extrazarr/config/config.yml"
+	MoviesCachePath          = "/var/lib/extrazarr/movies_cache.json"
+	MediaCoverPath           = "/var/lib/extrazarr/MediaCover/"
+	SeriesCachePath          = "/var/lib/extrazarr/series_cache.json"
+	ErrInvalidSonarrSettings = "Invalid Sonarr settings"
+	RemoteMediaCoverPath     = "/MediaCover/"
+	HeaderApiKey             = "X-Api-Key"
+	ErrInvalidRequest        = "invalid request"
+	HeaderContentType        = "Content-Type"
 )
 
 // RegisterRoutes registers all API endpoints to the Gin router
@@ -67,7 +72,7 @@ func saveGeneralSettingsHandler(c *gin.Context) {
 		TMDBApiKey string `json:"tmdbKey" yaml:"tmdbKey"`
 	}
 	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": ErrInvalidRequest})
 		return
 	}
 	// Read existing settings
@@ -124,13 +129,13 @@ func HandleRadarrPoster(c *gin.Context) {
 		return
 	}
 	// Fallback to Radarr API
-	posterUrl := apiBase + "/MediaCover/" + movieId + "/poster-500.jpg"
+	posterUrl := apiBase + RemoteMediaCoverPath + movieId + "/poster-500.jpg"
 	req, err := http.NewRequest("GET", posterUrl, nil)
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Error creating poster request")
 		return
 	}
-	req.Header.Set("X-Api-Key", radarrSettings.APIKey)
+	req.Header.Set(HeaderApiKey, radarrSettings.APIKey)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil || resp.StatusCode != 200 {
@@ -138,7 +143,7 @@ func HandleRadarrPoster(c *gin.Context) {
 		return
 	}
 	defer resp.Body.Close()
-	c.Header("Content-Type", resp.Header.Get("Content-Type"))
+	c.Header(HeaderContentType, resp.Header.Get(HeaderContentType))
 	c.Status(http.StatusOK)
 	io.Copy(c.Writer, resp.Body)
 }
@@ -171,13 +176,13 @@ func HandleRadarrBanner(c *gin.Context) {
 		return
 	}
 	// Fallback to Radarr API
-	bannerUrl := apiBase + "/MediaCover/" + movieId + "/fanart-1280.jpg"
+	bannerUrl := apiBase + RemoteMediaCoverPath + movieId + "/fanart-1280.jpg"
 	req, err := http.NewRequest("GET", bannerUrl, nil)
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Error creating banner request")
 		return
 	}
-	req.Header.Set("X-Api-Key", radarrSettings.APIKey)
+	req.Header.Set(HeaderApiKey, radarrSettings.APIKey)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil || resp.StatusCode != 200 {
@@ -185,7 +190,7 @@ func HandleRadarrBanner(c *gin.Context) {
 		return
 	}
 	defer resp.Body.Close()
-	c.Header("Content-Type", resp.Header.Get("Content-Type"))
+	c.Header(HeaderContentType, resp.Header.Get(HeaderContentType))
 	c.Status(http.StatusOK)
 	io.Copy(c.Writer, resp.Body)
 }
@@ -202,7 +207,7 @@ func HandleSonarrBanner(c *gin.Context) {
 		} `yaml:"sonarr"`
 	}
 	if err := yaml.Unmarshal(data, &allSettings); err != nil {
-		c.String(http.StatusInternalServerError, "Invalid Sonarr settings")
+		c.String(http.StatusInternalServerError, ErrInvalidSonarrSettings)
 		return
 	}
 	sonarrSettings := allSettings.Sonarr
@@ -218,13 +223,13 @@ func HandleSonarrBanner(c *gin.Context) {
 		return
 	}
 	// Fallback to Sonarr API
-	bannerUrl := apiBase + "/MediaCover/" + seriesId + "/banner.jpg"
+	bannerUrl := apiBase + RemoteMediaCoverPath + seriesId + "/banner.jpg"
 	req, err := http.NewRequest("GET", bannerUrl, nil)
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Error creating banner request")
 		return
 	}
-	req.Header.Set("X-Api-Key", sonarrSettings.APIKey)
+	req.Header.Set(HeaderApiKey, sonarrSettings.APIKey)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil || resp.StatusCode != 200 {
@@ -232,7 +237,7 @@ func HandleSonarrBanner(c *gin.Context) {
 		return
 	}
 	defer resp.Body.Close()
-	c.Header("Content-Type", resp.Header.Get("Content-Type"))
+	c.Header(HeaderContentType, resp.Header.Get(HeaderContentType))
 	c.Status(http.StatusOK)
 	io.Copy(c.Writer, resp.Body)
 }
@@ -249,7 +254,7 @@ func HandleSonarrPoster(c *gin.Context) {
 		} `yaml:"sonarr"`
 	}
 	if err := yaml.Unmarshal(data, &allSettings); err != nil {
-		c.String(http.StatusInternalServerError, "Invalid Sonarr settings")
+		c.String(http.StatusInternalServerError, ErrInvalidSonarrSettings)
 		return
 	}
 	sonarrSettings := allSettings.Sonarr
@@ -264,7 +269,7 @@ func HandleSonarrPoster(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "Error creating request")
 		return
 	}
-	req.Header.Set("X-Api-Key", sonarrSettings.APIKey)
+	req.Header.Set(HeaderApiKey, sonarrSettings.APIKey)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil || resp.StatusCode != 200 {
@@ -307,7 +312,7 @@ func HandleSonarrPoster(c *gin.Context) {
 	}
 	// If poster is local, add API key
 	if strings.HasPrefix(posterUrl, apiBase) {
-		posterReq.Header.Set("X-Api-Key", sonarrSettings.APIKey)
+		posterReq.Header.Set(HeaderApiKey, sonarrSettings.APIKey)
 	}
 	posterResp, err := client.Do(posterReq)
 	if err != nil || posterResp.StatusCode != 200 {
@@ -315,7 +320,7 @@ func HandleSonarrPoster(c *gin.Context) {
 		return
 	}
 	defer posterResp.Body.Close()
-	c.Header("Content-Type", posterResp.Header.Get("Content-Type"))
+	c.Header(HeaderContentType, posterResp.Header.Get(HeaderContentType))
 	c.Status(http.StatusOK)
 	io.Copy(c.Writer, posterResp.Body)
 }
@@ -347,7 +352,7 @@ func saveSonarrSettingsHandler(c *gin.Context) {
 		APIKey string `yaml:"apiKey"`
 	}
 	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": ErrInvalidRequest})
 		return
 	}
 	// Read existing settings
@@ -410,7 +415,7 @@ func HandleSonarrSeries(c *gin.Context) {
 	}
 	if err := yaml.Unmarshal(data, &allSettings); err != nil {
 		fmt.Println("[HandleSonarrSeries] Invalid Sonarr settings")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid Sonarr settings"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": ErrInvalidSonarrSettings})
 		return
 	}
 	sonarrSettings := allSettings.Sonarr
@@ -427,7 +432,7 @@ func HandleSonarrSeries(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating request"})
 		return
 	}
-	req.Header.Set("X-Api-Key", sonarrSettings.APIKey)
+	req.Header.Set(HeaderApiKey, sonarrSettings.APIKey)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -504,7 +509,7 @@ func SyncSonarrSeriesAndMediaCover() error {
 		fmt.Println("[SyncSonarr] Error creating request:", err)
 		return fmt.Errorf("Error creating request: %w", err)
 	}
-	req.Header.Set("X-Api-Key", settings.APIKey)
+	req.Header.Set(HeaderApiKey, settings.APIKey)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -635,7 +640,7 @@ func saveRadarrSettingsHandler(c *gin.Context) {
 		APIKey string `yaml:"apiKey"`
 	}
 	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": ErrInvalidRequest})
 		return
 	}
 	// Read existing settings
@@ -690,7 +695,7 @@ func downloadExtraHandler(c *gin.Context) {
 	}
 	if err := c.BindJSON(&req); err != nil {
 		fmt.Printf("[downloadExtraHandler] Invalid request: %v\n", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": ErrInvalidRequest})
 		return
 	}
 	fmt.Printf("[downloadExtraHandler] Download request: moviePath=%s, extraType=%s, extraTitle=%s, url=%s\n", req.MoviePath, req.ExtraType, req.ExtraTitle, req.URL)
@@ -730,7 +735,7 @@ func SyncRadarrMoviesAndMediaCover() error {
 		fmt.Println("[Sync] Error creating request:", err)
 		return fmt.Errorf("Error creating request: %w", err)
 	}
-	req.Header.Set("X-Api-Key", settings.APIKey)
+	req.Header.Set(HeaderApiKey, settings.APIKey)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
