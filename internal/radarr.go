@@ -95,15 +95,17 @@ func ForceSyncRadarr() {
 	)
 	syncRadarrStatus.Queue = nil
 	for _, item := range GlobalSyncQueue {
-		syncRadarrStatus.Queue = append(syncRadarrStatus.Queue, SyncRadarrQueueItem{
-			TaskName: item.TaskName,
-			Queued:   item.Queued,
-			Started:  item.Started,
-			Ended:    item.Ended,
-			Duration: item.Duration,
-			Status:   item.Status,
-			Error:    item.Error,
-		})
+		if item.TaskName == "radarr" {
+			syncRadarrStatus.Queue = append(syncRadarrStatus.Queue, SyncRadarrQueueItem{
+				TaskName: item.TaskName,
+				Queued:   item.Queued,
+				Started:  item.Started,
+				Ended:    item.Ended,
+				Duration: item.Duration,
+				Status:   item.Status,
+				Error:    item.Error,
+			})
+		}
 	}
 }
 

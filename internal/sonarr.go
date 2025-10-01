@@ -95,15 +95,17 @@ func ForceSyncSonarr() {
 	)
 	syncSonarrStatus.Queue = nil
 	for _, item := range GlobalSyncQueue {
-		syncSonarrStatus.Queue = append(syncSonarrStatus.Queue, SyncSonarrQueueItem{
-			TaskName: item.TaskName,
-			Queued:   item.Queued,
-			Started:  item.Started,
-			Ended:    item.Ended,
-			Duration: item.Duration,
-			Status:   item.Status,
-			Error:    item.Error,
-		})
+		if item.TaskName == "sonarr" {
+			syncSonarrStatus.Queue = append(syncSonarrStatus.Queue, SyncSonarrQueueItem{
+				TaskName: item.TaskName,
+				Queued:   item.Queued,
+				Started:  item.Started,
+				Ended:    item.Ended,
+				Duration: item.Duration,
+				Status:   item.Status,
+				Error:    item.Error,
+			})
+		}
 	}
 }
 

@@ -123,12 +123,22 @@ func ForceSyncMedia(
 		Queued:   time.Now(),
 		Status:   "queued",
 	}
-	// Add initial queued item
 	GlobalSyncQueue = append(GlobalSyncQueue, item)
 	saveQueue()
-	idx := len(GlobalSyncQueue) - 1
 
-	// Update status to running and set Started
+	// Find the last index for the current section (radarr or sonarr)
+	idx := -1
+	for i := len(GlobalSyncQueue) - 1; i >= 0; i-- {
+		if GlobalSyncQueue[i].TaskName == section {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		println("[ERROR] Could not find queue item for section:", section)
+		return
+	}
+
 	GlobalSyncQueue[idx].Started = time.Now()
 	GlobalSyncQueue[idx].Status = "running"
 	saveQueue()
@@ -141,7 +151,6 @@ func ForceSyncMedia(
 		GlobalSyncQueue[idx].Error = err.Error()
 		GlobalSyncQueue[idx].Status = "failed"
 		saveQueue()
-		*lastError = err.Error()
 		println("[FORCE] Sync", section, "error:", err.Error())
 	} else {
 		GlobalSyncQueue[idx].Status = "success"
