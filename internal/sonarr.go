@@ -60,6 +60,7 @@ func getSeriesExtrasHandler(c *gin.Context) {
 
 // SyncSonarrQueueItem tracks a Sonarr sync operation
 type SyncSonarrQueueItem struct {
+	TaskName string
 	Queued   time.Time
 	Started  time.Time
 	Ended    time.Time
@@ -82,30 +83,20 @@ var syncSonarrStatus = struct {
 // Handler to force sync Sonarr
 func ForceSyncSonarr() {
 	// Use generic ForceSyncMedia from media.go
-	var tempQueue []SyncQueueItem
-	for _, item := range syncSonarrStatus.Queue {
-		tempQueue = append(tempQueue, SyncQueueItem{
-			Queued:   item.Queued,
-			Started:  item.Started,
-			Ended:    item.Ended,
-			Duration: item.Duration,
-			Status:   item.Status,
-			Error:    item.Error,
-		})
-	}
+	// Only use GlobalSyncQueue for persistence and display
 	ForceSyncMedia(
 		"sonarr",
 		SyncSonarrImages,
 		Timings,
-		&tempQueue,
 		&syncSonarrStatus.LastError,
 		&syncSonarrStatus.LastExecution,
 		&syncSonarrStatus.LastDuration,
 		&syncSonarrStatus.NextExecution,
 	)
 	syncSonarrStatus.Queue = nil
-	for _, item := range tempQueue {
+	for _, item := range GlobalSyncQueue {
 		syncSonarrStatus.Queue = append(syncSonarrStatus.Queue, SyncSonarrQueueItem{
+			TaskName: item.TaskName,
 			Queued:   item.Queued,
 			Started:  item.Started,
 			Ended:    item.Ended,
@@ -114,40 +105,6 @@ func ForceSyncSonarr() {
 			Error:    item.Error,
 		})
 	}
-}
-
-// Background sync for Sonarr
-func BackgroundSyncSonarr() {
-	interval := Timings["sonarr"]
-	BackgroundSync(
-		time.Duration(interval)*time.Minute,
-		SyncSonarrImages,
-		func(item interface{}) {
-			syncSonarrStatus.Queue = append(syncSonarrStatus.Queue, *item.(*SyncSonarrQueueItem))
-		},
-		func() interface{} {
-			return &SyncSonarrQueueItem{Queued: time.Now(), Status: "queued"}
-		},
-		func(item interface{}, started, ended time.Time, duration time.Duration, status, errStr string) {
-			i := item.(*SyncSonarrQueueItem)
-			i.Started = started
-			i.Ended = ended
-			i.Duration = duration
-			i.Status = status
-			i.Error = errStr
-			if status == "error" {
-				syncSonarrStatus.LastError = errStr
-			}
-			syncSonarrStatus.LastExecution = ended
-			syncSonarrStatus.LastDuration = duration
-			syncSonarrStatus.NextExecution = ended.Add(time.Duration(interval) * time.Minute)
-		},
-		func() {
-			if len(syncSonarrStatus.Queue) > 10 {
-				syncSonarrStatus.Queue = syncSonarrStatus.Queue[len(syncSonarrStatus.Queue)-10:]
-			}
-		},
-	)
 }
 
 // Exported Sonarr status getters for main.go

@@ -20,7 +20,7 @@ func RegisterRoutes(r *gin.Engine) {
 		}
 	}
 	if defaultMoviePath == "" {
-		defaultMoviePath = "/mnt/unionfs/Media/Movies"
+		defaultMoviePath = "/Movies"
 	}
 	r.GET("/api/movies/no_trailer_extra", GetMediaWithoutTrailerExtraHandler("radarr", MoviesCachePath, defaultMoviePath))
 	r.GET("/api/series", getSonarrHandler)
@@ -35,7 +35,7 @@ func RegisterRoutes(r *gin.Engine) {
 		}
 	}
 	if defaultSeriesPath == "" {
-		defaultSeriesPath = "/mnt/unionfs/Media/TV"
+		defaultSeriesPath = "/Series"
 	}
 	r.GET("/api/series/no_trailer_extra", GetMediaWithoutTrailerExtraHandler("sonarr", SeriesCachePath, defaultSeriesPath))
 	r.GET("/api/movies/:id/extras", getMovieExtrasHandler)

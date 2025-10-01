@@ -25,6 +25,7 @@ function App() {
     return () => window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', listener);
   }, []);
   const [selectedSection, setSelectedSection] = useState('Movies');
+  const [selectedSystemSub, setSelectedSystemSub] = useState('Tasks');
 
   // Reset search when changing main section (Movies/Series)
   useEffect(() => {
@@ -55,6 +56,9 @@ function App() {
       setSelectedSection('Series');
     } else if (path.startsWith('/history')) {
       setSelectedSection('History');
+    } else if (path.startsWith('/system/tasks')) {
+      setSelectedSection('System');
+      setSelectedSystemSub('Tasks');
     }
   }, []);
 
@@ -170,6 +174,8 @@ function App() {
           selectedSettingsSub={selectedSettingsSub}
           setSelectedSettingsSub={setSelectedSettingsSub}
           darkMode={darkMode}
+          selectedSystemSub={selectedSystemSub}
+          setSelectedSystemSub={setSelectedSystemSub}
         />
         <main style={{ flex: 1, padding: '0em', height: '100%', boxSizing: 'border-box', overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'stretch', maxWidth: 'calc(100vw - 220px)', background: darkMode ? '#18181b' : '#fff', color: darkMode ? '#e5e7eb' : '#222' }}>
           {/* Removed content title (Movies, Settings, etc) */}
