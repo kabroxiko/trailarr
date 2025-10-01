@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faBookmark } from '@fortawesome/free-solid-svg-icons';
+import { faTrashCan, faBookmark, faCheckSquare } from '@fortawesome/free-regular-svg-icons';
+import { faPlay, faDownload } from '@fortawesome/free-solid-svg-icons';
 import { useParams } from 'react-router-dom';
 import { getExtras } from '../api';
 
@@ -94,6 +95,14 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
     background = `url(/mediacover/Movies/${media.id}/fanart-1280.jpg) center center/cover no-repeat`;
   }
 
+  // Group extras by type
+  const extrasByType = extras.reduce((acc, extra) => {
+    const type = extra.type || 'Other';
+    if (!acc[type]) acc[type] = [];
+    acc[type].push(extra);
+    return acc;
+  }, {});
+
   return (
     <div style={{
       display: 'flex',
@@ -184,176 +193,253 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
           {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
         </div>
       </div>
-      {extras.length > 0 && (
+      {/* Grouped extras by type */}
+      {Object.keys(extrasByType).length > 0 && (
         <div style={{ width: '100%', background: darkMode ? '#23232a' : '#f3e8ff', overflow: 'hidden', padding: '24px 10px', margin: 0 }}>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 0px))',
-            gap: '32px',
-            justifyItems: 'start',
-            alignItems: 'start',
-            width: '100%',
-            justifyContent: 'start',
-          }}>
-            {extras.map((extra, idx) => {
-              const baseTitle = extra.title || String(extra);
-              const totalCount = extras.filter(e => (e.title || String(e)) === baseTitle).length;
-              let displayTitle = totalCount > 1 ? `${baseTitle} (${extras.slice(0, idx + 1).filter(e => (e.title || String(e)) === baseTitle).length})` : baseTitle;
-              // Truncate and add ellipsis if too long
-              const maxLen = 40;
-              if (displayTitle.length > maxLen) {
-                displayTitle = displayTitle.slice(0, maxLen - 3) + '...';
-              }
-              let youtubeID = '';
-              if (extra.url) {
-                if (extra.url.includes('youtube.com/watch?v=')) {
-                  youtubeID = extra.url.split('v=')[1]?.split('&')[0] || '';
-                } else if (extra.url.includes('youtu.be/')) {
-                  youtubeID = extra.url.split('youtu.be/')[1]?.split(/[?&]/)[0] || '';
-                }
-              }
-              // Use YouTube thumbnail if available
-              let posterUrl = extra.poster;
-              if (!posterUrl && youtubeID) {
-                posterUrl = `https://img.youtube.com/vi/${youtubeID}/hqdefault.jpg`;
-              }
-              // Adjust font size for long titles
-              let titleFontSize = 16;
-              if (displayTitle.length > 22) titleFontSize = 14;
-              if (displayTitle.length > 32) titleFontSize = 12;
-              const downloaded = extra.downloaded === 'true';
-
-              // Extracted button click handler
-              const handleDownloadClick = async () => {
-                if (downloaded) return;
-                try {
-                  const getExtraUrl = extra => typeof extra.url === 'string' ? extra.url : extra.url?.url ?? '';
-                  const res = await fetch(`/api/extras/download`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      moviePath: media.path,
-                      extraType: extra.type,
-                      extraTitle: extra.title,
-                      url: getExtraUrl(extra)
-                    })
-                  });
-                  if (res.ok) {
-                    setExtras(prev => prev.map((e, i) => i === idx ? { ...e, downloaded: 'true' } : e));
-                  } else {
-                    const data = await res.json();
-                    let msg = data?.error || 'Download failed';
-                    if (msg.includes('UNPLAYABLE') || msg.includes('no se encuentra disponible')) {
-                      msg = 'This YouTube video is unavailable and cannot be downloaded.';
+          {Object.entries(extrasByType).map(([type, typeExtras]) => (
+            <div key={type} style={{ marginBottom: 32 }}>
+              <h3 style={{
+                color: '#111',
+                fontSize: 20,
+                fontWeight: 700,
+                margin: '0 0 18px 8px',
+                textTransform: 'capitalize',
+                letterSpacing: 0.5,
+                textAlign: 'left',
+              }}>{type}</h3>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 0px))',
+                gap: '32px',
+                justifyItems: 'start',
+                alignItems: 'start',
+                width: '100%',
+                justifyContent: 'start',
+              }}>
+                {typeExtras.map((extra, idx) => {
+                  const baseTitle = extra.title || String(extra);
+                  const totalCount = typeExtras.filter(e => (e.title || String(e)) === baseTitle).length;
+                  let displayTitle = totalCount > 1 ? `${baseTitle} (${typeExtras.slice(0, idx + 1).filter(e => (e.title || String(e)) === baseTitle).length})` : baseTitle;
+                  // Truncate and add ellipsis if too long
+                  const maxLen = 40;
+                  if (displayTitle.length > maxLen) {
+                    displayTitle = displayTitle.slice(0, maxLen - 3) + '...';
+                  }
+                  let youtubeID = '';
+                  if (extra.url) {
+                    if (extra.url.includes('youtube.com/watch?v=')) {
+                      youtubeID = extra.url.split('v=')[1]?.split('&')[0] || '';
+                    } else if (extra.url.includes('youtu.be/')) {
+                      youtubeID = extra.url.split('youtu.be/')[1]?.split(/[?&]/)[0] || '';
                     }
-                    setModalMsg(msg);
-                    setShowModal(true);
                   }
-                } catch (e) {
-                  let msg = (e.message || e);
-                  if (msg.includes('UNPLAYABLE') || msg.includes('no se encuentra disponible')) {
-                    msg = 'This YouTube video is unavailable and cannot be downloaded.';
+                  // Use YouTube thumbnail if available
+                  let posterUrl = extra.poster;
+                  if (!posterUrl && youtubeID) {
+                    posterUrl = `https://img.youtube.com/vi/${youtubeID}/hqdefault.jpg`;
                   }
-                  setModalMsg(msg);
-                  setShowModal(true);
-                }
-              };
+                  // Adjust font size for long titles
+                  let titleFontSize = 16;
+                  if (displayTitle.length > 22) titleFontSize = 14;
+                  if (displayTitle.length > 32) titleFontSize = 12;
+                  const downloaded = extra.downloaded === 'true';
 
-              return (
-                <div key={idx} style={{
-                  width: 180,
-                  height: 280,
-                  background: darkMode ? '#18181b' : '#fff',
-                  borderRadius: 12,
-                  boxShadow: darkMode ? '0 2px 12px rgba(0,0,0,0.22)' : '0 2px 12px rgba(0,0,0,0.10)',
-                  overflow: 'hidden',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  padding: '0 0 18px 0',
-                  position: 'relative',
-                  border: downloaded ? '2px solid #22c55e' : '2px solid transparent',
-                }}>
-                  <div style={{ width: '100%', background: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {posterUrl ? (
-                      <img src={posterUrl} alt={displayTitle} style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: 260, background: '#222' }} />
-                    ) : (
-                      <div style={{ color: '#fff', fontSize: 18, textAlign: 'center', padding: 12 }}>No Image</div>
-                    )}
-                  </div>
-                  <div style={{ width: '100%', padding: '12px 10px 0 10px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                    <div style={{ fontWeight: 600, fontSize: titleFontSize, color: darkMode ? '#e5e7eb' : '#222', textAlign: 'center', marginBottom: 4, height: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', width: '100%' }}>{displayTitle}</div>
-                    <div style={{ fontSize: 13, color: '#888', marginBottom: 2 }}>{extra.year || ''}</div>
-                    <div style={{ fontSize: 13, color: downloaded ? '#22c55e' : '#ef4444', fontWeight: 'bold', marginBottom: 6 }}>{downloaded ? 'Downloaded' : 'Not downloaded'}</div>
-                    {extra.url && (extra.url.includes('youtube.com/watch?v=') || extra.url.includes('youtu.be/')) ? (
-                      <button
-                        style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4, padding: '0.25em 0.75em', cursor: 'pointer', fontWeight: 'bold', fontSize: 13, marginBottom: 8 }}
-                        onClick={() => {
-                          let youtubeID = '';
-                          if (extra.url.includes('youtube.com/watch?v=')) {
-                            youtubeID = extra.url.split('v=')[1]?.split('&')[0] || '';
-                          } else if (extra.url.includes('youtu.be/')) {
-                            youtubeID = extra.url.split('youtu.be/')[1]?.split(/[?&]/)[0] || '';
-                          }
-                          if (youtubeID) setYoutubeModal({ open: true, videoId: youtubeID });
-                        }}
-                      >View</button>
-                    ) : extra.url ? (
-                      <a href={extra.url} target="_blank" rel="noopener noreferrer" style={{ color: darkMode ? '#e5e7eb' : '#6d28d9', textDecoration: 'underline', fontSize: 13, marginBottom: 8 }}>View</a>
-                    ) : null}
-  {/* YouTube Modal */}
-  {youtubeModal.open && (
-    <div className="youtube-modal-backdrop" style={{
-      position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.7)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }}>
-      <div style={{
-        position: 'relative',
-        background: '#18181b',
-        borderRadius: 12,
-        boxShadow: '0 2px 24px #000',
-        padding: 0,
-        width: '90vw',
-        maxWidth: 800,
-        aspectRatio: '16/9',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        overflow: 'hidden',
-      }}>
-        <button onClick={() => setYoutubeModal({ open: false, videoId: '' })} style={{ position: 'absolute', top: 8, right: 12, background: 'transparent', color: '#fff', border: 'none', fontSize: 28, cursor: 'pointer', zIndex: 2 }} title="Close">×</button>
-        <div style={{ width: '100%', height: '100%', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <iframe
-            src={`https://www.youtube.com/embed/${youtubeModal.videoId}?autoplay=1`}
-            title="YouTube video player"
-            frameBorder="0"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-            style={{
-              borderRadius: 8,
-              background: '#000',
-              width: '100%',
-              height: '100%',
-              position: 'absolute',
-              top: 0,
-              left: 0,
-            }}
-          />
-        </div>
-      </div>
-    </div>
-  )}
-                    {extra.url && (extra.url.includes('youtube.com/watch?v=') || extra.url.includes('youtu.be/')) ? (
-                      <button
-                        style={{ background: downloaded ? '#888' : '#a855f7', color: '#fff', border: 'none', borderRadius: 4, padding: '0.25em 0.75em', cursor: downloaded ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: 13, marginTop: 4 }}
-                        disabled={downloaded}
-                        onClick={handleDownloadClick}
-                      >Download</button>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                  // Extracted button click handler
+                  const handleDownloadClick = async () => {
+                    if (downloaded) return;
+                    try {
+                      const getExtraUrl = extra => typeof extra.url === 'string' ? extra.url : extra.url?.url ?? '';
+                      const res = await fetch(`/api/extras/download`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          moviePath: media.path,
+                          extraType: extra.type,
+                          extraTitle: extra.title,
+                          url: getExtraUrl(extra)
+                        })
+                      });
+                      if (res.ok) {
+                        setExtras(prev => prev.map((e, i) => i === idx && e.type === type ? { ...e, downloaded: 'true' } : e));
+                      } else {
+                        const data = await res.json();
+                        let msg = data?.error || 'Download failed';
+                        if (msg.includes('UNPLAYABLE') || msg.includes('no se encuentra disponible')) {
+                          msg = 'This YouTube video is unavailable and cannot be downloaded.';
+                        }
+                        setModalMsg(msg);
+                        setShowModal(true);
+                      }
+                    } catch (e) {
+                      let msg = (e.message || e);
+                      if (msg.includes('UNPLAYABLE') || msg.includes('no se encuentra disponible')) {
+                        msg = 'This YouTube video is unavailable and cannot be downloaded.';
+                      }
+                      setModalMsg(msg);
+                      setShowModal(true);
+                    }
+                  };
+
+                  return (
+                    <div key={idx} style={{
+                      width: 180,
+                      height: 210,
+                      background: darkMode ? '#18181b' : '#fff',
+                      borderRadius: 12,
+                      boxShadow: darkMode ? '0 2px 12px rgba(0,0,0,0.22)' : '0 2px 12px rgba(0,0,0,0.10)',
+                      overflow: 'hidden',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      padding: '0 0 0 0',
+                      position: 'relative',
+                      border: downloaded ? '2px solid #22c55e' : '2px solid transparent',
+                    }}>
+                      <div style={{ width: '100%', background: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div style={{position: 'relative', width: '100%'}}>
+                          {/* Play (YouTube) icon at center over poster */}
+                          {extra.url && (extra.url.includes('youtube.com/watch?v=') || extra.url.includes('youtu.be/')) && (
+                            <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 2 }}>
+                              <FontAwesomeIcon
+                                icon={faPlay}
+                                color="#fff"
+                                size="lg"
+                                style={{ cursor: 'pointer', filter: 'drop-shadow(0 2px 8px #000)' }}
+                                title="Play"
+                                onClick={() => {
+                                  let youtubeID = '';
+                                  if (extra.url.includes('youtube.com/watch?v=')) {
+                                    youtubeID = extra.url.split('v=')[1]?.split('&')[0] || '';
+                                  } else if (extra.url.includes('youtu.be/')) {
+                                    youtubeID = extra.url.split('youtu.be/')[1]?.split(/[?&]/)[0] || '';
+                                  }
+                                  if (youtubeID) setYoutubeModal({ open: true, videoId: youtubeID });
+                                }}
+                              />
+                            </div>
+                          )}
+                          {posterUrl ? (
+                            <img src={posterUrl} alt={displayTitle} style={{ width: '100%', height: 'auto', objectFit: 'contain', maxHeight: 260, background: '#222' }} />
+                          ) : (
+                            <div style={{ color: '#fff', fontSize: 18, textAlign: 'center', padding: 12 }}>No Image</div>
+                          )}
+                          {/* Download icon at upper right over poster */}
+                          {extra.url && (extra.url.includes('youtube.com/watch?v=') || extra.url.includes('youtu.be/')) && !downloaded && (
+                            <div style={{ position: 'absolute', top: 8, right: downloaded ? 36 : 8, zIndex: 2 }}>
+                              <FontAwesomeIcon
+                                icon={faDownload}
+                                color="#fff"
+                                size="lg"
+                                style={{ cursor: 'pointer' }}
+                                title="Download"
+                                onClick={handleDownloadClick}
+                              />
+                            </div>
+                          )}
+                          {downloaded && (
+                            <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 2 }}>
+                              <FontAwesomeIcon icon={faCheckSquare} color="#22c55e" size="lg" title="Downloaded" />
+                            </div>
+                          )}
+                          {downloaded && (
+                            <div style={{ position: 'absolute', bottom: 8, right: 8, zIndex: 2 }}>
+                              <FontAwesomeIcon
+                                icon={faTrashCan}
+                                color="#ef4444"
+                                size="md"
+                                style={{ cursor: 'pointer' }}
+                                title="Delete"
+                                onClick={async () => {
+                                  if (!window.confirm('Delete this extra?')) return;
+                                  try {
+                                    const res = await fetch('/api/extras/delete', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                        mediaPath: media.path,
+                                        extraType: extra.type,
+                                        extraTitle: extra.title
+                                      })
+                                    });
+                                    if (res.ok) {
+                                      setExtras(prev => prev.map((e, i) => i === idx && e.type === type ? { ...e, downloaded: 'false' } : e));
+                                    } else {
+                                      const data = await res.json();
+                                      setModalMsg(data?.error || 'Delete failed');
+                                      setShowModal(true);
+                                    }
+                                  } catch (e) {
+                                    setModalMsg(e.message || 'Delete failed');
+                                    setShowModal(true);
+                                  }
+                                }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ width: '100%', padding: '12px 10px 0 10px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <div style={{ fontWeight: 600, fontSize: titleFontSize, color: darkMode ? '#e5e7eb' : '#222', textAlign: 'center', marginBottom: 4, height: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', width: '100%' }}>{displayTitle}</div>
+                        <div style={{ fontSize: 13, color: '#888', marginBottom: 2 }}>{extra.year || ''}</div>
+                        {/* Icons row at bottom */}
+                        <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 18, position: 'absolute', bottom: 12, left: 0 }}>
+                          {/* Downloaded check icon at upper right */}
+                          {/* (moved to poster image above) */}
+                          {/* View icon (Font Awesome) */}
+                          {/* Play icon moved to poster image above */}
+                          {/* Download icon (Font Awesome) */}
+                          {/* Download icon moved to poster image above */}
+                          {/* Delete icon (Font Awesome) */}
+                          {/* Trash icon moved to poster image above */}
+                        </div>
+                        {/* YouTube Modal */}
+                        {youtubeModal.open && (
+                          <div className="youtube-modal-backdrop" style={{
+                            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.7)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            <div style={{
+                              position: 'relative',
+                              background: '#18181b',
+                              borderRadius: 12,
+                              boxShadow: '0 2px 24px #000',
+                              padding: 0,
+                              width: '90vw',
+                              maxWidth: 800,
+                              aspectRatio: '16/9',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              overflow: 'hidden',
+                            }}>
+                              <button onClick={() => setYoutubeModal({ open: false, videoId: '' })} style={{ position: 'absolute', top: 8, right: 12, background: 'transparent', color: '#fff', border: 'none', fontSize: 28, cursor: 'pointer', zIndex: 2 }} title="Close">×</button>
+                              <div style={{ width: '100%', height: '100%', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <iframe
+                                  src={`https://www.youtube.com/embed/${youtubeModal.videoId}?autoplay=1`}
+                                  title="YouTube video player"
+                                  frameBorder="0"
+                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                  allowFullScreen
+                                  style={{
+                                    borderRadius: 8,
+                                    background: '#000',
+                                    width: '100%',
+                                    height: '100%',
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
