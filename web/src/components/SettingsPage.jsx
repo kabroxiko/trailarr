@@ -5,6 +5,8 @@ import { faFolderOpen, faSave } from '@fortawesome/free-solid-svg-icons';
 import { faTrashAlt } from '@fortawesome/free-regular-svg-icons';
 
 export default function SettingsPage({ type }) {
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState('');
   // type: 'radarr' or 'sonarr'
   const [originalSettings, setOriginalSettings] = useState(null);
   const [settings, setSettings] = useState({ url: '', apiKey: '', pathMappings: [] });
@@ -114,6 +116,44 @@ export default function SettingsPage({ type }) {
     setSaving(false);
   };
 
+  const testConnection = async () => {
+    setTesting(true);
+    setTestResult('');
+    try {
+      const res = await fetch(`/api/test/${type}?url=${encodeURIComponent(settings.url)}&apiKey=${encodeURIComponent(settings.apiKey)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setTestResult('Connection successful!');
+          // Refresh path mappings after successful test
+          try {
+            const foldersRes = await fetch(`/api/rootfolders?url=${encodeURIComponent(settings.url)}&apiKey=${encodeURIComponent(settings.apiKey)}&type=${type}`);
+            if (foldersRes.ok) {
+              const folders = await foldersRes.json();
+              setRootFolders(folders);
+              // Update pathMappings in settings and originalSettings
+              const folderPaths = folders.map(f => f.path || f);
+              let pathMappings = Array.isArray(settings.pathMappings) ? settings.pathMappings : [];
+              pathMappings = folderPaths.map((path) => {
+                const existing = pathMappings.find(m => m.from === path);
+                return existing || { from: path, to: '' };
+              });
+              setSettings(s => ({ ...s, pathMappings }));
+              setOriginalSettings(s => ({ ...s, pathMappings }));
+            }
+          } catch {}
+        } else {
+          setTestResult(data.error || 'Connection failed.');
+        }
+      } else {
+        setTestResult('Connection failed.');
+      }
+    } catch {
+      setTestResult('Connection failed.');
+    }
+    setTesting(false);
+  };
+
   return (
   <div style={{ width: '100%', margin: 0, height: '100%', padding: '2rem', background: 'var(--settings-bg, #fff)', borderRadius: 12, boxShadow: '0 2px 12px #0002', color: 'var(--settings-text, #222)', boxSizing: 'border-box', overflowX: 'hidden', overflowY: 'auto', position: 'relative' }}>
       {/* Save lane */}
@@ -127,7 +167,7 @@ export default function SettingsPage({ type }) {
         </button>
         {message && <div style={{ marginLeft: 16, color: message.includes('success') ? '#0f0' : '#f44', fontWeight: 500 }}>{message}</div>}
       </div>
-      <div style={{ marginTop: '4.5rem', background: 'var(--settings-bg, #fff)', color: 'var(--settings-text, #222)', borderRadius: 12, boxShadow: '0 1px 4px #0001', padding: '2rem' }}>
+  <div style={{ marginTop: '4.5rem', background: 'var(--settings-bg, #fff)', color: 'var(--settings-text, #222)', borderRadius: 12, boxShadow: '0 1px 4px #0001', padding: '2rem' }}>
         {loading ? (
           <div style={{ textAlign: 'center', margin: '2rem' }}>Loading...</div>
         ) : (
@@ -138,10 +178,31 @@ export default function SettingsPage({ type }) {
                   <input name="url" value={settings.url} onChange={handleChange} style={{ width: '60%', minWidth: 220, maxWidth: 600, padding: '0.5rem', borderRadius: 6, border: '1px solid #bbb', background: 'var(--settings-input-bg, #f5f5f5)', color: 'var(--settings-input-text, #222)' }} />
                 </label>
               </div>
-              <div style={{ width: '100%' }}>
-                <label style={{ fontWeight: 600, fontSize: '1.15em', marginBottom: 6, display: 'block', textAlign: 'left' }}>API Key<br />
+              <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                <label style={{ fontWeight: 600, fontSize: '1.15em', marginBottom: 6, display: 'block', textAlign: 'left', flex: 1 }}>API Key<br />
                   <input name="apiKey" value={settings.apiKey} onChange={handleChange} style={{ width: '60%', minWidth: 220, maxWidth: 600, padding: '0.5rem', borderRadius: 6, border: '1px solid #bbb', background: 'var(--settings-input-bg, #f5f5f5)', color: 'var(--settings-input-text, #222)' }} />
                 </label>
+                <button
+                  type="button"
+                  onClick={testConnection}
+                  disabled={testing || !settings.url || !settings.apiKey}
+                  style={{
+                    background: '#007bff',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 6,
+                    padding: '0.5rem 1.2rem',
+                    fontWeight: 600,
+                    cursor: testing || !settings.url || !settings.apiKey ? 'not-allowed' : 'pointer',
+                    opacity: testing || !settings.url || !settings.apiKey ? 0.6 : 1,
+                    marginLeft: 8
+                  }}
+                >
+                  {testing ? 'Testing...' : 'Test Connection'}
+                </button>
+                {testResult && (
+                  <span style={{ marginLeft: 12, color: testResult.includes('success') ? '#0a0' : '#c00', fontWeight: 500 }}>{testResult}</span>
+                )}
               </div>
             </div>
             <h3 style={{ margin: '2rem 0 1rem', textAlign: 'left' }}>Path Mappings</h3>
