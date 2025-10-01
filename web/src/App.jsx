@@ -4,16 +4,26 @@ import { Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-
 import './App.css';
 import { searchExtras, downloadExtra, fetchPlexItems, getRadarrSettings, getRadarrMovies } from './api';
 
-function MovieDetails({ movies }) {
+function MovieDetails({ movies, loading }) {
   const { id } = useParams();
   const movie = movies.find(m => String(m.id) === id);
   const navigate = useNavigate();
   const [extras, setExtras] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
   const [error, setError] = useState('');
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const [darkMode, setDarkMode] = useState(prefersDark);
+  useEffect(() => {
+    const listener = e => setDarkMode(e.matches);
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', listener);
+    return () => window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', listener);
+  }, []);
+
+  if (loading) return <div>Loading movie details...</div>;
   if (!movie) return <div>Movie not found</div>;
+
   const handleSearchExtras = async () => {
-    setLoading(true);
+    setSearchLoading(true);
     setError('');
     try {
       const res = await searchExtras(movie.title);
@@ -21,9 +31,10 @@ function MovieDetails({ movies }) {
     } catch (e) {
       setError('Failed to search extras');
     } finally {
-      setLoading(false);
+      setSearchLoading(false);
     }
   };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, padding: '0.5em' }}>
@@ -32,11 +43,11 @@ function MovieDetails({ movies }) {
           onClick={handleSearchExtras}
         >
           <span style={{ fontSize: 20, display: 'inline-block' }}>🔎</span>
-          <span>{loading ? 'Searching...' : 'Search'}</span>
+          <span>{searchLoading ? 'Searching...' : 'Search'}</span>
         </div>
         <button style={{ background: '#eee', border: 'none', borderRadius: 6, padding: '0.5em 1em', cursor: 'pointer', fontWeight: 'bold' }} onClick={() => navigate('/movies')}>Back to list</button>
       </div>
-  <div style={{ display: 'flex', gap: 32, padding: '0.5em' }}>
+      <div style={{ display: 'flex', gap: 32, padding: '0.5em' }}>
         <div style={{ minWidth: 300 }}>
           <img
             src={`/mediacover/${movie.id}/poster-500.jpg`}
@@ -51,16 +62,26 @@ function MovieDetails({ movies }) {
           <div style={{ marginBottom: 16, color: '#333' }}>Movie extras would be listed here.</div>
           {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
           {extras.length > 0 && (
-            <ul style={{ marginTop: 16, textAlign: 'left', paddingLeft: 0 }}>
-              {extras.map((extra, idx) => (
-                <li key={idx}>
-                  {typeof extra === 'object' && extra.type ? (
-                    <span style={{ fontWeight: 'bold', marginRight: 8 }}>{extra.type}:</span>
-                  ) : null}
-                  {typeof extra === 'object' && extra.title ? extra.title : String(extra)}
-                </li>
-              ))}
-            </ul>
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 16, background: darkMode ? '#23232a' : '#f3e8ff', borderRadius: 8, overflow: 'hidden' }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9', background: darkMode ? '#23232a' : '#f3e8ff' }}>Type</th>
+                  <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9', background: darkMode ? '#23232a' : '#f3e8ff' }}>Title</th>
+                  <th style={{ textAlign: 'left', padding: '0.5em', color: darkMode ? '#e5e7eb' : '#6d28d9', background: darkMode ? '#23232a' : '#f3e8ff' }}>URL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {extras.map((extra, idx) => (
+                  <tr key={idx} style={{ borderBottom: darkMode ? '1px solid #333' : '1px solid #e5e7eb' }}>
+                    <td style={{ padding: '0.5em', textAlign: 'left', color: darkMode ? '#e5e7eb' : '#222' }}>{extra.type || ''}</td>
+                    <td style={{ padding: '0.5em', textAlign: 'left', color: darkMode ? '#e5e7eb' : '#222' }}>{extra.title || String(extra)}</td>
+                    <td style={{ padding: '0.5em', textAlign: 'left', color: darkMode ? '#a855f7' : '#6d28d9' }}>
+                      {extra.url ? <a href={extra.url} target="_blank" rel="noopener noreferrer" style={{ color: darkMode ? '#a855f7' : '#6d28d9', textDecoration: 'underline' }}>Link</a> : ''}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
       </div>
@@ -82,6 +103,7 @@ function App() {
   const [plexError, setPlexError] = useState('');
   const [radarrMovies, setRadarrMovies] = useState([]);
   const [radarrMoviesError, setRadarrMoviesError] = useState('');
+  const [radarrMoviesLoading, setRadarrMoviesLoading] = useState(true);
   const [selectedSection, setSelectedSection] = useState('');
   const [selectedSettingsSub, setSelectedSettingsSub] = useState('General');
   const [radarrUrl, setRadarrUrl] = useState('');
@@ -104,6 +126,7 @@ function App() {
   }, []);
 
   useEffect(() => {
+    setRadarrMoviesLoading(true);
     getRadarrMovies()
       .then(res => {
         const sorted = (res.movies || []).slice().sort((a, b) => {
@@ -112,8 +135,12 @@ function App() {
           return a.title.localeCompare(b.title);
         });
         setRadarrMovies(sorted);
+        setRadarrMoviesLoading(false);
       })
-      .catch(e => setRadarrMoviesError(e.message));
+      .catch(e => {
+        setRadarrMoviesError(e.message);
+        setRadarrMoviesLoading(false);
+      });
   }, []);
 
   return (
@@ -307,7 +334,7 @@ function App() {
           {radarrMoviesError && <div style={{ color: 'red', marginTop: '1em' }}>{radarrMoviesError}</div>}
         </>
       } />
-      <Route path="/movies/:id" element={<MovieDetails movies={radarrMovies} />} />
+      <Route path="/movies/:id" element={<MovieDetails movies={radarrMovies} loading={radarrMoviesLoading} />} />
       <Route path="/settings" element={
       <>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
