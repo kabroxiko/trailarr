@@ -31,12 +31,14 @@ func existingExtrasHandler(c *gin.Context) {
 		return
 	}
 	// Scan subfolders for .mp4 files and their metadata
-	var existing []map[string]string
+	var existing []map[string]interface{}
 	entries, err := os.ReadDir(moviePath)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"existing": []map[string]string{}})
+		c.JSON(http.StatusOK, gin.H{"existing": []map[string]interface{}{}})
 		return
 	}
+	// Track duplicate index for each type/title
+	dupCount := make(map[string]int)
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -46,13 +48,21 @@ func existingExtrasHandler(c *gin.Context) {
 		for _, f := range files {
 			if !f.IsDir() && strings.HasSuffix(f.Name(), ".mp4") {
 				metaFile := subdir + "/" + strings.TrimSuffix(f.Name(), ".mp4") + ".mp4.json"
-				var meta struct{ Type, Title string }
+				var meta struct {
+					Type      string `json:"type"`
+					Title     string `json:"title"`
+					YouTubeID string `json:"youtube_id"`
+				}
 				if metaBytes, err := os.ReadFile(metaFile); err == nil {
 					_ = json.Unmarshal(metaBytes, &meta)
 				}
-				existing = append(existing, map[string]string{
+				key := entry.Name() + "|" + meta.Title
+				dupCount[key]++
+				existing = append(existing, map[string]interface{}{
 					"type":  entry.Name(),
 					"title": meta.Title,
+					"youtube_id": meta.YouTubeID,
+					"_dupIndex": dupCount[key],
 				})
 			}
 		}
