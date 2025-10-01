@@ -25,55 +25,78 @@ func deleteExtraHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": ErrInvalidRequest})
 		return
 	}
-	// Resolve media path from mediaType and mediaId
-	var cachePath string
-	if req.MediaType == "movie" {
-		cachePath = TrailarrRoot + "/movies.json"
-	} else if req.MediaType == "tv" {
-		cachePath = TrailarrRoot + "/series.json"
-	} else {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid mediaType"})
+
+	cachePath, err := resolveCachePath(req.MediaType)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
 	mediaPath, err := FindMediaPathByID(cachePath, fmt.Sprintf("%d", req.MediaId))
 	if err != nil || mediaPath == "" {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Media not found"})
 		return
 	}
-	// Get media title from cache
-	var mediaTitle string
+
+	mediaTitle := lookupMediaTitle(cachePath, req.MediaId)
+
+	if err := deleteExtraFiles(mediaPath, req.ExtraType, req.ExtraTitle); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete extra", "detail": err.Error()})
+		return
+	}
+
+	recordDeleteHistory(mediaTitle, req.MediaType, req.ExtraType, req.ExtraTitle)
+	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+}
+
+func resolveCachePath(mediaType string) (string, error) {
+	switch mediaType {
+	case "movie":
+		return TrailarrRoot + "/movies.json", nil
+	case "tv":
+		return TrailarrRoot + "/series.json", nil
+	default:
+		return "", fmt.Errorf("Invalid mediaType")
+	}
+}
+
+func lookupMediaTitle(cachePath string, mediaId int) string {
 	items, err := loadCache(cachePath)
-	if err == nil {
-		for _, m := range items {
-			if mid, ok := m["id"]; ok && fmt.Sprintf("%v", mid) == fmt.Sprintf("%d", req.MediaId) {
-				if t, ok := m["title"].(string); ok {
-					mediaTitle = t
-				}
-				break
+	if err != nil {
+		return ""
+	}
+	for _, m := range items {
+		if mid, ok := m["id"]; ok && fmt.Sprintf("%v", mid) == fmt.Sprintf("%d", mediaId) {
+			if t, ok := m["title"].(string); ok {
+				return t
 			}
 		}
 	}
-	extraDir := mediaPath + "/" + req.ExtraType
-	extraFile := extraDir + "/" + SanitizeFilename(req.ExtraTitle) + ".mp4"
-	metaFile := extraDir + "/" + SanitizeFilename(req.ExtraTitle) + ".mp4.json"
+	return ""
+}
+
+func deleteExtraFiles(mediaPath, extraType, extraTitle string) error {
+	extraDir := mediaPath + "/" + extraType
+	extraFile := extraDir + "/" + SanitizeFilename(extraTitle) + ".mp4"
+	metaFile := extraDir + "/" + SanitizeFilename(extraTitle) + ".mp4.json"
 	err1 := os.Remove(extraFile)
 	err2 := os.Remove(metaFile)
 	if err1 != nil && err2 != nil {
-		fmt.Printf("[deleteExtraHandler] Failed to delete extra: file error: %v, meta error: %v\n", err1, err2)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete extra", "detail": fmt.Sprintf("file error: %v, meta error: %v", err1, err2)})
-		return
+		return fmt.Errorf("file error: %v, meta error: %v", err1, err2)
 	}
-	// Record history event
+	return nil
+}
+
+func recordDeleteHistory(mediaTitle, mediaType, extraType, extraTitle string) {
 	event := HistoryEvent{
 		Action:     "delete",
 		Title:      mediaTitle,
-		MediaType:  req.MediaType,
-		ExtraType:  req.ExtraType,
-		ExtraTitle: req.ExtraTitle,
+		MediaType:  mediaType,
+		ExtraType:  extraType,
+		ExtraTitle: extraTitle,
 		Date:       time.Now(),
 	}
 	_ = AppendHistoryEvent(event)
-	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
 }
 
 type ExtraType string
@@ -237,65 +260,81 @@ func downloadExtraHandler(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	// Record history event
-	var mediaTitle string
-	// Try to resolve title from cache
+
+	mediaTitle := resolveDownloadMediaTitle(req.MediaType, req.MediaName)
+	recordDownloadHistory(mediaTitle, req.MediaType, req.ExtraType, req.ExtraTitle)
+	c.JSON(http.StatusOK, gin.H{"status": "downloaded", "meta": meta})
+}
+
+func resolveDownloadMediaTitle(mediaType, mediaName string) string {
 	var cachePath string
-	if req.MediaType == "movie" {
+	switch mediaType {
+	case "movie":
 		cachePath = TrailarrRoot + "/movies.json"
-	} else if req.MediaType == "series" || req.MediaType == "tv" {
+	case "series", "tv":
 		cachePath = TrailarrRoot + "/series.json"
 	}
 	if cachePath != "" {
 		items, err := loadCache(cachePath)
 		if err == nil {
 			for _, m := range items {
-				if title, ok := m["title"].(string); ok && title == req.MediaName {
-					mediaTitle = title
-					break
+				if title, ok := m["title"].(string); ok && title == mediaName {
+					return title
 				}
 			}
 		}
 	}
-	if mediaTitle == "" {
-		mediaTitle = req.MediaName // fallback to mediaTitle if not found in cache
-	}
+	return mediaName
+}
 
+func recordDownloadHistory(mediaTitle, mediaType, extraType, extraTitle string) {
 	event := HistoryEvent{
 		Action:     "download",
 		Title:      mediaTitle,
-		MediaType:  req.MediaType,
-		ExtraType:  req.ExtraType,
-		ExtraTitle: req.ExtraTitle,
+		MediaType:  mediaType,
+		ExtraType:  extraType,
+		ExtraTitle: extraTitle,
 		Date:       time.Now(),
 	}
 	_ = AppendHistoryEvent(event)
-	c.JSON(http.StatusOK, gin.H{"status": "downloaded", "meta": meta})
 }
 
 // Utility: Recursively find all media paths with Trailers containing video files (with debug logging)
 func findMediaWithTrailers(baseDirs ...string) map[string]bool {
 	found := make(map[string]bool)
 	for _, baseDir := range baseDirs {
-		_ = filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return nil
-			}
-			if !info.IsDir() {
-				return nil
-			}
-			if filepath.Base(path) == "Trailers" {
-				entries, _ := os.ReadDir(path)
-				for _, entry := range entries {
-					if !entry.IsDir() && (strings.HasSuffix(entry.Name(), ".mp4") || strings.HasSuffix(entry.Name(), ".mkv") || strings.HasSuffix(entry.Name(), ".avi")) {
-						parent := filepath.Dir(path)
-						found[parent] = true
-						break
-					}
-				}
-			}
-			return nil
-		})
+		walkMediaDirs(baseDir, found)
 	}
 	return found
+}
+
+func walkMediaDirs(baseDir string, found map[string]bool) {
+	_ = filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || !info.IsDir() {
+			return nil
+		}
+		if isTrailerDir(path) && hasVideoFiles(path) {
+			parent := filepath.Dir(path)
+			found[parent] = true
+		}
+		return nil
+	})
+}
+
+func isTrailerDir(path string) bool {
+	return filepath.Base(path) == "Trailers"
+}
+
+func hasVideoFiles(dir string) bool {
+	entries, _ := os.ReadDir(dir)
+	for _, entry := range entries {
+		if !entry.IsDir() && isVideoFile(entry.Name()) {
+			return true
+		}
+	}
+	return false
+}
+
+func isVideoFile(name string) bool {
+	return strings.HasSuffix(name, ".mp4") || strings.HasSuffix(name, ".mkv") || strings.HasSuffix(name, ".avi")
 }

@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"gozarr/internal"
+	"trailarr/internal"
 
 	"github.com/gin-gonic/gin"
 )
