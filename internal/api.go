@@ -34,21 +34,20 @@ func RegisterRoutes(r *gin.Engine) {
 func HandleSonarrBanner(c *gin.Context) {
 	seriesId := c.Param("seriesId")
 	// Load Sonarr settings
-	data, err := os.ReadFile("sonarr.json")
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Sonarr settings not found")
-		return
+	data, err := os.ReadFile("settings.json")
+	var allSettings struct {
+		Sonarr struct {
+			URL    string `json:"url"`
+			APIKey string `json:"apiKey"`
+		} `json:"sonarr"`
 	}
-	var settings struct {
-		URL    string `json:"url"`
-		APIKey string `json:"apiKey"`
-	}
-	if err := json.Unmarshal(data, &settings); err != nil {
+	if err := json.Unmarshal(data, &allSettings); err != nil {
 		c.String(http.StatusInternalServerError, "Invalid Sonarr settings")
 		return
 	}
+	sonarrSettings := allSettings.Sonarr
 	// Remove trailing slash from URL if present
-	apiBase := settings.URL
+	apiBase := sonarrSettings.URL
 	if strings.HasSuffix(apiBase, "/") {
 		apiBase = strings.TrimRight(apiBase, "/")
 	}
@@ -58,7 +57,7 @@ func HandleSonarrBanner(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "Error creating request")
 		return
 	}
-	req.Header.Set("X-Api-Key", settings.APIKey)
+	req.Header.Set("X-Api-Key", sonarrSettings.APIKey)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil || resp.StatusCode != 200 {
@@ -101,7 +100,7 @@ func HandleSonarrBanner(c *gin.Context) {
 	}
 	// If banner is local, add API key
 	if strings.HasPrefix(bannerUrl, apiBase) {
-		bannerReq.Header.Set("X-Api-Key", settings.APIKey)
+		bannerReq.Header.Set("X-Api-Key", sonarrSettings.APIKey)
 	}
 	bannerResp, err := client.Do(bannerReq)
 	if err != nil || bannerResp.StatusCode != 200 {
@@ -118,21 +117,20 @@ func HandleSonarrBanner(c *gin.Context) {
 func HandleSonarrPoster(c *gin.Context) {
 	seriesId := c.Param("seriesId")
 	// Load Sonarr settings
-	data, err := os.ReadFile("sonarr.json")
-	if err != nil {
-		c.String(http.StatusInternalServerError, "Sonarr settings not found")
-		return
+	data, err := os.ReadFile("settings.json")
+	var allSettings struct {
+		Sonarr struct {
+			URL    string `json:"url"`
+			APIKey string `json:"apiKey"`
+		} `json:"sonarr"`
 	}
-	var settings struct {
-		URL    string `json:"url"`
-		APIKey string `json:"apiKey"`
-	}
-	if err := json.Unmarshal(data, &settings); err != nil {
+	if err := json.Unmarshal(data, &allSettings); err != nil {
 		c.String(http.StatusInternalServerError, "Invalid Sonarr settings")
 		return
 	}
+	sonarrSettings := allSettings.Sonarr
 	// Remove trailing slash from URL if present
-	apiBase := settings.URL
+	apiBase := sonarrSettings.URL
 	if strings.HasSuffix(apiBase, "/") {
 		apiBase = strings.TrimRight(apiBase, "/")
 	}
@@ -142,7 +140,7 @@ func HandleSonarrPoster(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "Error creating request")
 		return
 	}
-	req.Header.Set("X-Api-Key", settings.APIKey)
+	req.Header.Set("X-Api-Key", sonarrSettings.APIKey)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil || resp.StatusCode != 200 {
@@ -185,7 +183,7 @@ func HandleSonarrPoster(c *gin.Context) {
 	}
 	// If poster is local, add API key
 	if strings.HasPrefix(posterUrl, apiBase) {
-		posterReq.Header.Set("X-Api-Key", settings.APIKey)
+		posterReq.Header.Set("X-Api-Key", sonarrSettings.APIKey)
 	}
 	posterResp, err := client.Do(posterReq)
 	if err != nil || posterResp.StatusCode != 200 {
@@ -200,20 +198,22 @@ func HandleSonarrPoster(c *gin.Context) {
 
 // Handler to get Sonarr settings
 func getSonarrSettingsHandler(c *gin.Context) {
-	data, err := os.ReadFile("sonarr.json")
+	data, err := os.ReadFile("settings.json")
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"url": "", "apiKey": ""})
 		return
 	}
-	var settings struct {
-		URL    string `json:"url"`
-		APIKey string `json:"apiKey"`
+	var allSettings struct {
+		Sonarr struct {
+			URL    string `json:"url"`
+			APIKey string `json:"apiKey"`
+		} `json:"sonarr"`
 	}
-	if err := json.Unmarshal(data, &settings); err != nil {
+	if err := json.Unmarshal(data, &allSettings); err != nil {
 		c.JSON(http.StatusOK, gin.H{"url": "", "apiKey": ""})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"url": settings.URL, "apiKey": settings.APIKey})
+	c.JSON(http.StatusOK, gin.H{"url": allSettings.Sonarr.URL, "apiKey": allSettings.Sonarr.APIKey})
 }
 
 // Handler to save Sonarr settings
@@ -226,9 +226,23 @@ func saveSonarrSettingsHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
-	// Save to a config file (sonarr.json)
-	data := []byte(fmt.Sprintf(`{"url": "%s", "apiKey": "%s"}`, req.URL, req.APIKey))
-	err := os.WriteFile("sonarr.json", data, 0644)
+	// Read existing settings
+	var allSettings struct {
+		Sonarr struct {
+			URL    string `json:"url"`
+			APIKey string `json:"apiKey"`
+		} `json:"sonarr"`
+		Radarr struct {
+			URL    string `json:"url"`
+			APIKey string `json:"apiKey"`
+		} `json:"radarr"`
+	}
+	data, _ := os.ReadFile("settings.json")
+	_ = json.Unmarshal(data, &allSettings)
+	allSettings.Sonarr.URL = req.URL
+	allSettings.Sonarr.APIKey = req.APIKey
+	out, _ := json.MarshalIndent(allSettings, "", "  ")
+	err := os.WriteFile("settings.json", out, 0644)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -258,25 +272,28 @@ func HandleSonarrSeries(c *gin.Context) {
 	}
 
 	// Load Sonarr settings
-	data, err := os.ReadFile("sonarr.json")
+	data, err := os.ReadFile("settings.json")
 	if err != nil {
 		fmt.Println("[HandleSonarrSeries] Sonarr settings not found")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Sonarr settings not found"})
 		return
 	}
-	var settings struct {
-		URL    string `json:"url"`
-		APIKey string `json:"apiKey"`
+	var allSettings struct {
+		Sonarr struct {
+			URL    string `json:"url"`
+			APIKey string `json:"apiKey"`
+		} `json:"sonarr"`
 	}
-	if err := json.Unmarshal(data, &settings); err != nil {
+	if err := json.Unmarshal(data, &allSettings); err != nil {
 		fmt.Println("[HandleSonarrSeries] Invalid Sonarr settings")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid Sonarr settings"})
 		return
 	}
+	sonarrSettings := allSettings.Sonarr
 
 	// Fetch series from Sonarr
 	// Remove trailing slash from URL if present
-	apiBase := settings.URL
+	apiBase := sonarrSettings.URL
 	if strings.HasSuffix(apiBase, "/") {
 		apiBase = strings.TrimRight(apiBase, "/")
 	}
@@ -286,7 +303,7 @@ func HandleSonarrSeries(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating request"})
 		return
 	}
-	req.Header.Set("X-Api-Key", settings.APIKey)
+	req.Header.Set("X-Api-Key", sonarrSettings.APIKey)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -408,20 +425,22 @@ func getRadarrMoviesHandler(c *gin.Context) {
 
 // Handler to get Radarr settings
 func getRadarrSettingsHandler(c *gin.Context) {
-	data, err := os.ReadFile("radarr.json")
+	data, err := os.ReadFile("settings.json")
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"url": "", "apiKey": ""})
 		return
 	}
-	var settings struct {
-		URL    string `json:"url"`
-		APIKey string `json:"apiKey"`
+	var allSettings struct {
+		Radarr struct {
+			URL    string `json:"url"`
+			APIKey string `json:"apiKey"`
+		} `json:"radarr"`
 	}
-	if err := json.Unmarshal(data, &settings); err != nil {
+	if err := json.Unmarshal(data, &allSettings); err != nil {
 		c.JSON(http.StatusOK, gin.H{"url": "", "apiKey": ""})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"url": settings.URL, "apiKey": settings.APIKey})
+	c.JSON(http.StatusOK, gin.H{"url": allSettings.Radarr.URL, "apiKey": allSettings.Radarr.APIKey})
 }
 
 // Handler to save Radarr settings
@@ -434,9 +453,23 @@ func saveRadarrSettingsHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
-	// Save to a config file (radarr.json)
-	data := []byte(fmt.Sprintf(`{"url": "%s", "apiKey": "%s"}`, req.URL, req.APIKey))
-	err := os.WriteFile("radarr.json", data, 0644)
+	// Read existing settings
+	var allSettings struct {
+		Sonarr struct {
+			URL    string `json:"url"`
+			APIKey string `json:"apiKey"`
+		} `json:"sonarr"`
+		Radarr struct {
+			URL    string `json:"url"`
+			APIKey string `json:"apiKey"`
+		} `json:"radarr"`
+	}
+	data, _ := os.ReadFile("settings.json")
+	_ = json.Unmarshal(data, &allSettings)
+	allSettings.Radarr.URL = req.URL
+	allSettings.Radarr.APIKey = req.APIKey
+	out, _ := json.MarshalIndent(allSettings, "", "  ")
+	err := os.WriteFile("settings.json", out, 0644)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -485,19 +518,22 @@ func downloadExtraHandler(c *gin.Context) {
 // SyncRadarrMoviesAndMediaCover syncs Radarr movie list and MediaCover folder
 func SyncRadarrMoviesAndMediaCover() {
 	// Load Radarr settings
-	data, err := os.ReadFile("radarr.json")
+	data, err := os.ReadFile("settings.json")
 	if err != nil {
 		fmt.Println("[Sync] Radarr settings not found")
 		return
 	}
-	var settings struct {
-		URL    string `json:"url"`
-		APIKey string `json:"apiKey"`
+	var allSettings struct {
+		Radarr struct {
+			URL    string `json:"url"`
+			APIKey string `json:"apiKey"`
+		} `json:"radarr"`
 	}
-	if err := json.Unmarshal(data, &settings); err != nil {
+	if err := json.Unmarshal(data, &allSettings); err != nil {
 		fmt.Println("[Sync] Invalid Radarr settings")
 		return
 	}
+	settings := allSettings.Radarr
 	// Read movies from cache file
 	cachePath := "/var/lib/extrazarr/movies_cache.json"
 	cacheData, err := os.ReadFile(cachePath)
