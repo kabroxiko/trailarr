@@ -64,7 +64,9 @@ func ScanExistingExtras(mediaPath string) map[string]bool {
 func MarkDownloadedExtras(extras []map[string]string, mediaPath string, typeKey, titleKey string) {
 	existing := ScanExistingExtras(mediaPath)
 	for _, extra := range extras {
+		// Canonicalize type and update the map so API always returns canonical type
 		typeStr := canonicalizeExtraType(extra[typeKey], extra[titleKey])
+		extra[typeKey] = typeStr
 		title := SanitizeFilename(extra[titleKey])
 		key := typeStr + "|" + title
 		if existing[key] {
