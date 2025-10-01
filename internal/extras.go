@@ -218,7 +218,8 @@ func existingExtrasHandler(c *gin.Context) {
 
 func downloadExtraHandler(c *gin.Context) {
 	var req struct {
-		MoviePath  string `json:"moviePath"`
+		MediaType  string `json:"mediaType"`
+		MediaName  string `json:"mediaTitle"`
 		ExtraType  string `json:"extraType"`
 		ExtraTitle string `json:"extraTitle"`
 		URL        string `json:"url"`
@@ -228,8 +229,9 @@ func downloadExtraHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": ErrInvalidRequest})
 		return
 	}
-	fmt.Printf("[downloadExtraHandler] Download request: moviePath=%s, extraType=%s, extraTitle=%s, url=%s\n", req.MoviePath, req.ExtraType, req.ExtraTitle, req.URL)
-	meta, err := DownloadYouTubeExtra(req.MoviePath, req.ExtraType, req.ExtraTitle, req.URL)
+	fmt.Printf("[downloadExtraHandler] Download request: mediaType=%s, mediaTitle=%s, extraType=%s, extraTitle=%s, url=%s\n", req.MediaType, req.MediaName, req.ExtraType, req.ExtraTitle, req.URL)
+
+	meta, err := DownloadYouTubeExtra(req.MediaType, req.MediaName, req.ExtraType, req.ExtraTitle, req.URL, true)
 	if err != nil {
 		fmt.Printf("[downloadExtraHandler] Download error: %v\n", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -239,28 +241,30 @@ func downloadExtraHandler(c *gin.Context) {
 	var mediaTitle string
 	// Try to resolve title from cache
 	var cachePath string
-	if strings.Contains(req.MoviePath, "/Movies/") {
+	if req.MediaType == "movie" {
 		cachePath = TrailarrRoot + "/movies.json"
-	} else if strings.Contains(req.MoviePath, "/Series/") {
+	} else if req.MediaType == "series" || req.MediaType == "tv" {
 		cachePath = TrailarrRoot + "/series.json"
 	}
 	if cachePath != "" {
 		items, err := loadCache(cachePath)
 		if err == nil {
 			for _, m := range items {
-				if p, ok := m["path"].(string); ok && p == req.MoviePath {
-					if t, ok := m["title"].(string); ok {
-						mediaTitle = t
-					}
+				if title, ok := m["title"].(string); ok && title == req.MediaName {
+					mediaTitle = title
 					break
 				}
 			}
 		}
 	}
+	if mediaTitle == "" {
+		mediaTitle = req.MediaName // fallback to mediaTitle if not found in cache
+	}
+
 	event := HistoryEvent{
 		Action:     "download",
 		Title:      mediaTitle,
-		MediaType:  "movie", // Could be "movie" or "tv"; adjust as needed
+		MediaType:  req.MediaType,
 		ExtraType:  req.ExtraType,
 		ExtraTitle: req.ExtraTitle,
 		Date:       time.Now(),

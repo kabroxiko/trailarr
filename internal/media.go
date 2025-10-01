@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -61,7 +62,7 @@ func DownloadMissingExtras(mediaType string, cachePath string) error {
 				if !isExtraTypeEnabled(config, canonical) {
 					continue
 				}
-				_, err := DownloadYouTubeExtra(mediaPath, extra["type"], extra["title"], extra["url"])
+				_, err := DownloadYouTubeExtra(mediaType, filepath.Base(mediaPath), extra["type"], extra["title"], extra["url"])
 				if err != nil {
 					fmt.Printf("[DownloadMissingExtras] Failed to download: %v\n", err)
 				}
@@ -455,31 +456,81 @@ func loadCache(path string) ([]map[string]interface{}, error) {
 		return nil, err
 	}
 
-	// Determine section and get pathMappings
-	var section string
-	if strings.Contains(path, "movie") || strings.Contains(path, "Movie") {
-		section = "radarr"
-	} else if strings.Contains(path, "series") || strings.Contains(path, "Series") {
-		section = "sonarr"
-	}
+	section, mainCachePath := detectSectionAndMainCachePath(path)
+	titleMap := getTitleMap(mainCachePath, path)
 	if section != "" {
 		mappings, err := GetPathMappings(section)
-		if err == nil {
-			for _, item := range items {
-				p, ok := item["path"].(string)
-				if !ok || p == "" {
-					continue
-				}
-				for _, m := range mappings {
-					if strings.HasPrefix(p, m[0]) {
-						item["path"] = m[1] + p[len(m[0]):]
-						break
-					}
-				}
+		if err != nil {
+			mappings = nil
+		}
+		for _, item := range items {
+			updateItemPath(item, mappings)
+			updateItemTitle(item, titleMap)
+		}
+	}
+
+	return items, nil
+}
+
+// Helper: Detect section and main cache path
+func detectSectionAndMainCachePath(path string) (string, string) {
+	if strings.Contains(path, "movie") || strings.Contains(path, "Movie") {
+		return "radarr", TrailarrRoot + "/movies.json"
+	} else if strings.Contains(path, "series") || strings.Contains(path, "Series") {
+		return "sonarr", TrailarrRoot + "/series.json"
+	}
+	return "", ""
+}
+
+// Helper: Get title map from main cache if needed
+func getTitleMap(mainCachePath, path string) map[string]string {
+	if mainCachePath == "" || mainCachePath == path {
+		return nil
+	}
+	titleMap := make(map[string]string)
+	mainCacheData, err := os.ReadFile(mainCachePath)
+	if err != nil {
+		return nil
+	}
+	var mainItems []map[string]interface{}
+	if err := json.Unmarshal(mainCacheData, &mainItems); err != nil {
+		return nil
+	}
+	for _, item := range mainItems {
+		if id, ok := item["id"]; ok {
+			if title, ok := item["title"].(string); ok {
+				titleMap[fmt.Sprintf("%v", id)] = title
 			}
 		}
 	}
-	return items, nil
+	return titleMap
+}
+
+// Helper: Update item path using mappings
+func updateItemPath(item map[string]interface{}, mappings [][]string) {
+	p, ok := item["path"].(string)
+	if !ok || p == "" || mappings == nil {
+		return
+	}
+	for _, m := range mappings {
+		if strings.HasPrefix(p, m[0]) {
+			item["path"] = m[1] + p[len(m[0]):]
+			break
+		}
+	}
+}
+
+// Helper: Update item title using title map
+func updateItemTitle(item map[string]interface{}, titleMap map[string]string) {
+	if titleMap != nil {
+		if id, ok := item["id"]; ok {
+			if title, exists := titleMap[fmt.Sprintf("%v", id)]; exists {
+				item["title"] = title
+			}
+		}
+	} else if title, ok := item["title"].(string); ok {
+		item["title"] = title
+	}
 }
 
 // Writes a generic slice to a JSON cache file
@@ -498,9 +549,13 @@ func writeWantedCache(section, cachePath, wantedPath string) error {
 		return err
 	}
 	mappings, err := GetPathMappings(section)
+	if err != nil {
+		// If can't get mappings, use default paths
+		mappings = nil
+	}
 	var trailerPaths []string
 	for _, m := range mappings {
-		if m[1] != "" {
+		if len(m) > 1 && m[1] != "" {
 			trailerPaths = append(trailerPaths, m[1])
 		}
 	}

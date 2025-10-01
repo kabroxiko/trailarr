@@ -217,8 +217,8 @@ func downloadMissingExtrasWithTypeFilter(cfg ExtraTypesConfig, mediaType, cacheP
 		fmt.Printf("[DEBUG] Failed to load cache: %v\n", err)
 		return
 	}
-	for _, m := range items {
-		id, ok := m["id"]
+	for _, item := range items {
+		id, ok := item["id"]
 		if !ok {
 			continue
 		}
@@ -246,7 +246,7 @@ func downloadMissingExtrasWithTypeFilter(cfg ExtraTypesConfig, mediaType, cacheP
 				continue
 			}
 			if extra["downloaded"] == "false" && extra["url"] != "" {
-				_, err := DownloadYouTubeExtra(mediaPath, extra["type"], extra["title"], extra["url"])
+				_, err := DownloadYouTubeExtra(mediaType, item["title"].(string), extra["type"], extra["title"], extra["url"])
 				if err != nil {
 					fmt.Printf("[DownloadMissingExtrasWithTypeFilter] Failed to download: %v\n", err)
 				}
