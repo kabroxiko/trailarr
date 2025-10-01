@@ -6,7 +6,7 @@ import (
 
 func RegisterRoutes(r *gin.Engine) {
 	// Serve static files for movie posters
-	r.Static("/mediacover", "/var/lib/extrazarr/MediaCover")
+	r.Static("/mediacover", TrailarrRoot+"/MediaCover")
 	r.StaticFile("/logo.svg", "web/public/logo.svg")
 	r.GET("/api/movies", getRadarrHandler)
 	r.GET("/api/movies/no_trailer_extra", GetMoviesWithoutTrailerExtraHandler)

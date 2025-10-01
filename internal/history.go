@@ -17,7 +17,10 @@ type HistoryEvent struct {
 }
 
 var historyMutex sync.Mutex
-var historyFile = "/var/lib/extrazarr/history.json"
+
+// import TrailarrRoot from internal/types.go is not needed, already in same package
+
+var historyFile = TrailarrRoot + "/history.json"
 
 func AppendHistoryEvent(event HistoryEvent) error {
 	historyMutex.Lock()

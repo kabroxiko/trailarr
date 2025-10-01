@@ -14,7 +14,7 @@ import (
 // ListServerFoldersHandler handles GET /api/files/list and returns subfolders for a given path
 func ListServerFoldersHandler(c *gin.Context) {
 	// Only allow browsing from allowed roots
-	allowedRoots := []string{"/mnt", "/var/lib/extrazarr"}
+	allowedRoots := []string{"/mnt", TrailarrRoot}
 	reqPath := c.Query("path")
 	if reqPath == "" {
 		// If no path, return allowed roots
