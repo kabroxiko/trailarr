@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faFilm, faHistory, faStar, faBan, faCog, faServer, faBookmark } from '@fortawesome/free-solid-svg-icons';
 import { Routes, Route, Link, useParams } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import './App.css';
 import { searchExtras, downloadExtra, fetchPlexItems, getRadarrSettings, getRadarrMovies } from './api';
 
