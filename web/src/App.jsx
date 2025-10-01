@@ -122,10 +122,15 @@ function MovieDetails({ movies, loading }) {
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', margin: '0px 0 0 0', padding: 0, width: '100%' }}>
         <div
-          style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 'bold', color: '#a855f7', fontSize: 18 }}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 'bold', color: '#e5e7eb', fontSize: 18 }}
           onClick={handleSearchExtras}
         >
-          <span style={{ fontSize: 20, display: 'inline-block' }}>🔎</span>
+          <span style={{ fontSize: 20, display: 'flex', alignItems: 'center' }}>
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="9" cy="9" r="7" stroke="#e5e7eb" strokeWidth="2" />
+              <line x1="15" y1="15" x2="19" y2="19" stroke="#e5e7eb" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </span>
           <span>{searchLoading ? 'Searching...' : 'Search'}</span>
         </div>
       </div>
@@ -193,9 +198,9 @@ function MovieDetails({ movies, loading }) {
                   <tr key={idx} style={{ height: 32, background: exists ? (darkMode ? '#1e293b' : '#e0e7ff') : undefined }}>
                     <td style={{ padding: '0.5em 1em', textAlign: 'left', color: darkMode ? '#e5e7eb' : '#222', fontSize: 13 }}>{extra.type || ''}</td>
                     <td style={{ padding: '0.5em 1em', textAlign: 'left', color: darkMode ? '#e5e7eb' : '#222', fontSize: 13 }}>{displayTitle}</td>
-                    <td style={{ padding: '0.5em 1em', textAlign: 'left', color: darkMode ? '#a855f7' : '#6d28d9', fontSize: 13 }}>
+                    <td style={{ padding: '0.5em 1em', textAlign: 'left', color: darkMode ? '#e5e7eb' : '#6d28d9', fontSize: 13 }}>
                       {extra.url ? (
-                        <a href={extra.url} target="_blank" rel="noopener noreferrer" style={{ color: darkMode ? '#a855f7' : '#6d28d9', textDecoration: 'underline', fontSize: 13 }}>Link</a>
+                        <a href={extra.url} target="_blank" rel="noopener noreferrer" style={{ color: darkMode ? '#e5e7eb' : '#6d28d9', textDecoration: 'underline', fontSize: 13 }}>Link</a>
                       ) : null}
                     </td>
                     <td style={{ padding: '0.5em 1em', textAlign: 'left' }}>
@@ -289,18 +294,65 @@ function App() {
       <header style={{ width: '100%', height: 64, background: darkMode ? '#23232a' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb', padding: '0 32px', position: 'relative', zIndex: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <img src="/logo.svg" alt="Logo" style={{ width: 40, height: 40, marginRight: 12 }} />
-          <span style={{ fontWeight: 'bold', fontSize: 22, color: '#a855f7', letterSpacing: 0.5 }}>Trailarr</span>
+          <span style={{ fontWeight: 'bold', fontSize: 22, color: '#e5e7eb', letterSpacing: 0.5 }}>Trailarr</span>
         </div>
         <nav style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
           <input type="search" placeholder="Search movies" style={{ padding: '0.5em', borderRadius: 6, border: '1px solid #e5e7eb', width: 200, textAlign: 'left' }} />
-          <span style={{ fontSize: 20, color: '#a855f7' }}>🔎</span>
+          <span style={{ fontSize: 20, display: 'flex', alignItems: 'center' }}>
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="9" cy="9" r="7" stroke="#e5e7eb" strokeWidth="2" />
+              <line x1="15" y1="15" x2="19" y2="19" stroke="#e5e7eb" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </span>
         </nav>
       </header>
       <div style={{ display: 'flex', width: '100%', height: 'calc(100vh - 64px)' }}>
         <aside style={{ width: 220, background: darkMode ? '#23232a' : '#fff', borderRight: darkMode ? '1px solid #333' : '1px solid #e5e7eb', padding: '0em 0', height: '100%', boxSizing: 'border-box' }}>
           <nav>
             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-              {[{ name: 'Series', icon: '📺' }, { name: 'Movies', icon: '🎬' }, { name: 'History', icon: '🕑' }, { name: 'Wanted', icon: '⭐' }, { name: 'Blacklist', icon: '🚫' }, { name: 'Settings', icon: '⚙️' }, { name: 'System', icon: '🖥️' }].map(({ name, icon }) => (
+              {[
+                { name: 'Series', icon: (
+                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="3" y="5" width="14" height="10" rx="2" fill={darkMode ? '#e5e7eb' : '#333'} />
+                    <rect x="7" y="15" width="6" height="2" rx="1" fill={darkMode ? '#e5e7eb' : '#333'} />
+                  </svg>
+                ) },
+                { name: 'Movies', icon: (
+                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="4" y="5" width="12" height="10" rx="2" fill={darkMode ? '#e5e7eb' : '#333'} />
+                    <circle cx="10" cy="10" r="3" fill={darkMode ? '#e5e7eb' : '#333'} />
+                  </svg>
+                ) },
+                { name: 'History', icon: (
+                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="10" cy="10" r="8" stroke={darkMode ? '#e5e7eb' : '#333'} strokeWidth="2" />
+                    <path d="M10 6v4l3 3" stroke={darkMode ? '#e5e7eb' : '#333'} strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                ) },
+                { name: 'Wanted', icon: (
+                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <polygon points="10,3 12,8 17,8 13,11 15,16 10,13 5,16 7,11 3,8 8,8" fill={darkMode ? '#e5e7eb' : '#333'} />
+                  </svg>
+                ) },
+                { name: 'Blacklist', icon: (
+                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="4" y="4" width="12" height="12" rx="2" fill={darkMode ? '#e5e7eb' : '#333'} />
+                    <line x1="6" y1="6" x2="14" y2="14" stroke="#e5e7eb" strokeWidth="2" />
+                  </svg>
+                ) },
+                { name: 'Settings', icon: (
+                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="10" cy="10" r="7" stroke={darkMode ? '#e5e7eb' : '#333'} strokeWidth="2" />
+                    <circle cx="10" cy="10" r="3" fill={darkMode ? '#e5e7eb' : '#333'} />
+                  </svg>
+                ) },
+                { name: 'System', icon: (
+                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="3" y="5" width="14" height="10" rx="2" fill={darkMode ? '#e5e7eb' : '#333'} />
+                    <rect x="7" y="15" width="6" height="2" rx="1" fill={darkMode ? '#e5e7eb' : '#333'} />
+                  </svg>
+                ) }
+              ].map(({ name, icon }) => (
                 <li key={name} style={{ marginBottom: 16 }}>
                   {name === 'Settings' ? (
                     <div
@@ -308,7 +360,7 @@ function App() {
                         textDecoration: 'none',
                         background: selectedSection === name ? (darkMode ? '#d6b4f7' : '#f3e8ff') : 'none',
                         border: 'none',
-                        color: selectedSection === name ? (darkMode ? '#6d28d9' : '#a855f7') : (darkMode ? '#e5e7eb' : '#333'),
+                        color: selectedSection === name ? (darkMode ? '#6d28d9' : '#e5e7eb') : (darkMode ? '#e5e7eb' : '#333'),
                         fontWeight: selectedSection === name ? 'bold' : 'normal',
                         width: '100%',
                         textAlign: 'left',
@@ -321,23 +373,23 @@ function App() {
                       }}
                       onClick={() => setSelectedSection(name)}
                     >
-                      <span style={{ fontSize: 18 }}>{icon}</span>
+                      <span style={{ fontSize: 18, display: 'flex', alignItems: 'center' }}>{icon}</span>
                       {name}
                     </div>
                   ) : (
                     <Link
                       to={name === 'Movies' ? '/movies' : '/'}
-                      style={{ textDecoration: 'none', background: selectedSection === name ? (darkMode ? '#d6b4f7' : '#f3e8ff') : 'none', border: 'none', color: selectedSection === name ? (darkMode ? '#6d28d9' : '#a855f7') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSection === name ? 'bold' : 'normal', width: '100%', textAlign: 'left', padding: '0.5em 1em', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75em' }}
+                      style={{ textDecoration: 'none', background: selectedSection === name ? (darkMode ? '#d6b4f7' : '#f3e8ff') : 'none', border: 'none', color: selectedSection === name ? (darkMode ? '#6d28d9' : '#e5e7eb') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSection === name ? 'bold' : 'normal', width: '100%', textAlign: 'left', padding: '0.5em 1em', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75em' }}
                       onClick={() => setSelectedSection(name)}
                     >
-                      <span style={{ fontSize: 18 }}>{icon}</span>
+                      <span style={{ fontSize: 18, display: 'flex', alignItems: 'center' }}>{icon}</span>
                       {name}
                     </Link>
                   )}
                   {name === 'Settings' && selectedSection === 'Settings' && (
                     <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0 0', background: darkMode ? '#23232a' : '#f3f4f6', borderRadius: 6, color: darkMode ? '#e5e7eb' : '#222' }}>
                       {['General', 'Languages', 'Providers', 'Subtitles', 'Sonarr', 'Radarr', 'Plex', 'Notifications', 'Scheduler', 'UI'].map((submenu, idx) => (
-                        <li key={submenu} style={{ padding: '0.5em 1em', borderLeft: selectedSettingsSub === submenu ? '3px solid #d6b4f7' : '3px solid transparent', background: selectedSettingsSub === submenu ? (darkMode ? '#d6b4f7' : '#fff') : 'none', color: selectedSettingsSub === submenu ? (darkMode ? '#6d28d9' : '#a855f7') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSettingsSub === submenu ? 'bold' : 'normal', cursor: 'pointer' }}>
+                        <li key={submenu} style={{ padding: '0.5em 1em', borderLeft: selectedSettingsSub === submenu ? '3px solid #d6b4f7' : '3px solid transparent', background: selectedSettingsSub === submenu ? (darkMode ? '#d6b4f7' : '#fff') : 'none', color: selectedSettingsSub === submenu ? (darkMode ? '#6d28d9' : '#e5e7eb') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSettingsSub === submenu ? 'bold' : 'normal', cursor: 'pointer' }}>
                           <Link
                             to={`/settings/${submenu.toLowerCase()}`}
                             style={{ color: 'inherit', textDecoration: 'none', display: 'block', width: '100%' }}
@@ -365,7 +417,7 @@ function App() {
               color: darkMode ? '#e5e7eb' : '#222',
               border: darkMode ? '1px solid #333' : 'none',
             }}>
-              <h3 style={{ color: '#a855f7', marginTop: 0 }}>Radarr Connection</h3>
+              <h3 style={{ color: '#e5e7eb', marginTop: 0 }}>Radarr Connection</h3>
               <div style={{ marginBottom: '1em' }}>
                 <label style={{ display: 'block', marginBottom: 4, color: darkMode ? '#e5e7eb' : '#222' }}>Radarr URL</label>
                 <input
