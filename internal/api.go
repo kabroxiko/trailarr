@@ -534,56 +534,44 @@ func SyncRadarrMoviesAndMediaCover() {
 		return
 	}
 	settings := allSettings.Radarr
-	// Read movies from cache file
+	// Always fetch movies from Radarr and refresh cache
 	cachePath := "/var/lib/extrazarr/movies_cache.json"
-	cacheData, err := os.ReadFile(cachePath)
-	var movies []map[string]interface{}
+	req, err := http.NewRequest("GET", settings.URL+"/api/v3/movie", nil)
 	if err != nil {
-		fmt.Println("[Sync] Movie cache not found, fetching from Radarr:", err)
-		// Fetch movies from Radarr
-		req, err := http.NewRequest("GET", settings.URL+"/api/v3/movie", nil)
-		if err != nil {
-			fmt.Println("[Sync] Error creating request:", err)
-			return
-		}
-		req.Header.Set("X-Api-Key", settings.APIKey)
-		client := &http.Client{}
-		resp, err := client.Do(req)
-		if err != nil {
-			fmt.Println("[Sync] Error fetching movies:", err)
-			return
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != 200 {
-			fmt.Println("[Sync] Radarr API error:", resp.StatusCode)
-			return
-		}
-		var allMovies []map[string]interface{}
-		if err := json.NewDecoder(resp.Body).Decode(&allMovies); err != nil {
-			fmt.Println("[Sync] Failed to decode Radarr response:", err)
-			return
-		}
-		// Filter only downloaded movies (hasFile == true)
-		movies = make([]map[string]interface{}, 0)
-		for _, m := range allMovies {
-			if hasFile, ok := m["hasFile"].(bool); ok && hasFile {
-				movies = append(movies, m)
-			}
-		}
-		// Save movies to cache file
-		cacheData, _ = json.MarshalIndent(movies, "", "  ")
-		_ = os.WriteFile(cachePath, cacheData, 0644)
-		fmt.Println("[Sync] Synced", len(movies), "downloaded movies to cache.")
-	} else {
-		if err := json.Unmarshal(cacheData, &movies); err != nil {
-			fmt.Println("[Sync] Failed to decode movie cache:", err)
-			return
-		}
-		fmt.Println("[Sync] Loaded", len(movies), "movies from cache.")
+		fmt.Println("[Sync] Error creating request:", err)
+		return
 	}
+	req.Header.Set("X-Api-Key", settings.APIKey)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Println("[Sync] Error fetching movies:", err)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		fmt.Println("[Sync] Radarr API error:", resp.StatusCode)
+		return
+	}
+	var allMovies []map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&allMovies); err != nil {
+		fmt.Println("[Sync] Failed to decode Radarr response:", err)
+		return
+	}
+	// Filter only downloaded movies (hasFile == true)
+	movies := make([]map[string]interface{}, 0)
+	for _, m := range allMovies {
+		if hasFile, ok := m["hasFile"].(bool); ok && hasFile {
+			movies = append(movies, m)
+		}
+	}
+	// Save movies to cache file
+	cacheData, _ := json.MarshalIndent(movies, "", "  ")
+	_ = os.WriteFile(cachePath, cacheData, 0644)
+	fmt.Println("[Sync] Synced", len(movies), "downloaded movies to cache.")
 
 	// Download poster images from Radarr and cache only movies with posters
-	client := &http.Client{}
+	client = &http.Client{}
 	downloadedMovies := make([]map[string]interface{}, 0)
 	for _, movie := range movies {
 		hasFile, ok := movie["hasFile"].(bool)
