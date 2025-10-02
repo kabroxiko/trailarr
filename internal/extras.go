@@ -78,8 +78,8 @@ func lookupMediaTitle(cachePath string, mediaId int) string {
 
 func deleteExtraFiles(mediaPath, extraType, extraTitle string) error {
 	extraDir := mediaPath + "/" + extraType
-	extraFile := extraDir + "/" + SanitizeFilename(extraTitle) + ".mp4"
-	metaFile := extraDir + "/" + SanitizeFilename(extraTitle) + ".mp4.json"
+	extraFile := extraDir + "/" + SanitizeFilename(extraTitle) + ".mkv"
+	metaFile := extraDir + "/" + SanitizeFilename(extraTitle) + ".mkv.json"
 	err1 := os.Remove(extraFile)
 	err2 := os.Remove(metaFile)
 	if err1 != nil && err2 != nil {
@@ -193,7 +193,7 @@ func existingExtrasHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "moviePath required"})
 		return
 	}
-	// Scan subfolders for .mp4 files and their metadata
+	// Scan subfolders for .mkv files and their metadata
 	var existing []map[string]interface{}
 	entries, err := os.ReadDir(moviePath)
 	if err != nil {
@@ -209,8 +209,8 @@ func existingExtrasHandler(c *gin.Context) {
 		subdir := moviePath + "/" + entry.Name()
 		files, _ := os.ReadDir(subdir)
 		for _, f := range files {
-			if !f.IsDir() && strings.HasSuffix(f.Name(), ".mp4") {
-				metaFile := subdir + "/" + strings.TrimSuffix(f.Name(), ".mp4") + ".mp4.json"
+			if !f.IsDir() && strings.HasSuffix(f.Name(), ".mkv") {
+				metaFile := subdir + "/" + strings.TrimSuffix(f.Name(), ".mkv") + ".mkv.json"
 				var meta struct {
 					Type      string `json:"type"`
 					Title     string `json:"title"`
@@ -351,5 +351,7 @@ func hasVideoFiles(dir string) bool {
 }
 
 func isVideoFile(name string) bool {
-	return strings.HasSuffix(name, ".mp4") || strings.HasSuffix(name, ".mkv") || strings.HasSuffix(name, ".avi")
+	return strings.HasSuffix(name, ".mp4") ||
+		strings.HasSuffix(name, ".mkv") ||
+		strings.HasSuffix(name, ".avi")
 }
