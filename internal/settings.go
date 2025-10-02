@@ -1,16 +1,156 @@
 package internal
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"time"
 
-	"encoding/json"
-
 	"github.com/gin-gonic/gin"
 	"gopkg.in/yaml.v3"
 )
+
+// EnsureYtdlpFlagsConfigExists checks config.yml and writes defaults if missing
+func EnsureYtdlpFlagsConfigExists() error {
+	data, err := os.ReadFile(ConfigPath)
+	if err != nil {
+		// If config file doesn't exist, create it with defaults
+		config := map[string]interface{}{
+			"ytdlpFlags": DefaultYtdlpFlagsConfig(),
+		}
+		out, _ := yaml.Marshal(config)
+		return os.WriteFile(ConfigPath, out, 0644)
+	}
+	var config map[string]interface{}
+	_ = yaml.Unmarshal(data, &config)
+	if _, ok := config["ytdlpFlags"].(map[string]interface{}); !ok {
+		// Add defaults if missing
+		config["ytdlpFlags"] = DefaultYtdlpFlagsConfig()
+		out, _ := yaml.Marshal(config)
+		return os.WriteFile(ConfigPath, out, 0644)
+	}
+	return nil
+}
+
+// --- YTDLP FLAGS CONFIG ---
+
+// Loads yt-dlp flags config from config.yml
+func GetYtdlpFlagsConfig() (YtdlpFlagsConfig, error) {
+	data, err := os.ReadFile(ConfigPath)
+	if err != nil {
+		return DefaultYtdlpFlagsConfig(), err
+	}
+	var config map[string]interface{}
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return DefaultYtdlpFlagsConfig(), err
+	}
+	sec, ok := config["ytdlpFlags"].(map[string]interface{})
+	cfg := DefaultYtdlpFlagsConfig()
+	if !ok {
+		return cfg, nil
+	}
+	// Map each field
+	if v, ok := sec["quiet"].(bool); ok {
+		cfg.Quiet = v
+	}
+	if v, ok := sec["noprogress"].(bool); ok {
+		cfg.NoProgress = v
+	}
+	if v, ok := sec["writesubs"].(bool); ok {
+		cfg.WriteSubs = v
+	}
+	if v, ok := sec["writeautosubs"].(bool); ok {
+		cfg.WriteAutoSubs = v
+	}
+	if v, ok := sec["embedsubs"].(bool); ok {
+		cfg.EmbedSubs = v
+	}
+	if v, ok := sec["remuxvideo"].(string); ok {
+		cfg.RemuxVideo = v
+	}
+	if v, ok := sec["subformat"].(string); ok {
+		cfg.SubFormat = v
+	}
+	if v, ok := sec["sublangs"].(string); ok {
+		cfg.SubLangs = v
+	}
+	if v, ok := sec["requestedformats"].(string); ok {
+		cfg.RequestedFormats = v
+	}
+	if v, ok := sec["timeout"].(float64); ok {
+		cfg.Timeout = v
+	}
+	if v, ok := sec["sleepInterval"].(float64); ok {
+		cfg.SleepInterval = v
+	}
+	if v, ok := sec["maxDownloads"].(int); ok {
+		cfg.MaxDownloads = v
+	}
+	if v, ok := sec["maxDownloads"].(float64); ok {
+		cfg.MaxDownloads = int(v)
+	}
+	if v, ok := sec["limitRate"].(string); ok {
+		cfg.LimitRate = v
+	}
+	if v, ok := sec["sleepRequests"].(float64); ok {
+		cfg.SleepRequests = v
+	}
+	if v, ok := sec["maxSleepInterval"].(float64); ok {
+		cfg.MaxSleepInterval = v
+	}
+	return cfg, nil
+}
+
+// Saves yt-dlp flags config to config.yml
+func SaveYtdlpFlagsConfig(cfg YtdlpFlagsConfig) error {
+	data, _ := os.ReadFile(ConfigPath)
+	var config map[string]interface{}
+	_ = yaml.Unmarshal(data, &config)
+	config["ytdlpFlags"] = map[string]interface{}{
+		"quiet":            cfg.Quiet,
+		"noprogress":       cfg.NoProgress,
+		"writesubs":        cfg.WriteSubs,
+		"writeautosubs":    cfg.WriteAutoSubs,
+		"embedsubs":        cfg.EmbedSubs,
+		"remuxvideo":       cfg.RemuxVideo,
+		"subformat":        cfg.SubFormat,
+		"sublangs":         cfg.SubLangs,
+		"requestedformats": cfg.RequestedFormats,
+		"timeout":          cfg.Timeout,
+		"sleepInterval":    cfg.SleepInterval,
+		"maxDownloads":     cfg.MaxDownloads,
+		"limitRate":        cfg.LimitRate,
+		"sleepRequests":    cfg.SleepRequests,
+		"maxSleepInterval": cfg.MaxSleepInterval,
+	}
+	out, _ := yaml.Marshal(config)
+	return os.WriteFile(ConfigPath, out, 0644)
+}
+
+// Handler to get yt-dlp flags config
+func GetYtdlpFlagsConfigHandler(c *gin.Context) {
+	cfg, err := GetYtdlpFlagsConfig()
+	if err != nil {
+		c.JSON(http.StatusOK, cfg)
+		return
+	}
+	c.JSON(http.StatusOK, cfg)
+}
+
+// Handler to save yt-dlp flags config
+func SaveYtdlpFlagsConfigHandler(c *gin.Context) {
+	var req YtdlpFlagsConfig
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": ErrInvalidRequest})
+		return
+	}
+	if err := SaveYtdlpFlagsConfig(req); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "saved"})
+}
 
 var Timings map[string]int
 

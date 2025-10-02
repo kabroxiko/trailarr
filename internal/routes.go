@@ -7,6 +7,11 @@ import (
 )
 
 func RegisterRoutes(r *gin.Engine) {
+	// Ensure yt-dlp config exists at startup
+	_ = EnsureYtdlpFlagsConfigExists()
+	// YTDLP flags config endpoints
+	r.GET("/api/settings/ytdlpflags", GetYtdlpFlagsConfigHandler)
+	r.POST("/api/settings/ytdlpflags", SaveYtdlpFlagsConfigHandler)
 	// Log all API calls except /mediacover
 	r.Use(func(c *gin.Context) {
 		if len(c.Request.URL.Path) < 11 || c.Request.URL.Path[:11] != "/mediacover" {
