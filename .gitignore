@@ -1,5 +1,12 @@
-# Created by https://www.toptal.com/developers/gitignore/api/linux,macos,sonar,windows,sonarqube,visualstudio,visualstudiocode,go,node,react,reactnative
-# Edit at https://www.toptal.com/developers/gitignore?templates=linux,macos,sonar,windows,sonarqube,visualstudio,visualstudiocode,go,node,react,reactnative
+# Created by https://www.toptal.com/developers/gitignore/api/go,node,linux,macos,react,sonar,windows,sonarqube,reactnative,visualstudio,visualstudiocode,backup
+# Edit at https://www.toptal.com/developers/gitignore?templates=go,node,linux,macos,react,sonar,windows,sonarqube,reactnative,visualstudio,visualstudiocode,backup
+
+### Backup ###
+*.bak
+*.gho
+*.ori
+*.orig
+*.tmp
 
 ### Go ###
 # If you prefer the allow list template instead of the deny list, see community template:
@@ -546,7 +553,6 @@ StyleCopReport.xml
 *.tlb
 *.tli
 *.tlh
-*.tmp
 *.tmp_proj
 *_wpftmp.csproj
 *.tlog
@@ -844,7 +850,4 @@ FodyWeavers.xsd
 ### VisualStudio Patch ###
 # Additional files built by Visual Studio
 
-# End of https://www.toptal.com/developers/gitignore/api/linux,macos,sonar,windows,sonarqube,visualstudio,visualstudiocode,go,node,react,reactnative
-
-# React Component Preview
-previewConfig.json
+# End of https://www.toptal.com/developers/gitignore/api/go,node,linux,macos,react,sonar,windows,sonarqube,reactnative,visualstudio,visualstudiocode,backup

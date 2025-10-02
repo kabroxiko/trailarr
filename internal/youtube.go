@@ -29,7 +29,10 @@ type RequestBody struct {
 	Args  []string          `json:"args"`
 }
 
-func DownloadYouTubeExtra(mediaType, mediaTitle, extraType, extraTitle, extraURL string, forceDownload ...bool) (*ExtraDownloadMetadata, error) {
+func DownloadYouTubeExtra(mediaType, mediaId, extraType, extraTitle, extraURL string, forceDownload ...bool) (*ExtraDownloadMetadata, error) {
+	var downloadInfo *downloadInfo
+	var err error
+
 	force := false
 	if len(forceDownload) > 0 {
 		force = forceDownload[0]
@@ -40,6 +43,26 @@ func DownloadYouTubeExtra(mediaType, mediaTitle, extraType, extraTitle, extraURL
 		return nil, nil
 	}
 
+	// Lookup media title from cache for logging
+	var mediaTitle string
+	var cachePath string
+	switch mediaType {
+	case "movie":
+		cachePath, _ = resolveCachePath("movie")
+	case "series":
+		cachePath, _ = resolveCachePath("tv")
+	}
+	if cachePath != "" {
+		items, _ := loadCache(cachePath)
+		for _, m := range items {
+			if mid, ok := m["id"]; ok && fmt.Sprintf("%v", mid) == mediaId {
+				if t, ok := m["title"].(string); ok {
+					mediaTitle = t
+					break
+				}
+			}
+		}
+	}
 	TrailarrLog("info", "YouTube", "Downloading YouTube extra: mediaType=%s, mediaTitle=%s, type=%s, title=%s, url=%s", mediaType, mediaTitle, extraType, extraTitle, extraURL)
 
 	// Extract YouTube ID and prepare paths
@@ -48,10 +71,16 @@ func DownloadYouTubeExtra(mediaType, mediaTitle, extraType, extraTitle, extraURL
 		return nil, fmt.Errorf("failed to extract YouTube ID: %w", err)
 	}
 
-	downloadInfo, err := prepareDownloadInfo(mediaType, mediaTitle, extraType, extraTitle, youtubeID)
+	downloadInfo, err = prepareDownloadInfo(mediaType, mediaId, extraType, extraTitle, youtubeID)
 	if err != nil {
 		return nil, err
 	}
+	// Always clean up temp dir after download attempt
+	defer func() {
+		if downloadInfo != nil && downloadInfo.TempDir != "" {
+			os.RemoveAll(downloadInfo.TempDir)
+		}
+	}()
 
 	// Check if extra is rejected or already exists
 	if meta, err := checkExistingExtra(downloadInfo, extraURL); meta != nil || err != nil {
@@ -75,14 +104,70 @@ type downloadInfo struct {
 	SafeTitle  string
 }
 
-func prepareDownloadInfo(mediaType, mediaTitle, extraType, extraTitle, youtubeID string) (*downloadInfo, error) {
-	// Determine the base path based on media type
+func prepareDownloadInfo(mediaType, mediaId, extraType, extraTitle, youtubeID string) (*downloadInfo, error) {
+	// Robust base path resolution using cache and path mappings
 	var basePath string
+	var mappings [][]string
+	var err error
+	var cachePath string
+	var mediaTitle string
+
+	// Step 1: Resolve cache path
 	switch mediaType {
 	case "movie":
-		basePath = filepath.Join("/home", "Movies", mediaTitle)
+		cachePath, err = resolveCachePath("movie")
+		mappings, _ = GetPathMappings("radarr")
 	case "series":
-		basePath = filepath.Join("/home", "Series", mediaTitle)
+		cachePath, err = resolveCachePath("tv")
+		mappings, _ = GetPathMappings("sonarr")
+	default:
+		cachePath = ""
+	}
+
+	// Lookup media title from cache (mimic lookupMediaTitle from extras.go)
+	if cachePath != "" {
+		items, _ := loadCache(cachePath)
+		for _, m := range items {
+			if mid, ok := m["id"]; ok && fmt.Sprintf("%v", mid) == mediaId {
+				if t, ok := m["title"].(string); ok {
+					mediaTitle = t
+					break
+				}
+			}
+		}
+	}
+
+	var mappedMediaPath string
+	if err == nil && cachePath != "" {
+		// Step 2: Look up media path from cache using mediaId
+		mediaPath, lookupErr := FindMediaPathByID(cachePath, mediaId)
+		if lookupErr == nil && mediaPath != "" && len(mappings) > 0 {
+			// Step 3: Apply path mappings to convert root folder path
+			mappedMediaPath = mediaPath
+			for _, m := range mappings {
+				if len(m) > 1 && strings.HasPrefix(mediaPath, m[0]) {
+					mappedMediaPath = m[1] + mediaPath[len(m[0]):]
+					break
+				}
+			}
+		}
+	}
+
+	if mappedMediaPath != "" {
+		basePath = mappedMediaPath
+	} else if len(mappings) > 0 && len(mappings[0]) > 1 && mappings[0][1] != "" {
+		basePath = mediaTitle
+		if mediaTitle != "" {
+			basePath = filepath.Join(mappings[0][1], mediaTitle)
+		} else {
+			basePath = mappings[0][1]
+		}
+	} else {
+		if mediaTitle != "" {
+			basePath = mediaTitle
+		} else {
+			basePath = ""
+		}
 	}
 
 	canonicalType := canonicalizeExtraType(extraType, extraTitle)
@@ -135,6 +220,8 @@ func checkExistingExtra(info *downloadInfo, extraURL string) (*ExtraDownloadMeta
 	if _, err := os.Stat(info.OutFile); err == nil {
 		TrailarrLog("info", "YouTube", "File already exists, skipping: %s", info.OutFile)
 		meta := &ExtraDownloadMetadata{
+			MediaType:  info.MediaType,
+			MediaTitle: info.MediaTitle,
 			ExtraTitle: info.ExtraTitle,
 			ExtraType:  info.ExtraType,
 			YouTubeID:  info.YouTubeID,
@@ -192,7 +279,6 @@ func cleanupRejectedExtras(rejected []map[string]string, rejectedPath string) {
 }
 
 func performDownload(info *downloadInfo, extraURL string) (*ExtraDownloadMetadata, error) {
-	defer os.RemoveAll(info.TempDir)
 
 	// Setup yt-dlp
 	ytdlp.MustInstall(context.Background(), nil)
@@ -528,6 +614,8 @@ func copyFileAcrossDevices(tempFile, outFile string) error {
 
 func createSuccessMetadata(info *downloadInfo, extraURL string) (*ExtraDownloadMetadata, error) {
 	meta := &ExtraDownloadMetadata{
+		MediaType:  info.MediaType,
+		MediaTitle: info.MediaTitle,
 		ExtraTitle: info.ExtraTitle,
 		ExtraType:  info.ExtraType,
 		YouTubeID:  info.YouTubeID,
