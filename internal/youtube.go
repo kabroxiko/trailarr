@@ -14,6 +14,7 @@ import (
 
 type ExtraDownloadMetadata struct {
 	MediaType  string // "movie" or "series"
+	MediaId    int    // Radarr or Sonarr ID as int
 	MediaTitle string // Movie or Series title
 	ExtraType  string // e.g. "Trailer"
 	ExtraTitle string // e.g. "Official Trailer"
@@ -21,6 +22,16 @@ type ExtraDownloadMetadata struct {
 	FileName   string
 	Status     string
 	URL        string
+}
+
+type RejectedExtra struct {
+	MediaType  string `json:"media_type"`
+	MediaId    int    `json:"media_id"`
+	MediaTitle string `json:"media_title"`
+	ExtraType  string `json:"extra_type"`
+	ExtraTitle string `json:"extra_title"`
+	URL        string `json:"url"`
+	Reason     string `json:"reason"`
 }
 
 type RequestBody struct {
@@ -93,6 +104,7 @@ func DownloadYouTubeExtra(mediaType, mediaId, extraType, extraTitle, extraURL st
 
 type downloadInfo struct {
 	MediaType  string
+	MediaId    int
 	MediaTitle string
 	OutDir     string
 	OutFile    string
@@ -221,6 +233,7 @@ func checkExistingExtra(info *downloadInfo, extraURL string) (*ExtraDownloadMeta
 		TrailarrLog("info", "YouTube", "File already exists, skipping: %s", info.OutFile)
 		meta := &ExtraDownloadMetadata{
 			MediaType:  info.MediaType,
+			MediaId:    info.MediaId,
 			MediaTitle: info.MediaTitle,
 			ExtraTitle: info.ExtraTitle,
 			ExtraType:  info.ExtraType,
@@ -246,6 +259,7 @@ func checkRejectedExtras(info *downloadInfo, extraURL string) *ExtraDownloadMeta
 				TrailarrLog("info", "YouTube", "Extra is in rejected list, skipping: %s", info.ExtraTitle)
 				return &ExtraDownloadMetadata{
 					MediaType:  info.MediaType,
+					MediaId:    info.MediaId,
 					MediaTitle: info.MediaTitle,
 					ExtraType:  info.ExtraType,
 					ExtraTitle: info.ExtraTitle,
@@ -515,7 +529,7 @@ func handleDownloadError(info *downloadInfo, extraURL string, err error, output 
 
 func addToRejectedExtras(info *downloadInfo, extraURL, reason string) {
 	rejectedPath := filepath.Join(TrailarrRoot, "rejected_extras.json")
-	var rejectedList []map[string]string
+	var rejectedList []RejectedExtra
 
 	if data, err := os.ReadFile(rejectedPath); err == nil {
 		_ = json.Unmarshal(data, &rejectedList)
@@ -523,25 +537,26 @@ func addToRejectedExtras(info *downloadInfo, extraURL, reason string) {
 
 	// Check if already rejected
 	for _, r := range rejectedList {
-		if r["url"] == extraURL {
+		if r.URL == extraURL {
 			return
 		}
 	}
 
-	rejectedList = append(rejectedList, map[string]string{
-		"media_type":  info.MediaType,
-		"media_title": info.MediaTitle,
-		"extra_type":  info.ExtraType,
-		"extra_title": info.ExtraTitle,
-		"url":         extraURL,
-		"reason":      reason,
+	rejectedList = append(rejectedList, RejectedExtra{
+		MediaType:  info.MediaType,
+		MediaId:    info.MediaId,
+		MediaTitle: info.MediaTitle,
+		ExtraType:  info.ExtraType,
+		ExtraTitle: info.ExtraTitle,
+		URL:        extraURL,
+		Reason:     reason,
 	})
 
 	// Deduplicate
-	unique := make([]map[string]string, 0)
+	unique := make([]RejectedExtra, 0)
 	seen := make(map[string]bool)
 	for _, r := range rejectedList {
-		key := r["url"]
+		key := r.URL
 		if !seen[key] {
 			unique = append(unique, r)
 			seen[key] = true
@@ -615,6 +630,7 @@ func copyFileAcrossDevices(tempFile, outFile string) error {
 func createSuccessMetadata(info *downloadInfo, extraURL string) (*ExtraDownloadMetadata, error) {
 	meta := &ExtraDownloadMetadata{
 		MediaType:  info.MediaType,
+		MediaId:    info.MediaId,
 		MediaTitle: info.MediaTitle,
 		ExtraTitle: info.ExtraTitle,
 		ExtraType:  info.ExtraType,

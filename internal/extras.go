@@ -13,6 +13,22 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// GetRejectedExtrasForMedia returns rejected extras for a given media type and id
+func GetRejectedExtrasForMedia(mediaType string, id int) []RejectedExtra {
+	rejectedPath := filepath.Join(TrailarrRoot, "rejected_extras.json")
+	var rejected []RejectedExtra
+	if data, err := os.ReadFile(rejectedPath); err == nil {
+		_ = json.Unmarshal(data, &rejected)
+	}
+	filtered := make([]RejectedExtra, 0)
+	for _, r := range rejected {
+		if r.MediaType == mediaType && r.MediaId == id {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered
+}
+
 // Handler to delete an extra and record history
 func deleteExtraHandler(c *gin.Context) {
 	var req struct {
