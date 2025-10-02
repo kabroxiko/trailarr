@@ -119,7 +119,7 @@ func GetTVTMDBId(id int, tmdbKey string) (int, error) {
 	return tmdbResult.Results[0].ID, nil
 }
 
-func FetchTMDBExtras(mediaType MediaType, tmdbId int, tmdbKey string) ([]map[string]string, error) {
+func FetchTMDBExtras(mediaType MediaType, tmdbId int, tmdbKey string) ([]Extra, error) {
 	videosURL := fmt.Sprintf("https://api.themoviedb.org/3/%s/%d/videos?api_key=%s", mediaType, tmdbId, tmdbKey)
 	resp, err := http.Get(videosURL)
 	if err != nil {
@@ -142,14 +142,14 @@ func FetchTMDBExtras(mediaType MediaType, tmdbId int, tmdbKey string) ([]map[str
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, err
 	}
-	extras := make([]map[string]string, 0)
+	extras := make([]Extra, 0)
 	for _, r := range result.Results {
 		if r.Site == "YouTube" {
-			extras = append(extras, map[string]string{
-				"id":    r.ID,
-				"type":  r.Type,
-				"title": r.Name,
-				"url":   fmt.Sprintf("https://www.youtube.com/watch?v=%s", r.Key),
+			extras = append(extras, Extra{
+				ID:    r.ID,
+				Type:  r.Type,
+				Title: r.Name,
+				URL:   fmt.Sprintf("https://www.youtube.com/watch?v=%s", r.Key),
 			})
 		}
 	}

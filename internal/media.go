@@ -76,7 +76,7 @@ func parseMediaID(id interface{}) (int, bool) {
 	return idInt, true
 }
 
-func filterAndDownloadExtras(mediaType MediaType, mediaPath string, extras []map[string]string, config ExtraTypesConfig) {
+func filterAndDownloadExtras(mediaType MediaType, mediaPath string, extras []Extra, config ExtraTypesConfig) {
 	for _, extra := range extras {
 		if shouldDownloadExtra(extra, config) {
 			err := handleExtraDownload(mediaType, mediaPath, extra)
@@ -87,17 +87,17 @@ func filterAndDownloadExtras(mediaType MediaType, mediaPath string, extras []map
 	}
 }
 
-func shouldDownloadExtra(extra map[string]string, config ExtraTypesConfig) bool {
-	if extra["downloaded"] != "false" || extra["url"] == "" {
+func shouldDownloadExtra(extra Extra, config ExtraTypesConfig) bool {
+	if extra.Status != "missing" || extra.URL == "" {
 		return false
 	}
-	typeName := extra["type"]
+	typeName := extra.Type
 	canonical := canonicalizeExtraType(typeName, "")
 	return isExtraTypeEnabled(config, canonical)
 }
 
-func handleExtraDownload(mediaType MediaType, mediaPath string, extra map[string]string) error {
-	_, err := DownloadYouTubeExtra(mediaType, filepath.Base(mediaPath), extra["type"], extra["title"], extra["url"])
+func handleExtraDownload(mediaType MediaType, mediaPath string, extra Extra) error {
+	_, err := DownloadYouTubeExtra(mediaType, filepath.Base(mediaPath), extra.Type, extra.Title, extra.URL)
 	return err
 }
 
@@ -342,20 +342,20 @@ func ScanExistingExtras(mediaPath string) map[string]bool {
 }
 
 // Checks which extras are downloaded in the given media path and marks them in the extras list
-// extras: slice of map[string]string (from TMDB), mediaPath: path to the movie/series folder
+// extras: slice of Extra (from TMDB), mediaPath: path to the movie/series folder
 // typeKey: the key in the extra map for the type (usually "type"), titleKey: the key for the title (usually "title")
-func MarkDownloadedExtras(extras []map[string]string, mediaPath string, typeKey, titleKey string) {
+func MarkDownloadedExtras(extras []Extra, mediaPath string, typeKey, titleKey string) {
 	existing := ScanExistingExtras(mediaPath)
-	for _, extra := range extras {
+	for i := range extras {
 		// Canonicalize type and update the map so API always returns canonical type
-		typeStr := canonicalizeExtraType(extra[typeKey], extra[titleKey])
-		extra[typeKey] = typeStr
-		title := SanitizeFilename(extra[titleKey])
+		typeStr := canonicalizeExtraType(extras[i].Type, extras[i].Title)
+		extras[i].Type = typeStr
+		title := SanitizeFilename(extras[i].Title)
 		key := typeStr + "|" + title
 		if existing[key] {
-			extra["downloaded"] = "true"
+			extras[i].Status = "downloaded"
 		} else {
-			extra["downloaded"] = "false"
+			extras[i].Status = "missing"
 		}
 	}
 }
@@ -613,7 +613,7 @@ func sharedExtrasHandler(mediaType MediaType) gin.HandlerFunc {
 		idStr := c.Param("id")
 		var id int
 		fmt.Sscanf(idStr, "%d", &id)
-		results, err := SearchExtras(mediaType, id)
+		extras, err := SearchExtras(mediaType, id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -627,30 +627,34 @@ func sharedExtrasHandler(mediaType MediaType) gin.HandlerFunc {
 		}
 
 		// Mark downloaded extras using shared logic
-		MarkDownloadedExtras(results, mediaPath, "type", "title")
+		MarkDownloadedExtras(extras, mediaPath, "type", "title")
 
 		// Add rejected extras from rejected_extras.json
 		rejectedExtras := GetRejectedExtrasForMedia(mediaType, id)
+
+		// Build a map for quick lookup of rejected URLs
+		rejectedMap := make(map[string]struct{})
 		for _, rej := range rejectedExtras {
-			found := false
-			for _, e := range results {
-				if e["url"] == rej.URL {
-					// Always set status: rejected if this is a rejected extra
-					e["status"] = "rejected"
-					found = true
-					break
-				}
-			}
-			if !found {
-				results = append(results, map[string]string{
-					"type":   rej.ExtraType,
-					"title":  rej.ExtraTitle,
-					"url":    rej.URL,
-					"status": "rejected",
+			rejectedMap[rej.URL] = struct{}{}
+		}
+
+		// Add any rejected extras not already in results
+		urlInResults := make(map[string]struct{})
+		for _, extra := range extras {
+			urlInResults[extra.URL] = struct{}{}
+		}
+		for _, rej := range rejectedExtras {
+			if _, exists := urlInResults[rej.URL]; !exists {
+				extras = append(extras, Extra{
+					Type:   rej.ExtraType,
+					Title:  rej.ExtraTitle,
+					URL:    rej.URL,
+					Status: "rejected",
 				})
 			}
 		}
 
-		c.JSON(http.StatusOK, gin.H{"extras": results})
+		TrailarrLog("Debug", "sharedExtrasHandler", "Extras response: %+v", extras)
+		c.JSON(http.StatusOK, gin.H{"extras": extras})
 	}
 }
