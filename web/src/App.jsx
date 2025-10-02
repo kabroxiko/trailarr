@@ -98,12 +98,12 @@ function App() {
     import('./api').then(({ getRadarrSettings }) => {
       getRadarrSettings()
         .then(res => {
-          setRadarrUrl(res.url || '');
-          setRadarrApiKey(res.apiKey || '');
+          localStorage.setItem('radarrUrl', res.url || '');
+          localStorage.setItem('radarrApiKey', res.apiKey || '');
         })
         .catch(() => {
-          setRadarrUrl('');
-          setRadarrApiKey('');
+          localStorage.setItem('radarrUrl', '');
+          localStorage.setItem('radarrApiKey', '');
         });
     });
     // Sonarr settings fetch fallback
@@ -118,15 +118,10 @@ function App() {
     }
     getSonarrSettings()
       .then(res => {
-        setSonarrUrl(res.url || '');
-        setSonarrApiKey(res.apiKey || '');
-        // Record Sonarr settings in localStorage
         localStorage.setItem('sonarrUrl', res.url || '');
         localStorage.setItem('sonarrApiKey', res.apiKey || '');
       })
       .catch(() => {
-        setSonarrUrl('');
-        setSonarrApiKey('');
         localStorage.setItem('sonarrUrl', '');
         localStorage.setItem('sonarrApiKey', '');
       });
