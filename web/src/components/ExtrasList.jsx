@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTrashCan, faBookmark, faCheckSquare } from '@fortawesome/free-regular-svg-icons';
 import { faPlay, faDownload } from '@fortawesome/free-solid-svg-icons';
+import Toast from './Toast';
 
 function ExtrasList({
   extrasByType,
@@ -15,6 +16,8 @@ function ExtrasList({
   setYoutubeModal,
   YoutubeEmbed,
 }) {
+  const [toastMsg, setToastMsg] = useState('');
+
   // Helper for rendering a group of extras
   const renderExtrasGroup = (type, typeExtras) => (
     <div key={type} style={{ marginBottom: 32 }}>
@@ -60,6 +63,10 @@ function ExtrasList({
           if (displayTitle.length > 22) titleFontSize = 14;
           if (displayTitle.length > 32) titleFontSize = 12;
           const downloaded = extra.downloaded === 'true';
+          const rejected = extra.status === 'rejected' || extra.rejected === true;
+          // Mark as error if this card's download just failed (modalMsg or toastMsg matches this extra)
+          const [errorCard, setErrorCard] = useState(null);
+          const isError = errorCard === idx;
           const handleDownloadClick = async () => {
             if (downloaded) return;
             try {
@@ -77,6 +84,7 @@ function ExtrasList({
               });
               if (res.ok) {
                 setExtras(prev => prev.map((e, i) => i === idx && e.type === type ? { ...e, downloaded: 'true' } : e));
+                setErrorCard(null);
               } else {
                 const data = await res.json();
                 let msg = data?.error || 'Download failed';
@@ -85,6 +93,7 @@ function ExtrasList({
                 }
                 setModalMsg(msg);
                 setShowModal(true);
+                setErrorCard(idx);
               }
             } catch (e) {
               let msg = (e.message || e);
@@ -93,6 +102,7 @@ function ExtrasList({
               }
               setModalMsg(msg);
               setShowModal(true);
+              setErrorCard(idx);
             }
           };
           return (
@@ -108,7 +118,11 @@ function ExtrasList({
               alignItems: 'center',
               padding: '0 0 0 0',
               position: 'relative',
-              border: downloaded ? '2px solid #22c55e' : '2px solid transparent',
+              border: (rejected || isError)
+                ? '2.5px solid #ef4444'
+                : downloaded
+                  ? '2px solid #22c55e'
+                  : '2px solid transparent',
             }}>
               <div style={{ width: '100%', background: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <div style={{position: 'relative', width: '100%'}}>
@@ -141,11 +155,13 @@ function ExtrasList({
                     <div style={{ position: 'absolute', top: 8, right: downloaded ? 36 : 8, zIndex: 2 }}>
                       <FontAwesomeIcon
                         icon={faDownload}
-                        color="#fff"
+                        color={rejected ? '#aaa' : '#fff'}
                         size="lg"
-                        style={{ cursor: 'pointer' }}
-                        title="Download"
-                        onClick={handleDownloadClick}
+                        style={{ cursor: rejected ? 'not-allowed' : 'pointer', opacity: rejected ? 0.5 : 1 }}
+                        title={rejected ? (extra.reason ? `Rejected: ${extra.reason}` : 'Rejected (cannot download)') : 'Download'}
+                        onClick={rejected ? () => { if (extra.reason) setToastMsg(extra.reason); } : handleDownloadClick}
+                        tabIndex={rejected ? -1 : 0}
+                        aria-disabled={rejected}
                       />
                     </div>
                   )}
@@ -224,6 +240,7 @@ function ExtrasList({
   // Render 'Trailers' first, then others except 'Others', then 'Others' last
   return (
     <>
+      <Toast message={toastMsg} onClose={() => setToastMsg('')} darkMode={darkMode} />
       {extrasByType['Trailers'] && renderExtrasGroup('Trailers', extrasByType['Trailers'])}
       {Object.entries(extrasByType)
         .filter(([type]) => type !== 'Trailers' && type !== 'Others')

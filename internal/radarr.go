@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"time"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -50,6 +51,26 @@ func getMovieExtrasHandler(c *gin.Context) {
 
 	// Mark downloaded extras using shared logic
 	MarkDownloadedExtras(results, moviePath, "type", "title")
+
+	// Add rejected extras from rejected_extras.json
+	rejectedExtras := GetRejectedExtrasForMedia("movie", id)
+	for _, rej := range rejectedExtras {
+		found := false
+		for _, e := range results {
+			if e["url"] == rej.URL {
+				found = true
+				break
+			}
+		}
+		if !found {
+			results = append(results, map[string]string{
+				"type":   rej.ExtraType,
+				"title":  rej.ExtraTitle,
+				"url":    rej.URL,
+				"status": "rejected",
+			})
+		}
+	}
 
 	c.JSON(http.StatusOK, gin.H{"extras": results})
 }

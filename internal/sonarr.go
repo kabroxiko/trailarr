@@ -2,11 +2,14 @@ package internal
 
 import (
 	"fmt"
-	"github.com/gin-gonic/gin"
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
+
+// import extras.go for getRejectedExtrasForMedia
 
 func getSonarrHandler(c *gin.Context) {
 	cachePath := TrailarrRoot + "/series.json"
@@ -50,6 +53,28 @@ func getSeriesExtrasHandler(c *gin.Context) {
 
 	// Mark downloaded extras using shared logic
 	MarkDownloadedExtras(results, seriesPath, "type", "title")
+
+	// Add rejected extras from rejected_extras.json
+	rejectedExtras := GetRejectedExtrasForMedia("tv", id)
+	for _, rej := range rejectedExtras {
+		found := false
+		for _, e := range results {
+			if e["url"] == rej.URL {
+				// Always set status: rejected if this is a rejected extra
+				e["status"] = "rejected"
+				found = true
+				break
+			}
+		}
+		if !found {
+			results = append(results, map[string]string{
+				"type":   rej.ExtraType,
+				"title":  rej.ExtraTitle,
+				"url":    rej.URL,
+				"status": "rejected",
+			})
+		}
+	}
 
 	c.JSON(http.StatusOK, gin.H{"extras": results})
 }
