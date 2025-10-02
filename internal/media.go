@@ -22,13 +22,13 @@ const (
 )
 
 // DownloadMissingExtras downloads missing extras for a given media type ("movie" or "tv")
-func DownloadMissingExtras(mediaType string, cachePath string) error {
+func DownloadMissingExtras(mediaType MediaType, cacheFile string) error {
 	if !GetAutoDownloadExtras() {
 		TrailarrLog("Info", "DownloadMissingExtras", "Auto download of extras is disabled by general settings.")
 		return nil
 	}
-	TrailarrLog("Info", "DownloadMissingExtras", "DownloadMissingExtras: mediaType=%s, cachePath=%s", mediaType, cachePath)
-	items, err := loadCache(cachePath)
+	TrailarrLog("Info", "DownloadMissingExtras", "DownloadMissingExtras: mediaType=%s, cacheFile=%s", mediaType, cacheFile)
+	items, err := loadCache(cacheFile)
 	if err != nil {
 		TrailarrLog("Warn", "DownloadMissingExtras", "Failed to load cache: %v", err)
 		return err
@@ -45,7 +45,7 @@ func DownloadMissingExtras(mediaType string, cachePath string) error {
 			TrailarrLog("Warn", "DownloadMissingExtras", "SearchExtras error: %v", err)
 			continue
 		}
-		mediaPath, err := FindMediaPathByID(cachePath, fmt.Sprintf("%v", m["id"]))
+		mediaPath, err := FindMediaPathByID(cacheFile, fmt.Sprintf("%v", m["id"]))
 		if err != nil || mediaPath == "" {
 			TrailarrLog("Warn", "DownloadMissingExtras", "FindMediaPathByID error or empty: %v, mediaPath=%s", err, mediaPath)
 			continue
@@ -76,7 +76,7 @@ func parseMediaID(id interface{}) (int, bool) {
 	return idInt, true
 }
 
-func filterAndDownloadExtras(mediaType, mediaPath string, extras []map[string]string, config ExtraTypesConfig) {
+func filterAndDownloadExtras(mediaType MediaType, mediaPath string, extras []map[string]string, config ExtraTypesConfig) {
 	for _, extra := range extras {
 		if shouldDownloadExtra(extra, config) {
 			err := handleExtraDownload(mediaType, mediaPath, extra)
@@ -96,7 +96,7 @@ func shouldDownloadExtra(extra map[string]string, config ExtraTypesConfig) bool 
 	return isExtraTypeEnabled(config, canonical)
 }
 
-func handleExtraDownload(mediaType, mediaPath string, extra map[string]string) error {
+func handleExtraDownload(mediaType MediaType, mediaPath string, extra map[string]string) error {
 	_, err := DownloadYouTubeExtra(mediaType, filepath.Base(mediaPath), extra["type"], extra["title"], extra["url"])
 	return err
 }
@@ -298,8 +298,8 @@ func CacheMediaPosters(
 }
 
 // Finds the media path for a given id in a cache file
-func FindMediaPathByID(cachePath string, idStr string) (string, error) {
-	items, err := loadCache(cachePath)
+func FindMediaPathByID(cacheFile string, idStr string) (string, error) {
+	items, err := loadCache(cacheFile)
 	if err != nil {
 		return "", err
 	}
@@ -464,8 +464,8 @@ func updateItemTitle(item map[string]interface{}, titleMap map[string]string) {
 }
 
 // Writes the wanted (no trailer) media to a JSON file
-func writeWantedCache(section, cachePath, wantedPath string) error {
-	items, err := loadCache(cachePath)
+func writeWantedCache(section, cacheFile, wantedPath string) error {
+	items, err := loadCache(cacheFile)
 	if err != nil {
 		return err
 	}
@@ -503,8 +503,8 @@ func writeWantedCache(section, cachePath, wantedPath string) error {
 // Move SyncMediaCacheJson to media.go for shared use
 // Generic sync function for Radarr/Sonarr
 // Syncs only the JSON cache for Radarr/Sonarr, not the media files themselves
-// Pass section ("radarr" or "sonarr"), apiPath (e.g. "/api/v3/movie"), cachePath, and a filter function for items
-func SyncMediaCacheJson(section, apiPath, cachePath string, filter func(map[string]interface{}) bool) error {
+// Pass section ("radarr" or "sonarr"), apiPath (e.g. "/api/v3/movie"), cacheFile, and a filter function for items
+func SyncMediaCacheJson(section, apiPath, cacheFile string, filter func(map[string]interface{}) bool) error {
 	url, apiKey, err := GetSectionUrlAndApiKey(section)
 	if err != nil {
 		TrailarrLog("Warn", "SyncMediaCacheJson", "%s settings not found: %v", section, err)
@@ -539,7 +539,7 @@ func SyncMediaCacheJson(section, apiPath, cachePath string, filter func(map[stri
 		}
 	}
 	cacheData, _ := json.MarshalIndent(items, "", "  ")
-	_ = os.WriteFile(cachePath, cacheData, 0644)
+	_ = os.WriteFile(cacheFile, cacheData, 0644)
 	TrailarrLog("Info", "SyncMediaCacheJson", "[Sync%s] Synced %d items to cache.", section, len(items))
 
 	// After syncing main cache, update wanted cache
@@ -549,7 +549,7 @@ func SyncMediaCacheJson(section, apiPath, cachePath string, filter func(map[stri
 	} else {
 		wantedPath = SeriesWantedFile
 	}
-	_ = writeWantedCache(section, cachePath, wantedPath)
+	_ = writeWantedCache(section, cacheFile, wantedPath)
 	return nil
 }
 
@@ -585,7 +585,7 @@ func BackgroundSync(
 }
 
 // Returns a Gin handler to list media (movies/series) without any downloaded trailer extra
-func GetMediaWithoutTrailerExtraHandler(section, cachePath, defaultPath string) gin.HandlerFunc {
+func GetMediaWithoutTrailerExtraHandler(section, cacheFile, defaultPath string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Use the wanted JSON file generated by background sync
 		var wantedPath string
@@ -608,9 +608,9 @@ func GetMediaWithoutTrailerExtraHandler(section, cachePath, defaultPath string) 
 }
 
 // sharedExtrasHandler handles extras for both movies and series
-func sharedExtrasHandler(mediaType, cacheFile string, paramKey string) gin.HandlerFunc {
+func sharedExtrasHandler(mediaType MediaType) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		idStr := c.Param(paramKey)
+		idStr := c.Param("id")
 		var id int
 		fmt.Sscanf(idStr, "%d", &id)
 		results, err := SearchExtras(mediaType, id)
@@ -618,8 +618,9 @@ func sharedExtrasHandler(mediaType, cacheFile string, paramKey string) gin.Handl
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-
-		mediaPath, err := FindMediaPathByID(TrailarrRoot+cacheFile, idStr)
+		cacheFile, _ := resolveCachePath(mediaType)
+		// Find media path from cache
+		mediaPath, err := FindMediaPathByID(cacheFile, idStr)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("%s cache not found", mediaType)})
 			return

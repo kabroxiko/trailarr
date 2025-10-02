@@ -12,8 +12,8 @@ import (
 // import extras.go for getRejectedExtrasForMedia
 
 func getSonarrHandler(c *gin.Context) {
-	cachePath := TrailarrRoot + "/series.json"
-	series, err := loadCache(cachePath)
+	cacheFile := TrailarrRoot + "/series.json"
+	series, err := loadCache(cacheFile)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Series cache not found"})
 		return
@@ -36,7 +36,7 @@ func getSonarrHandler(c *gin.Context) {
 }
 
 // getSeriesExtrasHandler is now a wrapper for sharedExtrasHandler
-var getSeriesExtrasHandler = sharedExtrasHandler("tv", "/series.json", "id")
+var getSeriesExtrasHandler = sharedExtrasHandler("tv")
 
 // SyncSonarrQueueItem tracks a Sonarr sync operation
 type SyncSonarrQueueItem struct {

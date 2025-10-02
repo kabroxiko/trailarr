@@ -14,7 +14,7 @@ import (
 )
 
 // GetRejectedExtrasForMedia returns rejected extras for a given media type and id
-func GetRejectedExtrasForMedia(mediaType string, id int) []RejectedExtra {
+func GetRejectedExtrasForMedia(mediaType MediaType, id int) []RejectedExtra {
 	rejectedPath := filepath.Join(TrailarrRoot, "rejected_extras.json")
 	var rejected []RejectedExtra
 	if data, err := os.ReadFile(rejectedPath); err == nil {
@@ -32,53 +32,47 @@ func GetRejectedExtrasForMedia(mediaType string, id int) []RejectedExtra {
 // Handler to delete an extra and record history
 func deleteExtraHandler(c *gin.Context) {
 	var req struct {
-		MediaType  string `json:"mediaType"`
-		MediaId    int    `json:"mediaId"`
-		ExtraType  string `json:"extraType"`
-		ExtraTitle string `json:"extraTitle"`
+		MediaType  MediaType `json:"mediaType"`
+		MediaId    int       `json:"mediaId"`
+		ExtraType  string    `json:"extraType"`
+		ExtraTitle string    `json:"extraTitle"`
 	}
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": ErrInvalidRequest})
 		return
 	}
 
-	cachePath, err := resolveCachePath(req.MediaType)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	cacheFile, _ := resolveCachePath(req.MediaType)
 
-	mediaPath, err := FindMediaPathByID(cachePath, fmt.Sprintf("%d", req.MediaId))
+	mediaPath, err := FindMediaPathByID(cacheFile, fmt.Sprintf("%d", req.MediaId))
 	if err != nil || mediaPath == "" {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Media not found"})
 		return
 	}
 
-	mediaTitle := lookupMediaTitle(cachePath, req.MediaId)
+	mediaTitle := lookupMediaTitle(cacheFile, req.MediaId)
 
 	if err := deleteExtraFiles(mediaPath, req.ExtraType, req.ExtraTitle); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete extra", "detail": err.Error()})
 		return
 	}
 
-	recordDeleteHistory(mediaTitle, req.MediaType, req.ExtraType, req.ExtraTitle)
+	recordDeleteHistory(req.MediaType, mediaTitle, req.ExtraType, req.ExtraTitle)
 	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
 }
 
-func resolveCachePath(mediaType string) (string, error) {
+func resolveCachePath(mediaType MediaType) (string, error) {
 	switch mediaType {
-	case "movie":
+	case MediaTypeMovie:
 		return TrailarrRoot + "/movies.json", nil
-	case "tv":
+	case MediaTypeTV:
 		return TrailarrRoot + "/series.json", nil
-	default:
-		TrailarrLog("Warn", "Extras", "Invalid mediaType: %s", mediaType)
-		return "", fmt.Errorf("invalid mediaType")
 	}
+	return "", fmt.Errorf("unknown media type: %v", mediaType)
 }
 
-func lookupMediaTitle(cachePath string, mediaId int) string {
-	items, err := loadCache(cachePath)
+func lookupMediaTitle(cacheFile string, mediaId int) string {
+	items, err := loadCache(cacheFile)
 	if err != nil {
 		return ""
 	}
@@ -105,7 +99,7 @@ func deleteExtraFiles(mediaPath, extraType, extraTitle string) error {
 	return nil
 }
 
-func recordDeleteHistory(mediaTitle, mediaType, extraType, extraTitle string) {
+func recordDeleteHistory(mediaType MediaType, mediaTitle, extraType, extraTitle string) {
 	event := HistoryEvent{
 		Action:     "delete",
 		Title:      mediaTitle,
@@ -173,7 +167,7 @@ func ExtractYouTubeID(url string) (string, error) {
 }
 
 // Placeholder for extras search and download logic
-func SearchExtras(mediaType string, id int) ([]map[string]string, error) {
+func SearchExtras(mediaType MediaType, id int) ([]map[string]string, error) {
 	tmdbKey, err := GetTMDBKey()
 	if err != nil {
 		return nil, err
@@ -254,11 +248,11 @@ func existingExtrasHandler(c *gin.Context) {
 
 func downloadExtraHandler(c *gin.Context) {
 	var req struct {
-		MediaType  string `json:"mediaType"`
-		MediaId    int    `json:"mediaId"`
-		ExtraType  string `json:"extraType"`
-		ExtraTitle string `json:"extraTitle"`
-		URL        string `json:"url"`
+		MediaType  MediaType `json:"mediaType"`
+		MediaId    int       `json:"mediaId"`
+		ExtraType  string    `json:"extraType"`
+		ExtraTitle string    `json:"extraTitle"`
+		URL        string    `json:"url"`
 	}
 	if err := c.BindJSON(&req); err != nil {
 		TrailarrLog("Warn", "Extras", "[downloadExtraHandler] Invalid request: %v", err)
@@ -277,10 +271,10 @@ func downloadExtraHandler(c *gin.Context) {
 	}
 
 	// Lookup media title from cache for history
-	cachePath, _ := resolveCachePath(req.MediaType)
+	cacheFile, _ := resolveCachePath(req.MediaType)
 	mediaTitle := ""
-	if cachePath != "" {
-		items, _ := loadCache(cachePath)
+	if cacheFile != "" {
+		items, _ := loadCache(cacheFile)
 		for _, m := range items {
 			if mid, ok := m["id"]; ok && fmt.Sprintf("%v", mid) == mediaIdStr {
 				if t, ok := m["title"].(string); ok {
@@ -293,32 +287,11 @@ func downloadExtraHandler(c *gin.Context) {
 	if mediaTitle == "" {
 		mediaTitle = "Unknown"
 	}
-	recordDownloadHistory(mediaTitle, req.MediaType, req.ExtraType, req.ExtraTitle)
+	recordDownloadHistory(req.MediaType, mediaTitle, req.ExtraType, req.ExtraTitle)
 	c.JSON(http.StatusOK, gin.H{"status": "downloaded", "meta": meta})
 }
 
-func resolveDownloadMediaTitle(mediaType, mediaName string) string {
-	var cachePath string
-	switch mediaType {
-	case "movie":
-		cachePath = TrailarrRoot + "/movies.json"
-	case "series", "tv":
-		cachePath = TrailarrRoot + "/series.json"
-	}
-	if cachePath != "" {
-		items, err := loadCache(cachePath)
-		if err == nil {
-			for _, m := range items {
-				if title, ok := m["title"].(string); ok && title == mediaName {
-					return title
-				}
-			}
-		}
-	}
-	return mediaName
-}
-
-func recordDownloadHistory(mediaTitle, mediaType, extraType, extraTitle string) {
+func recordDownloadHistory(mediaType MediaType, mediaTitle string, extraType, extraTitle string) {
 	event := HistoryEvent{
 		Action:     "download",
 		Title:      mediaTitle,

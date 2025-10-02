@@ -10,3 +10,10 @@ const (
 	ErrInvalidRequest        = "invalid request"
 	HeaderContentType        = "Content-Type"
 )
+
+type MediaType string
+
+const (
+	MediaTypeMovie MediaType = "movie"
+	MediaTypeTV    MediaType = "tv"
+)

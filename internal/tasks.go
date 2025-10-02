@@ -244,8 +244,8 @@ func DownloadMissingSeriesExtrasWithTypeFilter(cfg ExtraTypesConfig) {
 }
 
 // Shared logic for type-filtered extras download
-func downloadMissingExtrasWithTypeFilter(cfg ExtraTypesConfig, mediaType, cachePath string) {
-	items, err := loadCache(cachePath)
+func downloadMissingExtrasWithTypeFilter(cfg ExtraTypesConfig, mediaType MediaType, cacheFile string) {
+	items, err := loadCache(cacheFile)
 	if err != nil {
 		TrailarrLog("Debug", "Tasks", "Failed to load cache: %v", err)
 		return
@@ -259,7 +259,7 @@ func downloadMissingExtrasWithTypeFilter(cfg ExtraTypesConfig, mediaType, cacheP
 		if err != nil {
 			continue
 		}
-		mediaPath, err := FindMediaPathByID(cachePath, fmt.Sprintf("%v", item["id"]))
+		mediaPath, err := FindMediaPathByID(cacheFile, fmt.Sprintf("%v", item["id"]))
 		if err != nil || mediaPath == "" {
 			continue
 		}
@@ -268,7 +268,7 @@ func downloadMissingExtrasWithTypeFilter(cfg ExtraTypesConfig, mediaType, cacheP
 	}
 }
 
-func filterAndDownloadTypeFilteredExtras(cfg ExtraTypesConfig, mediaType string, item map[string]interface{}, extras []map[string]string) {
+func filterAndDownloadTypeFilteredExtras(cfg ExtraTypesConfig, mediaType MediaType, item map[string]interface{}, extras []map[string]string) {
 	for _, extra := range extras {
 		typ := canonicalizeExtraType(extra["type"], extra["type"])
 		if !isExtraTypeEnabled(cfg, typ) {
@@ -283,7 +283,7 @@ func filterAndDownloadTypeFilteredExtras(cfg ExtraTypesConfig, mediaType string,
 	}
 }
 
-func handleTypeFilteredExtraDownload(mediaType string, item map[string]interface{}, extra map[string]string) error {
+func handleTypeFilteredExtraDownload(mediaType MediaType, item map[string]interface{}, extra map[string]string) error {
 	title, _ := item["title"].(string)
 	_, err := DownloadYouTubeExtra(mediaType, title, extra["type"], extra["title"], extra["url"])
 	return err
