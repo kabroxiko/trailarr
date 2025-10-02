@@ -357,129 +357,92 @@ func isImpersonationError(err error) bool {
 }
 
 func createYtdlpFlagsWithoutImpersonation(info *downloadInfo) ytdlp.FlagConfig {
-	quiet := true
-	noprogress := true
-	writesubs := true
-	writeautosubs := true
-	embedsubs := true
-	remuxvideo := "mkv"
-	subformat := "srt"
-	sublangs := "es.*"
-	requestedformats := "best[height<=1080]"
-	timeout := 3.0
-	sleepInterval := 5.0
-	maxDownloads := 5
-	limitRate := "30M"
-	sleepRequests := 3.0
-	maxSleepInterval := 120.0
-
+	cfg, _ := GetYtdlpFlagsConfig()
 	cookiesPath := setupCookiesFile()
-
-	// Create network flags WITHOUT impersonation
 	networkFlags := ytdlp.FlagsNetwork{
-		SocketTimeout: &timeout,
+		SocketTimeout: &cfg.Timeout,
 	}
-
 	return ytdlp.FlagConfig{
 		Network: networkFlags,
 		VerbositySimulation: ytdlp.FlagsVerbositySimulation{
-			Quiet:      &quiet,
-			NoProgress: &noprogress,
+			Quiet:      &cfg.Quiet,
+			NoProgress: &cfg.NoProgress,
 		},
 		Subtitle: ytdlp.FlagsSubtitle{
-			WriteSubs:     &writesubs,
-			WriteAutoSubs: &writeautosubs,
-			SubFormat:     &subformat,
-			SubLangs:      &sublangs,
+			WriteSubs:     &cfg.WriteSubs,
+			WriteAutoSubs: &cfg.WriteAutoSubs,
+			SubFormat:     &cfg.SubFormat,
+			SubLangs:      &cfg.SubLangs,
 		},
 		PostProcessing: ytdlp.FlagsPostProcessing{
-			EmbedSubs:  &embedsubs,
-			RemuxVideo: &remuxvideo,
+			EmbedSubs:  &cfg.EmbedSubs,
+			RemuxVideo: &cfg.RemuxVideo,
 		},
 		VideoFormat: ytdlp.FlagsVideoFormat{
-			Format: &requestedformats,
+			Format: &cfg.RequestedFormats,
 		},
 		Workarounds: ytdlp.FlagsWorkarounds{
-			SleepInterval:    &sleepInterval,
-			SleepRequests:    &sleepRequests,
-			MaxSleepInterval: &maxSleepInterval,
+			SleepInterval:    &cfg.SleepInterval,
+			SleepRequests:    &cfg.SleepRequests,
+			MaxSleepInterval: &cfg.MaxSleepInterval,
 		},
 		VideoSelection: ytdlp.FlagsVideoSelection{
-			MaxDownloads: &maxDownloads,
+			MaxDownloads: &cfg.MaxDownloads,
 		},
 		Filesystem: ytdlp.FlagsFilesystem{
 			Output:  &info.TempFile,
 			Cookies: cookiesPath,
 		},
 		Download: ytdlp.FlagsDownload{
-			LimitRate: &limitRate,
+			LimitRate: &cfg.LimitRate,
 		},
 	}
 }
 
 func createYtdlpFlags(info *downloadInfo) ytdlp.FlagConfig {
-	quiet := true
-	noprogress := true
-	writesubs := true
-	writeautosubs := true
-	embedsubs := true
-	remuxvideo := "mkv"
-	subformat := "srt"
-	sublangs := "es.*"
-	requestedformats := "best[height<=1080]"
-	timeout := 3.0
-	sleepInterval := 5.0
-	maxDownloads := 5
-	limitRate := "3M"
-	sleepRequests := 3.0
-	maxSleepInterval := 120.0
-
+	cfg, _ := GetYtdlpFlagsConfig()
 	cookiesPath := setupCookiesFile()
-
-	// Create network flags with optional impersonation
 	networkFlags := ytdlp.FlagsNetwork{
-		SocketTimeout: &timeout,
+		SocketTimeout: &cfg.Timeout,
 	}
-
 	// Try to enable impersonation if available
 	if shouldUseImpersonation() {
 		impersonate := getImpersonationTarget()
 		networkFlags.Impersonate = &impersonate
 	}
-
 	return ytdlp.FlagConfig{
 		Network: networkFlags,
 		VerbositySimulation: ytdlp.FlagsVerbositySimulation{
-			Quiet:      &quiet,
-			NoProgress: &noprogress,
+			Quiet:      &cfg.Quiet,
+			NoProgress: &cfg.NoProgress,
 		},
 		Subtitle: ytdlp.FlagsSubtitle{
-			WriteSubs:     &writesubs,
-			WriteAutoSubs: &writeautosubs,
-			SubFormat:     &subformat,
-			SubLangs:      &sublangs,
+			WriteSubs:     &cfg.WriteSubs,
+			WriteAutoSubs: &cfg.WriteAutoSubs,
+			SubFormat:     &cfg.SubFormat,
+			SubLangs:      &cfg.SubLangs,
 		},
 		PostProcessing: ytdlp.FlagsPostProcessing{
-			EmbedSubs:  &embedsubs,
-			RemuxVideo: &remuxvideo,
+			EmbedSubs:  &cfg.EmbedSubs,
+			RemuxVideo: &cfg.RemuxVideo,
 		},
 		VideoFormat: ytdlp.FlagsVideoFormat{
-			Format: &requestedformats,
+			Format: &cfg.RequestedFormats,
 		},
 		Workarounds: ytdlp.FlagsWorkarounds{
-			SleepInterval:    &sleepInterval,
-			SleepRequests:    &sleepRequests,
-			MaxSleepInterval: &maxSleepInterval,
+			SleepInterval:    &cfg.SleepInterval,
+			SleepRequests:    &cfg.SleepRequests,
+			MaxSleepInterval: &cfg.MaxSleepInterval,
 		},
 		VideoSelection: ytdlp.FlagsVideoSelection{
-			MaxDownloads: &maxDownloads,
+			MaxDownloads: &cfg.MaxDownloads,
 		},
 		Filesystem: ytdlp.FlagsFilesystem{
 			Output:  &info.TempFile,
 			Cookies: cookiesPath,
 		},
 		Download: ytdlp.FlagsDownload{
-			LimitRate: &limitRate,
+			LimitRate: &cfg.LimitRate,
 		},
 	}
 }
