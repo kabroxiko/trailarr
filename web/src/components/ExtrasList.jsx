@@ -159,7 +159,8 @@ function ExtrasList({
                         title={rejected ? (extra.reason ? `Rejected: ${extra.reason}` : 'Rejected (cannot download)') : 'Download'}
                         onClick={rejected ? () => { if (extra.reason) setToastMsg(extra.reason); } : handleDownloadClick}
                         tabIndex={rejected ? -1 : 0}
-                        aria-disabled={rejected}
+                        aria-label="Download"
+                        {...(rejected ? { inert: "" } : {})}
                       />
                     </div>
                   )}
