@@ -13,6 +13,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type Extra struct {
+	ID     string
+	Type   string
+	Title  string
+	URL    string
+	Status string
+}
+
 // GetRejectedExtrasForMedia returns rejected extras for a given media type and id
 func GetRejectedExtrasForMedia(mediaType MediaType, id int) []RejectedExtra {
 	rejectedPath := filepath.Join(TrailarrRoot, "rejected_extras.json")
@@ -21,9 +29,9 @@ func GetRejectedExtrasForMedia(mediaType MediaType, id int) []RejectedExtra {
 		_ = json.Unmarshal(data, &rejected)
 	}
 	filtered := make([]RejectedExtra, 0)
-	for _, r := range rejected {
-		if r.MediaType == mediaType && r.MediaId == id {
-			filtered = append(filtered, r)
+	for _, rejected := range rejected {
+		if rejected.MediaType == mediaType && rejected.MediaId == id {
+			filtered = append(filtered, rejected)
 		}
 	}
 	return filtered
@@ -167,7 +175,7 @@ func ExtractYouTubeID(url string) (string, error) {
 }
 
 // Placeholder for extras search and download logic
-func SearchExtras(mediaType MediaType, id int) ([]map[string]string, error) {
+func SearchExtras(mediaType MediaType, id int) ([]Extra, error) {
 	tmdbKey, err := GetTMDBKey()
 	if err != nil {
 		return nil, err
@@ -183,6 +191,10 @@ func SearchExtras(mediaType MediaType, id int) ([]map[string]string, error) {
 		return nil, err
 	}
 
+	// Canonicalize ExtraType for each extra before returning
+	for i := range extras {
+		extras[i].Type = canonicalizeExtraType(extras[i].Type, extras[i].Title)
+	}
 	return extras, nil
 }
 

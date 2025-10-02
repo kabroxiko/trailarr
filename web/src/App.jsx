@@ -93,10 +93,6 @@ function App() {
   const [movies, setMovies] = useState([]);
   const [moviesError, setMoviesError] = useState('');
   const [moviesLoading, setMoviesLoading] = useState(true);
-  const [radarrUrl, setRadarrUrl] = useState('');
-  const [radarrApiKey, setRadarrApiKey] = useState('');
-  const [sonarrUrl, setSonarrUrl] = useState('');
-  const [sonarrApiKey, setSonarrApiKey] = useState('');
 
   useEffect(() => {
     import('./api').then(({ getRadarrSettings }) => {

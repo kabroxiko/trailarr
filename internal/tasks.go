@@ -268,13 +268,13 @@ func downloadMissingExtrasWithTypeFilter(cfg ExtraTypesConfig, mediaType MediaTy
 	}
 }
 
-func filterAndDownloadTypeFilteredExtras(cfg ExtraTypesConfig, mediaType MediaType, item map[string]interface{}, extras []map[string]string) {
+func filterAndDownloadTypeFilteredExtras(cfg ExtraTypesConfig, mediaType MediaType, item map[string]interface{}, extras []Extra) {
 	for _, extra := range extras {
-		typ := canonicalizeExtraType(extra["type"], extra["type"])
+		typ := canonicalizeExtraType(extra.Type, extra.Type)
 		if !isExtraTypeEnabled(cfg, typ) {
 			continue
 		}
-		if extra["downloaded"] == "false" && extra["url"] != "" {
+		if extra.Status == "missing" && extra.URL != "" {
 			err := handleTypeFilteredExtraDownload(mediaType, item, extra)
 			if err != nil {
 				TrailarrLog("Warn", "Tasks", "[DownloadMissingExtrasWithTypeFilter] Failed to download: %v", err)
@@ -283,9 +283,9 @@ func filterAndDownloadTypeFilteredExtras(cfg ExtraTypesConfig, mediaType MediaTy
 	}
 }
 
-func handleTypeFilteredExtraDownload(mediaType MediaType, item map[string]interface{}, extra map[string]string) error {
+func handleTypeFilteredExtraDownload(mediaType MediaType, item map[string]interface{}, extra Extra) error {
 	title, _ := item["title"].(string)
-	_, err := DownloadYouTubeExtra(mediaType, title, extra["type"], extra["title"], extra["url"])
+	_, err := DownloadYouTubeExtra(mediaType, title, extra.Type, extra.Title, extra.URL)
 	return err
 }
 
