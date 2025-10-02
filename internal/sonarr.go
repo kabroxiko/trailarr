@@ -35,49 +35,8 @@ func getSonarrHandler(c *gin.Context) {
 	c.JSON(200, gin.H{"series": filtered})
 }
 
-func getSeriesExtrasHandler(c *gin.Context) {
-	idStr := c.Param("id")
-	var id int
-	fmt.Sscanf(idStr, "%d", &id)
-	results, err := SearchExtras("tv", id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	seriesPath, err := FindMediaPathByID(TrailarrRoot+"/series.json", idStr)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Series cache not found"})
-		return
-	}
-
-	// Mark downloaded extras using shared logic
-	MarkDownloadedExtras(results, seriesPath, "type", "title")
-
-	// Add rejected extras from rejected_extras.json
-	rejectedExtras := GetRejectedExtrasForMedia("tv", id)
-	for _, rej := range rejectedExtras {
-		found := false
-		for _, e := range results {
-			if e["url"] == rej.URL {
-				// Always set status: rejected if this is a rejected extra
-				e["status"] = "rejected"
-				found = true
-				break
-			}
-		}
-		if !found {
-			results = append(results, map[string]string{
-				"type":   rej.ExtraType,
-				"title":  rej.ExtraTitle,
-				"url":    rej.URL,
-				"status": "rejected",
-			})
-		}
-	}
-
-	c.JSON(http.StatusOK, gin.H{"extras": results})
-}
+// getSeriesExtrasHandler is now a wrapper for sharedExtrasHandler
+var getSeriesExtrasHandler = sharedExtrasHandler("tv", "/series.json", "id")
 
 // SyncSonarrQueueItem tracks a Sonarr sync operation
 type SyncSonarrQueueItem struct {

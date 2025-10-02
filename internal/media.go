@@ -606,3 +606,50 @@ func GetMediaWithoutTrailerExtraHandler(section, cachePath, defaultPath string) 
 		}
 	}
 }
+
+// sharedExtrasHandler handles extras for both movies and series
+func sharedExtrasHandler(mediaType, cacheFile string, paramKey string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		idStr := c.Param(paramKey)
+		var id int
+		fmt.Sscanf(idStr, "%d", &id)
+		results, err := SearchExtras(mediaType, id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		mediaPath, err := FindMediaPathByID(TrailarrRoot+cacheFile, idStr)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("%s cache not found", mediaType)})
+			return
+		}
+
+		// Mark downloaded extras using shared logic
+		MarkDownloadedExtras(results, mediaPath, "type", "title")
+
+		// Add rejected extras from rejected_extras.json
+		rejectedExtras := GetRejectedExtrasForMedia(mediaType, id)
+		for _, rej := range rejectedExtras {
+			found := false
+			for _, e := range results {
+				if e["url"] == rej.URL {
+					// Always set status: rejected if this is a rejected extra
+					e["status"] = "rejected"
+					found = true
+					break
+				}
+			}
+			if !found {
+				results = append(results, map[string]string{
+					"type":   rej.ExtraType,
+					"title":  rej.ExtraTitle,
+					"url":    rej.URL,
+					"status": "rejected",
+				})
+			}
+		}
+
+		c.JSON(http.StatusOK, gin.H{"extras": results})
+	}
+}
