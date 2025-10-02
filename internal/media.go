@@ -331,8 +331,8 @@ func ScanExistingExtras(mediaPath string) map[string]bool {
 		subdir := mediaPath + "/" + entry.Name()
 		files, _ := os.ReadDir(subdir)
 		for _, f := range files {
-			if !f.IsDir() && strings.HasSuffix(f.Name(), ".mp4") {
-				title := strings.TrimSuffix(f.Name(), ".mp4")
+			if !f.IsDir() && strings.HasSuffix(f.Name(), ".mkv") {
+				title := strings.TrimSuffix(f.Name(), ".mkv")
 				key := entry.Name() + "|" + title
 				existing[key] = true
 			}
