@@ -33,11 +33,11 @@ func GetTMDBKey() (string, error) {
 	return allSettings.General.TMDBKey, nil
 }
 
-func GetTMDBId(mediaType string, id int, tmdbKey string) (int, error) {
+func GetTMDBId(mediaType MediaType, id int, tmdbKey string) (int, error) {
 	switch mediaType {
-	case "movie":
+	case MediaTypeMovie:
 		return GetMovieTMDBId(id)
-	case "tv":
+	case MediaTypeTV:
 		return GetTVTMDBId(id, tmdbKey)
 	default:
 		TrailarrLog("Warn", "TMDB", "unknown mediaType: %s", mediaType)
@@ -119,7 +119,7 @@ func GetTVTMDBId(id int, tmdbKey string) (int, error) {
 	return tmdbResult.Results[0].ID, nil
 }
 
-func FetchTMDBExtras(mediaType string, tmdbId int, tmdbKey string) ([]map[string]string, error) {
+func FetchTMDBExtras(mediaType MediaType, tmdbId int, tmdbKey string) ([]map[string]string, error) {
 	videosURL := fmt.Sprintf("https://api.themoviedb.org/3/%s/%d/videos?api_key=%s", mediaType, tmdbId, tmdbKey)
 	resp, err := http.Get(videosURL)
 	if err != nil {

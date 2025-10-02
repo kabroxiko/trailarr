@@ -10,8 +10,8 @@ import (
 )
 
 func getRadarrHandler(c *gin.Context) {
-	cachePath := TrailarrRoot + "/movies.json"
-	movies, err := loadCache(cachePath)
+	cacheFile := TrailarrRoot + "/movies.json"
+	movies, err := loadCache(cacheFile)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Movie cache not found"})
 		return
@@ -34,7 +34,7 @@ func getRadarrHandler(c *gin.Context) {
 }
 
 // getMovieExtrasHandler is now a wrapper for sharedExtrasHandler
-var getMovieExtrasHandler = sharedExtrasHandler("movie", "/movies.json", "id")
+var getMovieExtrasHandler = sharedExtrasHandler("movie")
 
 // SyncRadarrQueueItem tracks a Radarr sync operation
 type SyncRadarrQueueItem struct {

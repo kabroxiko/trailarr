@@ -13,11 +13,11 @@ import (
 )
 
 type ExtraDownloadMetadata struct {
-	MediaType  string // "movie" or "series"
-	MediaId    int    // Radarr or Sonarr ID as int
-	MediaTitle string // Movie or Series title
-	ExtraType  string // e.g. "Trailer"
-	ExtraTitle string // e.g. "Official Trailer"
+	MediaType  MediaType // "movie" or "series"
+	MediaId    int       // Radarr or Sonarr ID as int
+	MediaTitle string    // Movie or Series title
+	ExtraType  string    // e.g. "Trailer"
+	ExtraTitle string    // e.g. "Official Trailer"
 	YouTubeID  string
 	FileName   string
 	Status     string
@@ -25,13 +25,13 @@ type ExtraDownloadMetadata struct {
 }
 
 type RejectedExtra struct {
-	MediaType  string `json:"media_type"`
-	MediaId    int    `json:"media_id"`
-	MediaTitle string `json:"media_title"`
-	ExtraType  string `json:"extra_type"`
-	ExtraTitle string `json:"extra_title"`
-	URL        string `json:"url"`
-	Reason     string `json:"reason"`
+	MediaType  MediaType `json:"media_type"`
+	MediaId    int       `json:"media_id"`
+	MediaTitle string    `json:"media_title"`
+	ExtraType  string    `json:"extra_type"`
+	ExtraTitle string    `json:"extra_title"`
+	URL        string    `json:"url"`
+	Reason     string    `json:"reason"`
 }
 
 type RequestBody struct {
@@ -40,7 +40,7 @@ type RequestBody struct {
 	Args  []string          `json:"args"`
 }
 
-func DownloadYouTubeExtra(mediaType, mediaId, extraType, extraTitle, extraURL string, forceDownload ...bool) (*ExtraDownloadMetadata, error) {
+func DownloadYouTubeExtra(mediaType MediaType, mediaId, extraType, extraTitle, extraURL string, forceDownload ...bool) (*ExtraDownloadMetadata, error) {
 	var downloadInfo *downloadInfo
 	var err error
 
@@ -56,15 +56,10 @@ func DownloadYouTubeExtra(mediaType, mediaId, extraType, extraTitle, extraURL st
 
 	// Lookup media title from cache for logging
 	var mediaTitle string
-	var cachePath string
-	switch mediaType {
-	case "movie":
-		cachePath, _ = resolveCachePath("movie")
-	case "series":
-		cachePath, _ = resolveCachePath("tv")
-	}
-	if cachePath != "" {
-		items, _ := loadCache(cachePath)
+	var cacheFile string
+	cacheFile, _ = resolveCachePath(mediaType)
+	if cacheFile != "" {
+		items, _ := loadCache(cacheFile)
 		for _, m := range items {
 			if mid, ok := m["id"]; ok && fmt.Sprintf("%v", mid) == mediaId {
 				if t, ok := m["title"].(string); ok {
@@ -103,7 +98,7 @@ func DownloadYouTubeExtra(mediaType, mediaId, extraType, extraTitle, extraURL st
 }
 
 type downloadInfo struct {
-	MediaType  string
+	MediaType  MediaType
 	MediaId    int
 	MediaTitle string
 	OutDir     string
@@ -116,29 +111,20 @@ type downloadInfo struct {
 	SafeTitle  string
 }
 
-func prepareDownloadInfo(mediaType, mediaId, extraType, extraTitle, youtubeID string) (*downloadInfo, error) {
+func prepareDownloadInfo(mediaType MediaType, mediaId, extraType, extraTitle, youtubeID string) (*downloadInfo, error) {
 	// Robust base path resolution using cache and path mappings
 	var basePath string
 	var mappings [][]string
 	var err error
-	var cachePath string
+	var cacheFile string
 	var mediaTitle string
 
 	// Step 1: Resolve cache path
-	switch mediaType {
-	case "movie":
-		cachePath, err = resolveCachePath("movie")
-		mappings, _ = GetPathMappings("radarr")
-	case "series":
-		cachePath, err = resolveCachePath("tv")
-		mappings, _ = GetPathMappings("sonarr")
-	default:
-		cachePath = ""
-	}
+	cacheFile, _ = resolveCachePath(mediaType)
 
 	// Lookup media title from cache (mimic lookupMediaTitle from extras.go)
-	if cachePath != "" {
-		items, _ := loadCache(cachePath)
+	if cacheFile != "" {
+		items, _ := loadCache(cacheFile)
 		for _, m := range items {
 			if mid, ok := m["id"]; ok && fmt.Sprintf("%v", mid) == mediaId {
 				if t, ok := m["title"].(string); ok {
@@ -150,9 +136,9 @@ func prepareDownloadInfo(mediaType, mediaId, extraType, extraTitle, youtubeID st
 	}
 
 	var mappedMediaPath string
-	if err == nil && cachePath != "" {
+	if err == nil && cacheFile != "" {
 		// Step 2: Look up media path from cache using mediaId
-		mediaPath, lookupErr := FindMediaPathByID(cachePath, mediaId)
+		mediaPath, lookupErr := FindMediaPathByID(cacheFile, mediaId)
 		if lookupErr == nil && mediaPath != "" && len(mappings) > 0 {
 			// Step 3: Apply path mappings to convert root folder path
 			mappedMediaPath = mediaPath
