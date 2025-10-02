@@ -239,7 +239,7 @@ func existingExtrasHandler(c *gin.Context) {
 func downloadExtraHandler(c *gin.Context) {
 	var req struct {
 		MediaType  string `json:"mediaType"`
-		MediaName  string `json:"mediaTitle"`
+		MediaId    int    `json:"mediaId"`
 		ExtraType  string `json:"extraType"`
 		ExtraTitle string `json:"extraTitle"`
 		URL        string `json:"url"`
@@ -249,16 +249,34 @@ func downloadExtraHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": ErrInvalidRequest})
 		return
 	}
-	TrailarrLog("Info", "Extras", "[downloadExtraHandler] Download request: mediaType=%s, mediaTitle=%s, extraType=%s, extraTitle=%s, url=%s", req.MediaType, req.MediaName, req.ExtraType, req.ExtraTitle, req.URL)
+	TrailarrLog("Info", "Extras", "[downloadExtraHandler] Download request: mediaType=%s, mediaId=%d, extraType=%s, extraTitle=%s, url=%s", req.MediaType, req.MediaId, req.ExtraType, req.ExtraTitle, req.URL)
 
-	meta, err := DownloadYouTubeExtra(req.MediaType, req.MediaName, req.ExtraType, req.ExtraTitle, req.URL, true)
+	// Convert MediaId (int) to string for DownloadYouTubeExtra
+	mediaIdStr := fmt.Sprintf("%d", req.MediaId)
+	meta, err := DownloadYouTubeExtra(req.MediaType, mediaIdStr, req.ExtraType, req.ExtraTitle, req.URL, true)
 	if err != nil {
 		TrailarrLog("Warn", "Extras", "[downloadExtraHandler] Download error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	mediaTitle := resolveDownloadMediaTitle(req.MediaType, req.MediaName)
+	// Lookup media title from cache for history
+	cachePath, _ := resolveCachePath(req.MediaType)
+	mediaTitle := ""
+	if cachePath != "" {
+		items, _ := loadCache(cachePath)
+		for _, m := range items {
+			if mid, ok := m["id"]; ok && fmt.Sprintf("%v", mid) == mediaIdStr {
+				if t, ok := m["title"].(string); ok {
+					mediaTitle = t
+					break
+				}
+			}
+		}
+	}
+	if mediaTitle == "" {
+		mediaTitle = "Unknown"
+	}
 	recordDownloadHistory(mediaTitle, req.MediaType, req.ExtraType, req.ExtraTitle)
 	c.JSON(http.StatusOK, gin.H{"status": "downloaded", "meta": meta})
 }

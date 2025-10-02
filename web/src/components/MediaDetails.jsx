@@ -306,7 +306,8 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                          moviePath: media.path,
+                          mediaType: mediaType,
+                          mediaId: media.id,
                           extraType: extra.type,
                           extraTitle: extra.title,
                           url: getExtraUrl(extra)
@@ -522,7 +523,8 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
-                            moviePath: media.path,
+                            mediaType: mediaType,
+                            mediaId: media.id,
                             extraType: extra.type,
                             extraTitle: extra.title,
                             url: getExtraUrl(extra)
@@ -731,7 +733,8 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                          moviePath: media.path,
+                          mediaType: media.type,
+                          mediaId: media.id,
                           extraType: extra.type,
                           extraTitle: extra.title,
                           url: getExtraUrl(extra)
