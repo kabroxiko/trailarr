@@ -158,9 +158,26 @@ function App() {
     return { titleMatches, overviewMatches };
   };
 
+  // Compute dynamic page title
+  let pageTitle = selectedSection;
+  if (selectedSection === 'Settings') {
+    pageTitle = `${selectedSettingsSub ? selectedSettingsSub : ''} Settings`;
+  } else if (selectedSection === 'Wanted') {
+    pageTitle = `Wanted${selectedSettingsSub ? ' ' + selectedSettingsSub : ''}`;
+  } else if (selectedSection === 'System') {
+    pageTitle = `${selectedSystemSub ? selectedSystemSub : ''}`;
+  }
+
+  // Update document title dynamically
+  useEffect(() => {
+    if (window.setTrailarrTitle) {
+      window.setTrailarrTitle(pageTitle);
+    }
+  }, [pageTitle]);
+
   return (
     <div className="app-container">
-      <Header darkMode={darkMode} search={search} setSearch={setSearch} />
+      <Header darkMode={darkMode} search={search} setSearch={setSearch} pageTitle={pageTitle} />
       <div style={{ display: 'flex', width: '100%', height: 'calc(100vh - 64px)' }}>
         <Sidebar
           selectedSection={selectedSection}
@@ -217,13 +234,13 @@ function App() {
               <Route path="/movies/:id" element={<MediaDetails mediaItems={movies} loading={moviesLoading} mediaType="movie" />} />
               <Route path="/series/:id" element={<MediaDetails mediaItems={series} loading={seriesLoading} mediaType="tv" />} />
               <Route path="/history" element={<HistoryPage />} />
+              <Route path="/wanted/movies" element={<Wanted darkMode={darkMode} type="movie" />} />
+              <Route path="/wanted/series" element={<Wanted darkMode={darkMode} type="series" />} />
               <Route path="/settings/radarr" element={<SettingsPage type="radarr"/>} />
               <Route path="/settings/sonarr" element={<SettingsPage type="sonarr"/>} />
               <Route path="/settings/general" element={<GeneralSettings />} />
-              <Route path="/system/tasks" element={<Tasks />} />
-              <Route path="/wanted/movies" element={<Wanted darkMode={darkMode} type="movie" />} />
-              <Route path="/wanted/series" element={<Wanted darkMode={darkMode} type="series" />} />
               <Route path="/settings/extras" element={<ExtrasSettings darkMode={darkMode} />} />
+              <Route path="/system/tasks" element={<Tasks />} />
             </Routes>
           </div>
         </main>
