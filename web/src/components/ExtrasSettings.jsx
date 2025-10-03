@@ -1,8 +1,10 @@
+import SectionHeader from './SectionHeader.jsx';
+
 import React, { useEffect, useState } from 'react';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSave } from '@fortawesome/free-solid-svg-icons';
+import SaveLane from './SaveLane.jsx';
 import Select from 'react-select';
 import axios from 'axios';
+import Container from './Container.jsx';
 
 const EXTRA_TYPES = [
   { key: 'trailers', label: 'Trailers' },
@@ -118,30 +120,15 @@ export default function ExtrasSettings({ darkMode }) {
       });
   };
 
-  if (loading) return (
-    <div style={{ width: '100%', margin: 0, height: '100%', padding: '2rem', background: 'var(--settings-bg, #fff)', borderRadius: 12, boxShadow: '0 2px 12px #0002', color: 'var(--settings-text, #222)', boxSizing: 'border-box', overflowX: 'hidden', overflowY: 'auto', position: 'relative' }}>
-      <div style={{ textAlign: 'center', margin: '2rem' }}>Loading...</div>
-    </div>
-  );
-
   // Save lane logic
   const isChanged = EXTRA_TYPES.some(({ key }) => settings[key] !== undefined && settings[key] !== false) || Object.keys(ytFlags).length > 0;
 
   return (
-    <div style={{ width: '100%', margin: 0, height: '100%', padding: '2rem', background: 'var(--settings-bg, #fff)', borderRadius: 12, boxShadow: '0 2px 12px #0002', color: 'var(--settings-text, #222)', boxSizing: 'border-box', overflowX: 'hidden', overflowY: 'auto', position: 'relative' }}>
+    <Container>
       {/* Save lane */}
-      <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', background: 'var(--save-lane-bg, #f3f4f6)', color: 'var(--save-lane-text, #222)', padding: '0.7rem 2rem', display: 'flex', alignItems: 'center', gap: '1rem', borderTopLeftRadius: 12, borderTopRightRadius: 12, zIndex: 10, boxShadow: '0 2px 8px #0001' }}>
-        <button onClick={handleSave} disabled={saving || !isChanged} style={{ background: 'none', color: '#222', border: 'none', borderRadius: 6, padding: '0.3rem 1rem', cursor: saving || !isChanged ? 'not-allowed' : 'pointer', opacity: saving || !isChanged ? 0.7 : 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
-          <FontAwesomeIcon icon={faSave} style={{ fontSize: 22, color: 'var(--save-lane-text, #222)' }} />
-          <span style={{ fontWeight: 500, fontSize: '0.85em', color: 'var(--save-lane-text, #222)', marginTop: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1.1 }}>
-            <span>{saving || !isChanged ? 'No' : 'Save'}</span>
-            <span>Changes</span>
-          </span>
-        </button>
-        {error && <div style={{ marginLeft: 16, color: '#f44', fontWeight: 500 }}>{error}</div>}
-      </div>
+      <SaveLane onSave={handleSave} saving={saving} isChanged={isChanged} error={error} />
       <div style={{ marginTop: '4.5rem', background: 'var(--settings-bg, #fff)', color: 'var(--settings-text, #222)', borderRadius: 12, boxShadow: '0 1px 4px #0001', padding: '2rem' }}>
-        <h2 style={{ marginBottom: '1em', color: '#fff', textAlign: 'left', fontSize: 20, fontWeight: 600 }}>Extra Types</h2>
+        <SectionHeader>Extra Types</SectionHeader>
         <div style={{ marginBottom: '2em' }}>
           <Select
             isMulti
@@ -156,10 +143,10 @@ export default function ExtrasSettings({ darkMode }) {
             styles={{
               control: (base, state) => ({
                 ...base,
-                background: darkMode ? '#23232a' : '#222',
+                background: darkMode ? '#23232a' : '#fff',
                 borderColor: state.isFocused ? '#a855f7' : '#444',
                 boxShadow: state.isFocused ? '0 0 0 2px #a855f7' : 'none',
-                color: '#fff',
+                color: darkMode ? '#fff' : '#222',
                 borderRadius: 8,
                 minHeight: 32,
                 fontSize: 13,
@@ -221,7 +208,7 @@ export default function ExtrasSettings({ darkMode }) {
           />
         </div>
         <hr style={{ margin: '2em 0', borderColor: darkMode ? '#444' : '#eee' }} />
-        <h3 style={{ marginBottom: '1em', color: '#fff', textAlign: 'left' }}>yt-dlp Download Flags</h3>
+        <SectionHeader>yt-dlp Download Flags</SectionHeader>
         <form onSubmit={e => { e.preventDefault(); handleYtSave(); }}>
           {YTDLP_FLAGS.map(({ key, label, type }) => (
             <div key={key} style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
@@ -265,6 +252,6 @@ export default function ExtrasSettings({ darkMode }) {
         </form>
         {ytError && <div style={{ color: 'red', marginBottom: 12 }}>{ytError}</div>}
       </div>
-    </div>
+    </Container>
   );
 }
