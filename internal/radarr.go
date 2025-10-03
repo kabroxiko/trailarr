@@ -2,7 +2,6 @@ package internal
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
@@ -60,10 +59,6 @@ var syncRadarrStatus = struct {
 
 // Handler to force sync Radarr
 func SyncRadarr() {
-	if !GetAutoDownloadExtras() {
-		log.Println("[FORCE] Auto download of extras is disabled by general settings. Skipping forced Radarr sync.")
-		return
-	}
 	// Use generic ForceSyncMedia from media.go
 	// Only use GlobalSyncQueue for persistence and display
 	SyncMedia(
