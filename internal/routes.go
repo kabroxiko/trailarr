@@ -1,12 +1,42 @@
 package internal
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
 
 func RegisterRoutes(r *gin.Engine) {
+	// Test TMDB API key endpoint
+	r.GET("/api/test/tmdb", func(c *gin.Context) {
+		apiKey := c.Query("apiKey")
+		if apiKey == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Missing apiKey"})
+			return
+		}
+		// Make a simple TMDB API request to validate the key
+		testUrl := "https://api.themoviedb.org/3/configuration?api_key=" + apiKey
+		resp, err := http.Get(testUrl)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "error": err.Error()})
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == 200 {
+			c.JSON(http.StatusOK, gin.H{"success": true})
+		} else {
+			var body struct {
+				StatusMessage string `json:"status_message"`
+			}
+			_ = json.NewDecoder(resp.Body).Decode(&body)
+			msg := body.StatusMessage
+			if msg == "" {
+				msg = "Invalid TMDB API Key"
+			}
+			c.JSON(http.StatusOK, gin.H{"success": false, "error": msg})
+		}
+	})
 	// Ensure yt-dlp config exists at startup
 	_ = EnsureYtdlpFlagsConfigExists()
 	// YTDLP flags config endpoints
