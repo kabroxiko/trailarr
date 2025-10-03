@@ -2,9 +2,12 @@ package internal
 
 import (
 	"encoding/json"
+	"net/http"
 	"os"
 	"sync"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 type HistoryEvent struct {
@@ -18,7 +21,10 @@ type HistoryEvent struct {
 
 var historyMutex sync.Mutex
 
-// import TrailarrRoot from internal/types.go is not needed, already in same package
+func historyHandler(c *gin.Context) {
+	events := LoadHistoryEvents()
+	c.JSON(http.StatusOK, gin.H{"history": events})
+}
 
 var historyFile = TrailarrRoot + "/history.json"
 
