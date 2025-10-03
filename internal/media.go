@@ -386,10 +386,10 @@ func loadCache(path string) ([]map[string]interface{}, error) {
 		return nil, err
 	}
 
-	section, mainCachePath := detectSectionAndMainCachePath(path)
+	mediaType, mainCachePath := detectMediaTypeAndMainCachePath(path)
 	titleMap := getTitleMap(mainCachePath, path)
-	if section != "" {
-		mappings, err := GetPathMappings(section)
+	if mediaType != "" {
+		mappings, err := GetPathMappings(mediaType)
 		if err != nil {
 			mappings = nil
 		}
@@ -402,12 +402,12 @@ func loadCache(path string) ([]map[string]interface{}, error) {
 	return items, nil
 }
 
-// Helper: Detect section and main cache path
-func detectSectionAndMainCachePath(path string) (string, string) {
+// Helper: Detect media type and main cache path
+func detectMediaTypeAndMainCachePath(path string) (MediaType, string) {
 	if strings.Contains(path, "movie") || strings.Contains(path, "Movie") {
-		return "radarr", TrailarrRoot + "/movies.json"
+		return MediaTypeMovie, TrailarrRoot + "/movies.json"
 	} else if strings.Contains(path, "series") || strings.Contains(path, "Series") {
-		return "sonarr", TrailarrRoot + "/series.json"
+		return MediaTypeTV, TrailarrRoot + "/series.json"
 	}
 	return "", ""
 }
@@ -464,12 +464,12 @@ func updateItemTitle(item map[string]interface{}, titleMap map[string]string) {
 }
 
 // Writes the wanted (no trailer) media to a JSON file
-func writeWantedCache(section, cacheFile, wantedPath string) error {
+func writeWantedCache(mediaType MediaType, cacheFile, wantedPath string) error {
 	items, err := loadCache(cacheFile)
 	if err != nil {
 		return err
 	}
-	mappings, err := GetPathMappings(section)
+	mappings, err := GetPathMappings(mediaType)
 	if err != nil {
 		// If can't get mappings, use default paths
 		mappings = nil
@@ -481,7 +481,7 @@ func writeWantedCache(section, cacheFile, wantedPath string) error {
 		}
 	}
 	if len(trailerPaths) == 0 {
-		if section == "radarr" {
+		if mediaType == MediaTypeMovie {
 			trailerPaths = append(trailerPaths, "/Movies")
 		} else {
 			trailerPaths = append(trailerPaths, "/Series")
@@ -503,12 +503,12 @@ func writeWantedCache(section, cacheFile, wantedPath string) error {
 // Move SyncMediaCacheJson to media.go for shared use
 // Generic sync function for Radarr/Sonarr
 // Syncs only the JSON cache for Radarr/Sonarr, not the media files themselves
-// Pass section ("radarr" or "sonarr"), apiPath (e.g. "/api/v3/movie"), cacheFile, and a filter function for items
-func SyncMediaCacheJson(section, apiPath, cacheFile string, filter func(map[string]interface{}) bool) error {
-	url, apiKey, err := GetSectionUrlAndApiKey(section)
+// Pass mediaType (MediaTypeMovie or MediaTypeTV), apiPath (e.g. "/api/v3/movie"), cacheFile, and a filter function for items
+func SyncMediaCacheJson(provider, apiPath, cacheFile string, filter func(map[string]interface{}) bool) error {
+	url, apiKey, err := GetProviderUrlAndApiKey(provider)
 	if err != nil {
-		TrailarrLog("Warn", "SyncMediaCacheJson", "%s settings not found: %v", section, err)
-		return fmt.Errorf("%s settings not found: %w", section, err)
+		TrailarrLog("Warn", "SyncMediaCacheJson", "%s settings not found: %v", provider, err)
+		return fmt.Errorf("%s settings not found: %w", provider, err)
 	}
 	req, err := http.NewRequest("GET", url+apiPath, nil)
 	if err != nil {
@@ -519,18 +519,18 @@ func SyncMediaCacheJson(section, apiPath, cacheFile string, filter func(map[stri
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		TrailarrLog("Warn", "SyncMediaCacheJson", "error fetching %s: %v", section, err)
-		return fmt.Errorf("error fetching %s: %w", section, err)
+		TrailarrLog("Warn", "SyncMediaCacheJson", "error fetching %s: %v", provider, err)
+		return fmt.Errorf("error fetching %s: %w", provider, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		TrailarrLog("Warn", "SyncMediaCacheJson", "%s API error: %d", section, resp.StatusCode)
-		return fmt.Errorf("%s API error: %d", section, resp.StatusCode)
+		TrailarrLog("Warn", "SyncMediaCacheJson", "%s API error: %d", provider, resp.StatusCode)
+		return fmt.Errorf("%s API error: %d", provider, resp.StatusCode)
 	}
 	var allItems []map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&allItems); err != nil {
-		TrailarrLog("Warn", "SyncMediaCacheJson", "failed to decode %s response: %v", section, err)
-		return fmt.Errorf("failed to decode %s response: %w", section, err)
+		TrailarrLog("Warn", "SyncMediaCacheJson", "failed to decode %s response: %v", provider, err)
+		return fmt.Errorf("failed to decode %s response: %w", provider, err)
 	}
 	items := make([]map[string]interface{}, 0)
 	for _, m := range allItems {
@@ -540,16 +540,19 @@ func SyncMediaCacheJson(section, apiPath, cacheFile string, filter func(map[stri
 	}
 	cacheData, _ := json.MarshalIndent(items, "", "  ")
 	_ = os.WriteFile(cacheFile, cacheData, 0644)
-	TrailarrLog("Info", "SyncMediaCacheJson", "[Sync%s] Synced %d items to cache.", section, len(items))
+	TrailarrLog("Info", "SyncMediaCacheJson", "[Sync%s] Synced %d items to cache.", provider, len(items))
 
 	// After syncing main cache, update wanted cache
 	var wantedPath string
-	if section == "radarr" {
+	var mediaType MediaType
+	if provider == "radarr" {
 		wantedPath = MoviesWantedFile
+		mediaType = MediaTypeMovie
 	} else {
 		wantedPath = SeriesWantedFile
+		mediaType = MediaTypeTV
 	}
-	_ = writeWantedCache(section, cacheFile, wantedPath)
+	_ = writeWantedCache(mediaType, cacheFile, wantedPath)
 	return nil
 }
 

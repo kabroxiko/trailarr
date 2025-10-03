@@ -135,12 +135,19 @@ func prepareDownloadInfo(mediaType MediaType, mediaId, extraType, extraTitle, yo
 		}
 	}
 
+	// Step 2: Get path mappings using GetPathMappings
+	mappings, err = GetPathMappings(mediaType)
+	if err != nil {
+		TrailarrLog("error", "YouTube", "Failed to get path mappings: %v", err)
+		mappings = [][]string{}
+	}
+
 	var mappedMediaPath string
 	if err == nil && cacheFile != "" {
-		// Step 2: Look up media path from cache using mediaId
+		// Step 3: Look up media path from cache using mediaId
 		mediaPath, lookupErr := FindMediaPathByID(cacheFile, mediaId)
 		if lookupErr == nil && mediaPath != "" && len(mappings) > 0 {
-			// Step 3: Apply path mappings to convert root folder path
+			// Step 4: Apply path mappings to convert root folder path
 			mappedMediaPath = mediaPath
 			for _, m := range mappings {
 				if len(m) > 1 && strings.HasPrefix(mediaPath, m[0]) {

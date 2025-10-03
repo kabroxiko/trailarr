@@ -462,7 +462,11 @@ func loadMediaSettings(section string) (MediaSettings, error) {
 }
 
 // GetPathMappings reads pathMappings for a section ("radarr" or "sonarr") from config.yml and returns as [][]string
-func GetPathMappings(section string) ([][]string, error) {
+func GetPathMappings(mediaType MediaType) ([][]string, error) {
+	section := "radarr"
+	if mediaType == MediaTypeTV {
+		section = "sonarr"
+	}
 	data, err := os.ReadFile(ConfigPath)
 	if err != nil {
 		return nil, err
@@ -491,7 +495,7 @@ func GetPathMappings(section string) ([][]string, error) {
 
 // Returns a Gin handler for settings (url, apiKey, pathMappings) for a given section ("radarr" or "sonarr")
 // Returns url and apiKey for a given section (radarr/sonarr) from config.yml
-func GetSectionUrlAndApiKey(section string) (string, string, error) {
+func GetProviderUrlAndApiKey(provider string) (string, string, error) {
 	data, err := os.ReadFile(ConfigPath)
 	if err != nil {
 		return "", "", err
@@ -500,10 +504,10 @@ func GetSectionUrlAndApiKey(section string) (string, string, error) {
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return "", "", err
 	}
-	sec, ok := config[section].(map[string]interface{})
+	sec, ok := config[provider].(map[string]interface{})
 	if !ok {
-		TrailarrLog("Warn", "Settings", "section %s not found in config", section)
-		return "", "", fmt.Errorf("section %s not found in config", section)
+		TrailarrLog("Warn", "Settings", "section %s not found in config", provider)
+		return "", "", fmt.Errorf("section %s not found in config", provider)
 	}
 	url, _ := sec["url"].(string)
 	apiKey, _ := sec["apiKey"].(string)
