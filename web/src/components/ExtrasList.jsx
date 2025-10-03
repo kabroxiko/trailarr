@@ -22,7 +22,7 @@ function ExtrasList({
   const renderExtrasGroup = (type, typeExtras) => (
     <div key={type} style={{ marginBottom: 32 }}>
       <h3 style={{
-        color: '#111',
+        color: darkMode ? '#fff' : '#111',
         fontSize: 20,
         fontWeight: 700,
         margin: '0 0 18px 8px',
