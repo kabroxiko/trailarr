@@ -20,66 +20,22 @@ export default function Sidebar({ selectedSection, setSelectedSection, selectedS
       <nav>
         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {[
-            { name: 'Movies', icon: <IconButton icon={<FontAwesomeIcon icon={faFilm} color={darkMode ? '#e5e7eb' : '#333'} />} style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} disabled /> , route: '/' },
-            { name: 'Series', icon: <IconButton icon={<FontAwesomeIcon icon={faCog} color={darkMode ? '#e5e7eb' : '#333'} />} style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} disabled />, route: '/series' },
-            { name: 'History', icon: <IconButton icon={<FontAwesomeIcon icon={faHistory} color={darkMode ? '#e5e7eb' : '#333'} />} style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} disabled />, route: '/history' },
-            { name: 'Wanted', icon: <IconButton icon={<FontAwesomeIcon icon={faStar} color={darkMode ? '#e5e7eb' : '#333'} />} style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} disabled /> },
-            { name: 'Blacklist', icon: <IconButton icon={<FontAwesomeIcon icon={faBan} color={darkMode ? '#e5e7eb' : '#333'} />} style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} disabled /> },
-            { name: 'Settings', icon: <IconButton icon={<FontAwesomeIcon icon={faCog} color={darkMode ? '#e5e7eb' : '#333'} />} style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} disabled /> },
-            { name: 'System', icon: <IconButton icon={<FontAwesomeIcon icon={faServer} color={darkMode ? '#e5e7eb' : '#333'} />} style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} disabled /> }
+            { name: 'Movies', icon: faFilm, route: '/' },
+            { name: 'Series', icon: faCog, route: '/series' },
+            { name: 'History', icon: faHistory, route: '/history' },
+            { name: 'Wanted', icon: faStar },
+            { name: 'Blacklist', icon: faBan },
+            { name: 'Settings', icon: faCog },
+            { name: 'System', icon: faServer }
           ].map(({ name, icon, route }) => (
             <li key={name} style={{ marginBottom: 16 }}>
-              {name === 'Settings' ? (
-                <div
-                  style={{
-                    textDecoration: 'none',
-                    background: selectedSection === name ? (darkMode ? '#333' : '#f3f4f6') : 'none',
-                    border: 'none',
-                    color: selectedSection === name ? (darkMode ? '#a855f7' : '#6d28d9') : (darkMode ? '#e5e7eb' : '#333'),
-                    fontWeight: selectedSection === name ? 'bold' : 'normal',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '0.5em 1em',
-                    borderRadius: 6,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.75em',
-                  }}
-                  onClick={() => handleSectionClick(name)}
-                >
-                  <span style={{ fontSize: 18, display: 'flex', alignItems: 'center' }}>{icon}</span>
-                  {name}
-                </div>
-              ) : name === 'System' ? (
-                <div
-                  style={{
-                    textDecoration: 'none',
-                    background: selectedSection === name ? (darkMode ? '#333' : '#f3f4f6') : 'none',
-                    border: 'none',
-                    color: selectedSection === name ? (darkMode ? '#a855f7' : '#6d28d9') : (darkMode ? '#e5e7eb' : '#333'),
-                    fontWeight: selectedSection === name ? 'bold' : 'normal',
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '0.5em 1em',
-                    borderRadius: 6,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.75em',
-                  }}
-                  onClick={() => handleSectionClick(name)}
-                >
-                  <span style={{ fontSize: 18, display: 'flex', alignItems: 'center' }}>{icon}</span>
-                  {name}
-                </div>
-              ) : route ? (
+              {route ? (
                 <Link
                   to={route}
-                  style={{ textDecoration: 'none', background: 'none', border: 'none', color: selectedSection === name ? (darkMode ? '#a855f7' : '#6d28d9') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSection === name ? 'bold' : 'normal', width: '100%', textAlign: 'left', padding: '0.5em 1em', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75em' }}
+                  style={{ textDecoration: 'none', background: selectedSection === name ? (darkMode ? '#333' : '#f3f4f6') : 'none', border: 'none', color: selectedSection === name ? (darkMode ? '#a855f7' : '#6d28d9') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSection === name ? 'bold' : 'normal', width: '100%', textAlign: 'left', padding: '0.5em 1em', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75em' }}
                   onClick={() => setSelectedSection(name)}
                 >
-                  <span style={{ fontSize: 18, display: 'flex', alignItems: 'center' }}>{icon}</span>
+                  <IconButton icon={<FontAwesomeIcon icon={icon} color={darkMode ? '#e5e7eb' : '#333'} />} style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} />
                   {name}
                 </Link>
               ) : (
@@ -101,7 +57,7 @@ export default function Sidebar({ selectedSection, setSelectedSection, selectedS
                   }}
                   onClick={() => handleSectionClick(name)}
                 >
-                  <span style={{ fontSize: 18, display: 'flex', alignItems: 'center' }}>{icon}</span>
+                  <IconButton icon={<FontAwesomeIcon icon={icon} color={darkMode ? '#e5e7eb' : '#333'} />} style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} />
                   {name}
                 </div>
               )}
