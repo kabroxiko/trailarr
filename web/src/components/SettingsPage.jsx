@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import DirectoryPicker from './DirectoryPicker';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faFolderOpen, faSave } from '@fortawesome/free-solid-svg-icons';
+import { faFolderOpen, faSave, faPlug, faCheckCircle, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
 import { faTrashAlt } from '@fortawesome/free-regular-svg-icons';
 
 export default function SettingsPage({ type }) {
@@ -178,31 +178,79 @@ export default function SettingsPage({ type }) {
                   <input name="url" value={settings.url} onChange={handleChange} style={{ width: '60%', minWidth: 220, maxWidth: 600, padding: '0.5rem', borderRadius: 6, border: '1px solid #bbb', background: 'var(--settings-input-bg, #f5f5f5)', color: 'var(--settings-input-text, #222)' }} />
                 </label>
               </div>
-              <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-                <label style={{ fontWeight: 600, fontSize: '1.15em', marginBottom: 6, display: 'block', textAlign: 'left', flex: 1 }}>API Key<br />
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.7rem' }}>
+                <label style={{ fontWeight: 600, fontSize: '1.15em', marginBottom: 6, display: 'block', textAlign: 'left', width: '100%' }}>API Key<br />
                   <input name="apiKey" value={settings.apiKey} onChange={handleChange} style={{ width: '60%', minWidth: 220, maxWidth: 600, padding: '0.5rem', borderRadius: 6, border: '1px solid #bbb', background: 'var(--settings-input-bg, #f5f5f5)', color: 'var(--settings-input-text, #222)' }} />
                 </label>
-                <button
-                  type="button"
-                  onClick={testConnection}
-                  disabled={testing || !settings.url || !settings.apiKey}
-                  style={{
-                    background: '#007bff',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 6,
-                    padding: '0.5rem 1.2rem',
-                    fontWeight: 600,
-                    cursor: testing || !settings.url || !settings.apiKey ? 'not-allowed' : 'pointer',
-                    opacity: testing || !settings.url || !settings.apiKey ? 0.6 : 1,
-                    marginLeft: 8
-                  }}
-                >
-                  {testing ? 'Testing...' : 'Test Connection'}
-                </button>
-                {testResult && (
-                  <span style={{ marginLeft: 12, color: testResult.includes('success') ? '#0a0' : '#c00', fontWeight: 500 }}>{testResult}</span>
-                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', width: '100%' }}>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={testConnection}
+                    onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && !testing && settings.url && settings.apiKey) testConnection(); }}
+                    title="Test Connection"
+                    aria-label="Test Connection"
+                    style={{
+                      cursor: testing || !settings.url || !settings.apiKey ? 'not-allowed' : 'pointer',
+                      opacity: testing || !settings.url || !settings.apiKey ? 0.6 : 1,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      margin: 0,
+                      outline: 'none'
+                    }}
+                  >
+                    <span style={{ position: 'relative', display: 'inline-block', width: 22, height: 22 }}>
+                      <FontAwesomeIcon
+                        icon={faPlug}
+                        style={{
+                          fontSize: 22,
+                          color: 'var(--settings-text, #222)',
+                          transition: 'color 0.2s',
+                          position: 'absolute',
+                          left: 0,
+                          top: 0
+                        }}
+                      />
+                      {testResult && testResult.includes('success') && (
+                        <FontAwesomeIcon
+                          icon={faCheckCircle}
+                          style={{
+                            fontSize: 13,
+                            color: '#0a0',
+                            position: 'absolute',
+                            right: -8,
+                            bottom: -8,
+                            pointerEvents: 'none',
+                            background: 'var(--settings-bg, #fff)',
+                            borderRadius: '50%'
+                          }}
+                        />
+                      )}
+                      {testResult && !testResult.includes('success') && (
+                        <FontAwesomeIcon
+                          icon={faTimesCircle}
+                          style={{
+                            fontSize: 13,
+                            color: '#c00',
+                            position: 'absolute',
+                            right: -8,
+                            bottom: -8,
+                            pointerEvents: 'none',
+                            background: 'var(--settings-bg, #fff)',
+                            borderRadius: '50%'
+                          }}
+                        />
+                      )}
+                    </span>
+                  </span>
+                  {testResult && (
+                    <span style={{ marginLeft: 12, color: testResult.includes('success') ? '#0a0' : '#c00', fontWeight: 500 }}>{testResult}</span>
+                  )}
+                </div>
               </div>
             </div>
             <h3 style={{ margin: '2rem 0 1rem', textAlign: 'left' }}>Path Mappings</h3>
@@ -241,7 +289,7 @@ export default function SettingsPage({ type }) {
                           style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', height: '100%', justifyContent: 'center', verticalAlign: 'middle' }}
                           aria-label="Remove path mapping"
                         >
-                          <FontAwesomeIcon icon={faTrashAlt} style={{ fontSize: 20, color: '#222', filter: 'drop-shadow(0 1px 2px #0002)', alignSelf: 'center' }} />
+                          <FontAwesomeIcon icon={faTrashAlt} style={{ fontSize: 20, color: 'var(--settings-text, #222)', filter: 'drop-shadow(0 1px 2px #0002)', alignSelf: 'center' }} />
                         </span>
                     </td>
                   </tr>

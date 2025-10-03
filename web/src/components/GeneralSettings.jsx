@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSave } from '@fortawesome/free-solid-svg-icons';
+import { faSave, faPlug, faCheckCircle, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
 
 export default function GeneralSettings() {
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState('');
   const [tmdbKey, setTmdbKey] = useState('');
   const [autoDownloadExtras, setAutoDownloadExtras] = useState(true);
   const [originalKey, setOriginalKey] = useState('');
@@ -36,6 +38,28 @@ export default function GeneralSettings() {
       });
   }, []);
   const isChanged = tmdbKey !== originalKey || autoDownloadExtras !== originalAutoDownload;
+
+  const testTmdbKey = async () => {
+    setTesting(true);
+    setTestResult('');
+    try {
+      const res = await fetch(`/api/test/tmdb?apiKey=${encodeURIComponent(tmdbKey)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setTestResult('Connection successful!');
+        } else {
+          setTestResult(data.error || 'Connection failed.');
+        }
+      } else {
+        setTestResult('Connection failed.');
+      }
+    } catch {
+      setTestResult('Connection failed.');
+    }
+    setTesting(false);
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setMessage('');
@@ -73,12 +97,85 @@ export default function GeneralSettings() {
       <div style={{ marginTop: '4.5rem', background: 'var(--settings-bg, #fff)', color: 'var(--settings-text, #222)', borderRadius: 12, boxShadow: '0 1px 4px #0001', padding: '2rem' }}>
         <div style={{ marginBottom: '1.5rem', display: 'block', width: '100%' }}>
           <label style={{ fontWeight: 600, fontSize: '1.15em', marginBottom: 6, display: 'block', textAlign: 'left' }}>TMDB API Key<br />
-            <input
-              type="text"
-              value={tmdbKey}
-              onChange={e => setTmdbKey(e.target.value)}
-              style={{ width: '60%', minWidth: 220, maxWidth: 600, padding: '0.5rem', borderRadius: 6, border: '1px solid #bbb', background: 'var(--settings-input-bg, #f5f5f5)', color: 'var(--settings-input-text, #222)' }}
-            />
+            <div style={{ width: '100%' }}>
+              <input
+                type="text"
+                value={tmdbKey}
+                onChange={e => setTmdbKey(e.target.value)}
+                style={{ width: '60%', minWidth: 220, maxWidth: 600, padding: '0.5rem', borderRadius: 6, border: '1px solid #bbb', background: 'var(--settings-input-bg, #f5f5f5)', color: 'var(--settings-input-text, #222)' }}
+              />
+              <div style={{ marginTop: '0.7rem', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem', width: '60%' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', width: '100%' }}>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={testTmdbKey}
+                    onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && !testing && tmdbKey) testTmdbKey(); }}
+                    title="Test TMDB Key"
+                    aria-label="Test TMDB Key"
+                    style={{
+                      cursor: testing || !tmdbKey ? 'not-allowed' : 'pointer',
+                      opacity: testing || !tmdbKey ? 0.6 : 1,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      margin: 0,
+                      outline: 'none'
+                    }}
+                  >
+                    <span style={{ position: 'relative', display: 'inline-block', width: 22, height: 22 }}>
+                      <FontAwesomeIcon
+                        icon={faPlug}
+                        style={{
+                          fontSize: 22,
+                          color: 'var(--settings-text, #222)',
+                          transition: 'color 0.2s',
+                          position: 'absolute',
+                          left: 0,
+                          top: 0
+                        }}
+                      />
+                      {testResult && testResult.includes('success') && (
+                        <FontAwesomeIcon
+                          icon={faCheckCircle}
+                          style={{
+                            fontSize: 13,
+                            color: '#0a0',
+                            position: 'absolute',
+                            right: -8,
+                            bottom: -8,
+                            pointerEvents: 'none',
+                            background: 'var(--settings-bg, #fff)',
+                            borderRadius: '50%'
+                          }}
+                        />
+                      )}
+                      {testResult && !testResult.includes('success') && (
+                        <FontAwesomeIcon
+                          icon={faTimesCircle}
+                          style={{
+                            fontSize: 13,
+                            color: '#c00',
+                            position: 'absolute',
+                            right: -8,
+                            bottom: -8,
+                            pointerEvents: 'none',
+                            background: 'var(--settings-bg, #fff)',
+                            borderRadius: '50%'
+                          }}
+                        />
+                      )}
+                    </span>
+                  </span>
+                  {testResult && (
+                    <span style={{ color: testResult.includes('success') ? '#0a0' : '#c00', fontWeight: 500 }}>{testResult}</span>
+                  )}
+                </div>
+              </div>
+            </div>
           </label>
         </div>
         <div style={{ marginBottom: '1.5rem', display: 'block', width: '100%' }}>
