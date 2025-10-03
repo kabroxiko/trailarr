@@ -69,7 +69,7 @@ type RequestBody struct {
 	Args  []string          `json:"args"`
 }
 
-func DownloadYouTubeExtra(mediaType MediaType, mediaId, extraType, extraTitle, extraURL string, forceDownload ...bool) (*ExtraDownloadMetadata, error) {
+func DownloadYouTubeExtra(mediaType MediaType, mediaId int, extraType, extraTitle, extraURL string, forceDownload ...bool) (*ExtraDownloadMetadata, error) {
 	var downloadInfo *downloadInfo
 	var err error
 
@@ -90,7 +90,8 @@ func DownloadYouTubeExtra(mediaType MediaType, mediaId, extraType, extraTitle, e
 	if cacheFile != "" {
 		items, _ := loadCache(cacheFile)
 		for _, m := range items {
-			if mid, ok := m["id"]; ok && fmt.Sprintf("%v", mid) == mediaId {
+			idInt, ok := parseMediaID(m["id"])
+			if ok && idInt == mediaId {
 				if t, ok := m["title"].(string); ok {
 					mediaTitle = t
 					break
@@ -140,7 +141,7 @@ type downloadInfo struct {
 	SafeTitle  string
 }
 
-func prepareDownloadInfo(mediaType MediaType, mediaId, extraType, extraTitle, youtubeID string) (*downloadInfo, error) {
+func prepareDownloadInfo(mediaType MediaType, mediaId int, extraType, extraTitle, youtubeID string) (*downloadInfo, error) {
 	// Robust base path resolution using cache and path mappings
 	var basePath string
 	var mappings [][]string
@@ -155,7 +156,8 @@ func prepareDownloadInfo(mediaType MediaType, mediaId, extraType, extraTitle, yo
 	if cacheFile != "" {
 		items, _ := loadCache(cacheFile)
 		for _, m := range items {
-			if mid, ok := m["id"]; ok && fmt.Sprintf("%v", mid) == mediaId {
+			idInt, ok := parseMediaID(m["id"])
+			if ok && idInt == mediaId {
 				if t, ok := m["title"].(string); ok {
 					mediaTitle = t
 					break
@@ -232,6 +234,7 @@ func prepareDownloadInfo(mediaType MediaType, mediaId, extraType, extraTitle, yo
 
 	return &downloadInfo{
 		MediaType:  mediaType,
+		MediaId:    mediaId,
 		MediaTitle: mediaTitle,
 		OutDir:     outDir,
 		OutFile:    outFile,
