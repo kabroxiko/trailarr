@@ -256,7 +256,7 @@ func downloadMissingExtrasWithTypeFilter(cfg ExtraTypesConfig, mediaType MediaTy
 		if err != nil {
 			continue
 		}
-		mediaPath, err := FindMediaPathByID(cacheFile, fmt.Sprintf("%v", item["id"]))
+		mediaPath, err := FindMediaPathByID(cacheFile, idInt)
 		if err != nil || mediaPath == "" {
 			continue
 		}
@@ -272,15 +272,14 @@ func filterAndDownloadTypeFilteredExtras(cfg ExtraTypesConfig, mediaType MediaTy
 			continue
 		}
 		if extra.Status == "missing" && extra.URL != "" {
-			err := handleTypeFilteredExtraDownload(mediaType, item, extra)
+			err := handleTypeFilteredExtraDownload(mediaType, item["id"].(int), extra)
 			CheckErrLog("Warn", "Tasks", "[DownloadMissingExtrasWithTypeFilter] Failed to download", err)
 		}
 	}
 }
 
-func handleTypeFilteredExtraDownload(mediaType MediaType, item map[string]interface{}, extra Extra) error {
-	title, _ := item["title"].(string)
-	_, err := DownloadYouTubeExtra(mediaType, title, extra.Type, extra.Title, extra.URL)
+func handleTypeFilteredExtraDownload(mediaType MediaType, mediaId int, extra Extra) error {
+	_, err := DownloadYouTubeExtra(mediaType, mediaId, extra.Type, extra.Title, extra.URL)
 	return err
 }
 

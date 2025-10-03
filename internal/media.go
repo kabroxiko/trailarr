@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -108,22 +107,22 @@ func DownloadMissingExtras(mediaType MediaType, cacheFile string) error {
 			TrailarrLog("Warn", "DownloadMissingExtras", "SearchExtras error: %v", err)
 			return false
 		}
-		mediaPath, err := FindMediaPathByID(cacheFile, fmt.Sprintf("%v", m["id"]))
+		mediaPath, err := FindMediaPathByID(cacheFile, idInt)
 		if err != nil || mediaPath == "" {
 			TrailarrLog("Warn", "DownloadMissingExtras", "FindMediaPathByID error or empty: %v, mediaPath=%s", err, mediaPath)
 			return false
 		}
 		return true
 	})
-	mapped := Map(filtered, func(m map[string]interface{}) downloadItem {
-		idInt, _ := parseMediaID(m["id"])
+	mapped := Map(filtered, func(media map[string]interface{}) downloadItem {
+		idInt, _ := parseMediaID(media["id"])
 		extras, _ := SearchExtras(mediaType, idInt)
-		mediaPath, _ := FindMediaPathByID(cacheFile, fmt.Sprintf("%v", m["id"]))
+		mediaPath, _ := FindMediaPathByID(cacheFile, idInt)
 		MarkDownloadedExtras(extras, mediaPath, "type", "title")
 		return downloadItem{idInt, mediaPath, extras}
 	})
 	for _, di := range mapped {
-		filterAndDownloadExtras(mediaType, di.mediaPath, di.extras, config)
+		filterAndDownloadExtras(mediaType, di.idInt, di.extras, config)
 	}
 	return nil
 }
@@ -146,12 +145,12 @@ func parseMediaID(id interface{}) (int, bool) {
 	return idInt, true
 }
 
-func filterAndDownloadExtras(mediaType MediaType, mediaPath string, extras []Extra, config ExtraTypesConfig) {
+func filterAndDownloadExtras(mediaType MediaType, mediaId int, extras []Extra, config ExtraTypesConfig) {
 	filtered := Filter(extras, func(extra Extra) bool {
 		return shouldDownloadExtra(extra, config)
 	})
 	for _, extra := range filtered {
-		err := handleExtraDownload(mediaType, mediaPath, extra)
+		err := handleExtraDownload(mediaType, mediaId, extra)
 		CheckErrLog("Warn", "DownloadMissingExtras", "Failed to download", err)
 	}
 }
@@ -165,8 +164,8 @@ func shouldDownloadExtra(extra Extra, config ExtraTypesConfig) bool {
 	return isExtraTypeEnabled(config, canonical)
 }
 
-func handleExtraDownload(mediaType MediaType, mediaPath string, extra Extra) error {
-	_, err := DownloadYouTubeExtra(mediaType, filepath.Base(mediaPath), extra.Type, extra.Title, extra.URL)
+func handleExtraDownload(mediaType MediaType, mediaId int, extra Extra) error {
+	_, err := DownloadYouTubeExtra(mediaType, mediaId, extra.Type, extra.Title, extra.URL)
 	return err
 }
 
@@ -406,14 +405,18 @@ func CacheMediaPosters(
 }
 
 // Finds the media path for a given id in a cache file
-func FindMediaPathByID(cacheFile string, idStr string) (string, error) {
+func FindMediaPathByID(cacheFile string, mediaId int) (string, error) {
 	items, err := loadCache(cacheFile)
 	if CheckErrLog("Warn", "FindMediaPathByID", "Failed to load cache", err) != nil {
 		return "", err
 	}
-	for _, m := range items {
-		if mid, ok := m["id"]; ok && fmt.Sprintf("%v", mid) == idStr {
-			if p, ok := m["path"].(string); ok {
+	for _, item := range items {
+		idInt, ok := parseMediaID(item["id"])
+		if !ok {
+			continue
+		}
+		if idInt == mediaId {
+			if p, ok := item["path"].(string); ok {
 				return p, nil
 			}
 			break
@@ -713,30 +716,39 @@ func sharedExtrasHandler(mediaType MediaType) gin.HandlerFunc {
 			return
 		}
 		cacheFile, _ := resolveCachePath(mediaType)
-		mediaPath, err := FindMediaPathByID(cacheFile, idStr)
+		mediaPath, err := FindMediaPathByID(cacheFile, id)
 		if err != nil {
 			respondError(c, http.StatusInternalServerError, fmt.Sprintf("%s cache not found", mediaType))
 			return
 		}
 		MarkDownloadedExtras(extras, mediaPath, "type", "title")
 		rejectedExtras := GetRejectedExtrasForMedia(mediaType, id)
+		TrailarrLog("Debug", "sharedExtrasHandler", "Rejected extras: %+v", rejectedExtras)
 		urlInResults := make(map[string]struct{})
 		for _, extra := range extras {
 			urlInResults[extra.URL] = struct{}{}
 		}
-		missingRejected := Filter(rejectedExtras, func(rej RejectedExtra) bool {
-			_, exists := urlInResults[rej.URL]
-			return !exists
-		})
-		mappedRejected := Map(missingRejected, func(rej RejectedExtra) Extra {
-			return Extra{
-				Type:   rej.ExtraType,
-				Title:  rej.ExtraTitle,
-				URL:    rej.URL,
-				Status: "rejected",
+		// Set status to "rejected" for any extra whose URL matches a rejected extra
+		rejectedURLs := make(map[string]RejectedExtra)
+		for _, rej := range rejectedExtras {
+			rejectedURLs[rej.URL] = rej
+		}
+		for i, extra := range extras {
+			if _, exists := rejectedURLs[extra.URL]; exists {
+				extras[i].Status = "rejected"
 			}
-		})
-		extras = append(extras, mappedRejected...)
+		}
+		// Also append any rejected extras not already present in extras
+		for _, rej := range rejectedExtras {
+			if _, exists := urlInResults[rej.URL]; !exists {
+				extras = append(extras, Extra{
+					Type:   rej.ExtraType,
+					Title:  rej.ExtraTitle,
+					URL:    rej.URL,
+					Status: "rejected",
+				})
+			}
+		}
 		TrailarrLog("Debug", "sharedExtrasHandler", "Extras response: %+v", extras)
 		respondJSON(c, http.StatusOK, gin.H{"extras": extras})
 	}

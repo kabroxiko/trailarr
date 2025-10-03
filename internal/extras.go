@@ -45,7 +45,7 @@ func deleteExtraHandler(c *gin.Context) {
 
 	cacheFile, _ := resolveCachePath(req.MediaType)
 
-	mediaPath, err := FindMediaPathByID(cacheFile, fmt.Sprintf("%d", req.MediaId))
+	mediaPath, err := FindMediaPathByID(cacheFile, req.MediaId)
 	if err != nil || mediaPath == "" {
 		respondError(c, http.StatusNotFound, "Media not found")
 		return
@@ -78,7 +78,8 @@ func lookupMediaTitle(cacheFile string, mediaId int) string {
 		return ""
 	}
 	for _, m := range items {
-		if mid, ok := m["id"]; ok && fmt.Sprintf("%v", mid) == fmt.Sprintf("%d", mediaId) {
+		idInt, ok := parseMediaID(m["id"])
+		if ok && idInt == mediaId {
 			if t, ok := m["title"].(string); ok {
 				return t
 			}
@@ -265,8 +266,7 @@ func downloadExtraHandler(c *gin.Context) {
 	TrailarrLog("Info", "Extras", "[downloadExtraHandler] Download request: mediaType=%s, mediaId=%d, extraType=%s, extraTitle=%s, url=%s", req.MediaType, req.MediaId, req.ExtraType, req.ExtraTitle, req.URL)
 
 	// Convert MediaId (int) to string for DownloadYouTubeExtra
-	mediaIdStr := fmt.Sprintf("%d", req.MediaId)
-	meta, err := DownloadYouTubeExtra(req.MediaType, mediaIdStr, req.ExtraType, req.ExtraTitle, req.URL, true)
+	meta, err := DownloadYouTubeExtra(req.MediaType, req.MediaId, req.ExtraType, req.ExtraTitle, req.URL, true)
 	if CheckErrLog("Warn", "Extras", "[downloadExtraHandler] Download error", err) != nil {
 		respondError(c, http.StatusInternalServerError, err.Error())
 		return
@@ -278,7 +278,8 @@ func downloadExtraHandler(c *gin.Context) {
 	if cacheFile != "" {
 		items, _ := loadCache(cacheFile)
 		for _, m := range items {
-			if mid, ok := m["id"]; ok && fmt.Sprintf("%v", mid) == mediaIdStr {
+			idInt, ok := parseMediaID(m["id"])
+			if ok && idInt == req.MediaId {
 				if t, ok := m["title"].(string); ok {
 					mediaTitle = t
 					break
