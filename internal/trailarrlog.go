@@ -37,3 +37,11 @@ func TrailarrLog(level, component, message string, args ...interface{}) {
 		logWriter.Write([]byte(logLine))
 	}
 }
+
+// CheckErrLog logs the error with context and returns it (for propagation)
+func CheckErrLog(level, component, context string, err error) error {
+	if err != nil {
+		TrailarrLog(level, component, "%s: %v", context, err)
+	}
+	return err
+}

@@ -13,6 +13,65 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Generic function to sync media images for Radarr/Sonarr
+func SyncMediaImages(provider, apiPath, cacheFile string, filter func(map[string]interface{}) bool, posterDir string, posterSuffixes []string) error {
+	err := SyncMediaCacheJson(provider, apiPath, cacheFile, filter)
+	if err != nil {
+		return err
+	}
+	items, err := loadCache(cacheFile)
+	if err != nil {
+		return err
+	}
+	CacheMediaPosters(
+		provider,
+		posterDir,
+		items,
+		"id",
+		posterSuffixes,
+		true, // debug
+	)
+	return nil
+}
+
+// Generic handler for Radarr/Sonarr sync status
+func GetSyncStatusHandler(section string, status *SyncStatus, displayName string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		interval := Timings[section]
+		respondJSON(c, http.StatusOK, gin.H{
+			"scheduled": gin.H{
+				"name":          "Sync with " + displayName,
+				"interval":      fmt.Sprintf("%d minutes", interval),
+				"lastExecution": LastExecution(status),
+				"lastDuration":  LastDuration(status).String(),
+				"nextExecution": NextExecution(status),
+				"lastError":     LastError(status),
+			},
+			"queue": Queue(status),
+		})
+	}
+}
+
+// Generic handler for listing media (movies/series)
+func GetMediaHandler(section, cacheFile, key string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		items, err := loadCache(cacheFile)
+		if err != nil {
+			respondError(c, http.StatusInternalServerError, section+" cache not found")
+			return
+		}
+		idParam := c.Query("id")
+		filtered := items
+		if idParam != "" {
+			filtered = Filter(items, func(m map[string]interface{}) bool {
+				id, ok := m[key]
+				return ok && fmt.Sprintf("%v", id) == idParam
+			})
+		}
+		respondJSON(c, http.StatusOK, gin.H{section: filtered})
+	}
+}
+
 var GlobalSyncQueue []SyncQueueItem
 
 const (
@@ -29,31 +88,42 @@ func DownloadMissingExtras(mediaType MediaType, cacheFile string) error {
 	}
 	TrailarrLog("Info", "DownloadMissingExtras", "DownloadMissingExtras: mediaType=%s, cacheFile=%s", mediaType, cacheFile)
 	items, err := loadCache(cacheFile)
-	if err != nil {
-		TrailarrLog("Warn", "DownloadMissingExtras", "Failed to load cache: %v", err)
+	if CheckErrLog("Warn", "DownloadMissingExtras", "Failed to load cache", err) != nil {
 		return err
 	}
-	for _, m := range items {
+	type downloadItem struct {
+		idInt     int
+		mediaPath string
+		extras    []Extra
+	}
+	config, _ := GetExtraTypesConfig()
+	filtered := Filter(items, func(m map[string]interface{}) bool {
 		idInt, ok := parseMediaID(m["id"])
 		if !ok {
 			TrailarrLog("Warn", "DownloadMissingExtras", "Missing or invalid id in item: %v", m)
-			continue
+			return false
 		}
-		TrailarrLog("Debug", "DownloadMissingExtras", "Item idInt=%d", idInt)
-		extras, err := SearchExtras(mediaType, idInt)
+		_, err := SearchExtras(mediaType, idInt)
 		if err != nil {
 			TrailarrLog("Warn", "DownloadMissingExtras", "SearchExtras error: %v", err)
-			continue
+			return false
 		}
 		mediaPath, err := FindMediaPathByID(cacheFile, fmt.Sprintf("%v", m["id"]))
 		if err != nil || mediaPath == "" {
 			TrailarrLog("Warn", "DownloadMissingExtras", "FindMediaPathByID error or empty: %v, mediaPath=%s", err, mediaPath)
-			continue
+			return false
 		}
-		TrailarrLog("Debug", "DownloadMissingExtras", "mediaPath=%s", mediaPath)
+		return true
+	})
+	mapped := Map(filtered, func(m map[string]interface{}) downloadItem {
+		idInt, _ := parseMediaID(m["id"])
+		extras, _ := SearchExtras(mediaType, idInt)
+		mediaPath, _ := FindMediaPathByID(cacheFile, fmt.Sprintf("%v", m["id"]))
 		MarkDownloadedExtras(extras, mediaPath, "type", "title")
-		config, _ := GetExtraTypesConfig()
-		filterAndDownloadExtras(mediaType, mediaPath, extras, config)
+		return downloadItem{idInt, mediaPath, extras}
+	})
+	for _, di := range mapped {
+		filterAndDownloadExtras(mediaType, di.mediaPath, di.extras, config)
 	}
 	return nil
 }
@@ -77,13 +147,12 @@ func parseMediaID(id interface{}) (int, bool) {
 }
 
 func filterAndDownloadExtras(mediaType MediaType, mediaPath string, extras []Extra, config ExtraTypesConfig) {
-	for _, extra := range extras {
-		if shouldDownloadExtra(extra, config) {
-			err := handleExtraDownload(mediaType, mediaPath, extra)
-			if err != nil {
-				TrailarrLog("Warn", "DownloadMissingExtras", "Failed to download: %v", err)
-			}
-		}
+	filtered := Filter(extras, func(extra Extra) bool {
+		return shouldDownloadExtra(extra, config)
+	})
+	for _, extra := range filtered {
+		err := handleExtraDownload(mediaType, mediaPath, extra)
+		CheckErrLog("Warn", "DownloadMissingExtras", "Failed to download", err)
 	}
 }
 
@@ -120,6 +189,41 @@ type SyncQueueItem struct {
 	Duration time.Duration
 	Status   string
 	Error    string
+}
+
+// Parametric status struct for Radarr/Sonarr
+type SyncStatus struct {
+	LastExecution time.Time
+	LastDuration  time.Duration
+	NextExecution time.Time
+	LastError     string
+	Queue         []SyncQueueItem
+}
+
+func NewSyncStatus() *SyncStatus {
+	return &SyncStatus{
+		Queue: make([]SyncQueueItem, 0),
+	}
+}
+
+// Parametric status getters
+func LastExecution(status *SyncStatus) time.Time    { return status.LastExecution }
+func LastDuration(status *SyncStatus) time.Duration { return status.LastDuration }
+func NextExecution(status *SyncStatus) time.Time    { return status.NextExecution }
+func LastError(status *SyncStatus) string           { return status.LastError }
+func Queue(status *SyncStatus) []SyncQueueItem      { return status.Queue }
+
+// UpdateSyncQueueItem updates status, timestamps, and error for a SyncQueueItem
+func UpdateSyncQueueItem(item *SyncQueueItem, status string, started, ended time.Time, duration time.Duration, err error) {
+	item.Status = status
+	item.Started = started
+	item.Ended = ended
+	item.Duration = duration
+	if err != nil {
+		item.Error = err.Error()
+	} else {
+		item.Error = ""
+	}
 }
 
 func saveQueue() {
@@ -210,25 +314,23 @@ func SyncMedia(
 		return
 	}
 
-	GlobalSyncQueue[idx].Started = time.Now()
-	GlobalSyncQueue[idx].Status = "running"
+	started := time.Now()
+	UpdateSyncQueueItem(&GlobalSyncQueue[idx], "running", started, started, 0, nil)
 	saveQueue()
 
 	TrailarrLog("Debug", "SyncService", "Invoking syncFunc for section: %s", section)
 	err := syncFunc()
-	GlobalSyncQueue[idx].Ended = time.Now()
-	GlobalSyncQueue[idx].Duration = GlobalSyncQueue[idx].Ended.Sub(GlobalSyncQueue[idx].Started)
-	saveQueue()
+	ended := time.Now()
+	duration := ended.Sub(started)
+	status := "success"
 	if err != nil {
-		GlobalSyncQueue[idx].Error = err.Error()
-		GlobalSyncQueue[idx].Status = "failed"
-		saveQueue()
+		status = "failed"
 		TrailarrLog("Error", "SyncService", "Sync %s error: %s", section, err.Error())
 	} else {
-		GlobalSyncQueue[idx].Status = "success"
-		saveQueue()
 		TrailarrLog("Info", "SyncService", "Synced cache for %s.", section)
 	}
+	UpdateSyncQueueItem(&GlobalSyncQueue[idx], status, started, ended, duration, err)
+	saveQueue()
 	TrailarrLog("Info", "SyncService", "Finished sync for section: %s", section)
 	*lastExecution = GlobalSyncQueue[idx].Ended
 	*lastDuration = GlobalSyncQueue[idx].Duration
@@ -243,13 +345,12 @@ func fetchAndCachePoster(localPath, posterUrl, section string) error {
 		if resp != nil {
 			resp.Body.Close()
 		}
-		TrailarrLog("Warn", "CacheMediaPosters", "Failed to fetch poster image from %s", section)
+		CheckErrLog("Warn", "CacheMediaPosters", "Failed to fetch poster image", err)
 		return fmt.Errorf("failed to fetch poster image from %s", section)
 	}
 	defer resp.Body.Close()
 	out, err := os.Create(localPath)
-	if err != nil {
-		TrailarrLog("Warn", "CacheMediaPosters", "Failed to cache poster image for %s", section)
+	if CheckErrLog("Warn", "CacheMediaPosters", "Failed to cache poster image", err) != nil {
 		return fmt.Errorf("failed to cache poster image for %s", section)
 	}
 	_, _ = io.Copy(out, resp.Body)
@@ -267,31 +368,38 @@ func CacheMediaPosters(
 	debug bool, // enable debug output
 ) {
 	TrailarrLog("Info", "CacheMediaPosters", "Starting poster caching for section: %s, baseDir: %s, items: %d", section, baseDir, len(idList))
+	type posterJob struct {
+		id        string
+		idDir     string
+		localPath string
+		posterUrl string
+	}
 	for _, item := range idList {
 		id := fmt.Sprintf("%v", item[idKey])
-		for _, suffix := range posterSuffixes {
+		settings, err := loadMediaSettings(section)
+		if CheckErrLog("Warn", "CacheMediaPosters", "Failed to load settings", err) != nil {
+			continue
+		}
+		apiBase := trimTrailingSlash(settings.URL)
+		jobs := Map(posterSuffixes, func(suffix string) posterJob {
 			idDir := baseDir + "/" + id
-			if err := os.MkdirAll(idDir, 0775); err != nil {
-				TrailarrLog("Warn", "CacheMediaPosters", "Failed to create dir %s: %v", idDir, err)
-				continue
-			}
 			localPath := idDir + suffix
-			if _, err := os.Stat(localPath); err == nil {
-				TrailarrLog("Debug", "CacheMediaPosters", "Poster already exists: %s", localPath)
-				continue
-			}
-			settings, err := loadMediaSettings(section)
-			if err != nil {
-				TrailarrLog("Warn", "CacheMediaPosters", "Failed to load settings for %s: %v", section, err)
-				continue
-			}
-			apiBase := trimTrailingSlash(settings.URL)
 			posterUrl := apiBase + RemoteMediaCoverPath + id + suffix
-			TrailarrLog("Info", "CacheMediaPosters", "Attempting to cache poster for %s id=%s: %s -> %s", section, id, posterUrl, localPath)
-			if err := fetchAndCachePoster(localPath, posterUrl, section); err != nil {
-				TrailarrLog("Warn", "CacheMediaPosters", "Failed to cache poster for %s id=%s: %v", section, id, err)
+			return posterJob{id, idDir, localPath, posterUrl}
+		})
+		for _, job := range jobs {
+			if err := os.MkdirAll(job.idDir, 0775); CheckErrLog("Warn", "CacheMediaPosters", "Failed to create dir", err) != nil {
+				continue
 			}
-			TrailarrLog("Info", "CacheMediaPosters", "Successfully cached poster for %s id=%s: %s", section, id, localPath)
+			if _, err := os.Stat(job.localPath); err == nil {
+				TrailarrLog("Debug", "CacheMediaPosters", "Poster already exists: %s", job.localPath)
+				continue
+			}
+			TrailarrLog("Info", "CacheMediaPosters", "Attempting to cache poster for %s id=%s: %s -> %s", section, job.id, job.posterUrl, job.localPath)
+			if err := fetchAndCachePoster(job.localPath, job.posterUrl, section); err != nil {
+				TrailarrLog("Warn", "CacheMediaPosters", "Failed to cache poster for %s id=%s: %v", section, job.id, err)
+			}
+			TrailarrLog("Info", "CacheMediaPosters", "Successfully cached poster for %s id=%s: %s", section, job.id, job.localPath)
 		}
 	}
 	TrailarrLog("Info", "CacheMediaPosters", "Finished poster caching for section: %s", section)
@@ -300,7 +408,7 @@ func CacheMediaPosters(
 // Finds the media path for a given id in a cache file
 func FindMediaPathByID(cacheFile string, idStr string) (string, error) {
 	items, err := loadCache(cacheFile)
-	if err != nil {
+	if CheckErrLog("Warn", "FindMediaPathByID", "Failed to load cache", err) != nil {
 		return "", err
 	}
 	for _, m := range items {
@@ -321,7 +429,7 @@ func ScanExistingExtras(mediaPath string) map[string]bool {
 		return existing
 	}
 	entries, err := os.ReadDir(mediaPath)
-	if err != nil {
+	if CheckErrLog("Warn", "ScanExistingExtras", "ReadDir failed", err) != nil {
 		return existing
 	}
 	for _, entry := range entries {
@@ -347,15 +455,13 @@ func ScanExistingExtras(mediaPath string) map[string]bool {
 func MarkDownloadedExtras(extras []Extra, mediaPath string, typeKey, titleKey string) {
 	existing := ScanExistingExtras(mediaPath)
 	for i := range extras {
-		// Canonicalize type and update the map so API always returns canonical type
 		typeStr := canonicalizeExtraType(extras[i].Type, extras[i].Title)
 		extras[i].Type = typeStr
 		title := SanitizeFilename(extras[i].Title)
 		key := typeStr + "|" + title
+		extras[i].Status = "missing"
 		if existing[key] {
 			extras[i].Status = "downloaded"
-		} else {
-			extras[i].Status = "missing"
 		}
 	}
 }
@@ -377,12 +483,8 @@ func trimTrailingSlash(url string) string {
 
 // Loads a JSON cache file into a generic slice
 func loadCache(path string) ([]map[string]interface{}, error) {
-	cacheData, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
 	var items []map[string]interface{}
-	if err := json.Unmarshal(cacheData, &items); err != nil {
+	if err := ReadJSONFile(path, &items); CheckErrLog("Warn", "loadCache", "ReadJSONFile failed", err) != nil {
 		return nil, err
 	}
 
@@ -418,12 +520,8 @@ func getTitleMap(mainCachePath, path string) map[string]string {
 		return nil
 	}
 	titleMap := make(map[string]string)
-	mainCacheData, err := os.ReadFile(mainCachePath)
-	if err != nil {
-		return nil
-	}
 	var mainItems []map[string]interface{}
-	if err := json.Unmarshal(mainCacheData, &mainItems); err != nil {
+	if err := ReadJSONFile(mainCachePath, &mainItems); CheckErrLog("Warn", "getTitleMap", "ReadJSONFile failed", err) != nil {
 		return nil
 	}
 	for _, item := range mainItems {
@@ -466,11 +564,11 @@ func updateItemTitle(item map[string]interface{}, titleMap map[string]string) {
 // Writes the wanted (no trailer) media to a JSON file
 func writeWantedCache(mediaType MediaType, cacheFile, wantedPath string) error {
 	items, err := loadCache(cacheFile)
-	if err != nil {
+	if CheckErrLog("Warn", "writeWantedCache", "Failed to load cache", err) != nil {
 		return err
 	}
 	mappings, err := GetPathMappings(mediaType)
-	if err != nil {
+	if CheckErrLog("Warn", "writeWantedCache", "GetPathMappings failed", err) != nil {
 		// If can't get mappings, use default paths
 		mappings = nil
 	}
@@ -496,30 +594,25 @@ func writeWantedCache(mediaType MediaType, cacheFile, wantedPath string) error {
 		}
 		wanted = append(wanted, item)
 	}
-	cacheData, _ := json.MarshalIndent(wanted, "", "  ")
-	return os.WriteFile(wantedPath, cacheData, 0644)
+	return WriteJSONFile(wantedPath, wanted)
 }
 
-// Move SyncMediaCacheJson to media.go for shared use
 // Generic sync function for Radarr/Sonarr
 // Syncs only the JSON cache for Radarr/Sonarr, not the media files themselves
 // Pass mediaType (MediaTypeMovie or MediaTypeTV), apiPath (e.g. "/api/v3/movie"), cacheFile, and a filter function for items
 func SyncMediaCacheJson(provider, apiPath, cacheFile string, filter func(map[string]interface{}) bool) error {
 	url, apiKey, err := GetProviderUrlAndApiKey(provider)
-	if err != nil {
-		TrailarrLog("Warn", "SyncMediaCacheJson", "%s settings not found: %v", provider, err)
+	if CheckErrLog("Warn", "SyncMediaCacheJson", "settings not found", err) != nil {
 		return fmt.Errorf("%s settings not found: %w", provider, err)
 	}
 	req, err := http.NewRequest("GET", url+apiPath, nil)
-	if err != nil {
-		TrailarrLog("Warn", "SyncMediaCacheJson", "error creating request: %v", err)
+	if CheckErrLog("Warn", "SyncMediaCacheJson", "error creating request", err) != nil {
 		return fmt.Errorf("error creating request: %w", err)
 	}
 	req.Header.Set(HeaderApiKey, apiKey)
 	client := &http.Client{}
 	resp, err := client.Do(req)
-	if err != nil {
-		TrailarrLog("Warn", "SyncMediaCacheJson", "error fetching %s: %v", provider, err)
+	if CheckErrLog("Warn", "SyncMediaCacheJson", "error fetching", err) != nil {
 		return fmt.Errorf("error fetching %s: %w", provider, err)
 	}
 	defer resp.Body.Close()
@@ -528,8 +621,7 @@ func SyncMediaCacheJson(provider, apiPath, cacheFile string, filter func(map[str
 		return fmt.Errorf("%s API error: %d", provider, resp.StatusCode)
 	}
 	var allItems []map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&allItems); err != nil {
-		TrailarrLog("Warn", "SyncMediaCacheJson", "failed to decode %s response: %v", provider, err)
+	if err := json.NewDecoder(resp.Body).Decode(&allItems); CheckErrLog("Warn", "SyncMediaCacheJson", "failed to decode response", err) != nil {
 		return fmt.Errorf("failed to decode %s response: %w", provider, err)
 	}
 	items := make([]map[string]interface{}, 0)
@@ -538,8 +630,7 @@ func SyncMediaCacheJson(provider, apiPath, cacheFile string, filter func(map[str
 			items = append(items, m)
 		}
 	}
-	cacheData, _ := json.MarshalIndent(items, "", "  ")
-	_ = os.WriteFile(cacheFile, cacheData, 0644)
+	_ = WriteJSONFile(cacheFile, items)
 	TrailarrLog("Info", "SyncMediaCacheJson", "[Sync%s] Synced %d items to cache.", provider, len(items))
 
 	// After syncing main cache, update wanted cache
@@ -599,13 +690,13 @@ func GetMediaWithoutTrailerExtraHandler(section, cacheFile, defaultPath string) 
 		}
 		items, err := loadCache(wantedPath)
 		if err != nil {
-			c.JSON(500, gin.H{"error": section + " wanted cache not found"})
+			respondError(c, http.StatusInternalServerError, section+" wanted cache not found")
 			return
 		}
 		if section == "radarr" {
-			c.JSON(200, gin.H{"movies": items})
+			respondJSON(c, http.StatusOK, gin.H{"movies": items})
 		} else {
-			c.JSON(200, gin.H{"series": items})
+			respondJSON(c, http.StatusOK, gin.H{"series": items})
 		}
 	}
 }
@@ -618,46 +709,45 @@ func sharedExtrasHandler(mediaType MediaType) gin.HandlerFunc {
 		fmt.Sscanf(idStr, "%d", &id)
 		extras, err := SearchExtras(mediaType, id)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			respondError(c, http.StatusInternalServerError, err.Error())
 			return
 		}
 		cacheFile, _ := resolveCachePath(mediaType)
-		// Find media path from cache
 		mediaPath, err := FindMediaPathByID(cacheFile, idStr)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("%s cache not found", mediaType)})
+			respondError(c, http.StatusInternalServerError, fmt.Sprintf("%s cache not found", mediaType))
 			return
 		}
-
-		// Mark downloaded extras using shared logic
 		MarkDownloadedExtras(extras, mediaPath, "type", "title")
-
-		// Add rejected extras from rejected_extras.json
 		rejectedExtras := GetRejectedExtrasForMedia(mediaType, id)
-
-		// Build a map for quick lookup of rejected URLs
-		rejectedMap := make(map[string]struct{})
-		for _, rej := range rejectedExtras {
-			rejectedMap[rej.URL] = struct{}{}
-		}
-
-		// Add any rejected extras not already in results
 		urlInResults := make(map[string]struct{})
 		for _, extra := range extras {
 			urlInResults[extra.URL] = struct{}{}
 		}
-		for _, rej := range rejectedExtras {
-			if _, exists := urlInResults[rej.URL]; !exists {
-				extras = append(extras, Extra{
-					Type:   rej.ExtraType,
-					Title:  rej.ExtraTitle,
-					URL:    rej.URL,
-					Status: "rejected",
-				})
+		missingRejected := Filter(rejectedExtras, func(rej RejectedExtra) bool {
+			_, exists := urlInResults[rej.URL]
+			return !exists
+		})
+		mappedRejected := Map(missingRejected, func(rej RejectedExtra) Extra {
+			return Extra{
+				Type:   rej.ExtraType,
+				Title:  rej.ExtraTitle,
+				URL:    rej.URL,
+				Status: "rejected",
 			}
-		}
-
+		})
+		extras = append(extras, mappedRejected...)
 		TrailarrLog("Debug", "sharedExtrasHandler", "Extras response: %+v", extras)
-		c.JSON(http.StatusOK, gin.H{"extras": extras})
+		respondJSON(c, http.StatusOK, gin.H{"extras": extras})
 	}
+}
+
+// respondError is a helper for Gin error responses
+func respondError(c *gin.Context, code int, msg string) {
+	c.JSON(code, gin.H{"error": msg})
+}
+
+// respondJSON is a helper for Gin JSON responses
+func respondJSON(c *gin.Context, code int, obj interface{}) {
+	c.JSON(code, obj)
 }

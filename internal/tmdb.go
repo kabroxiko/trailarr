@@ -13,8 +13,7 @@ import (
 
 func GetTMDBKey() (string, error) {
 	settingsData, err := os.ReadFile(ConfigPath)
-	if err != nil {
-		TrailarrLog("Warn", "TMDB", "failed to read config: %v", err)
+	if CheckErrLog("Warn", "TMDB", "failed to read config", err) != nil {
 		return "", fmt.Errorf("failed to read config: %w", err)
 	}
 	var allSettings struct {
@@ -22,8 +21,7 @@ func GetTMDBKey() (string, error) {
 			TMDBKey string `yaml:"tmdbKey"`
 		} `yaml:"general"`
 	}
-	if err := yaml.Unmarshal(settingsData, &allSettings); err != nil {
-		TrailarrLog("Warn", "TMDB", "failed to decode config: %v", err)
+	if err := yaml.Unmarshal(settingsData, &allSettings); CheckErrLog("Warn", "TMDB", "failed to decode config", err) != nil {
 		return "", fmt.Errorf("failed to decode config: %w", err)
 	}
 	if allSettings.General.TMDBKey == "" {
@@ -47,15 +45,9 @@ func GetTMDBId(mediaType MediaType, id int, tmdbKey string) (int, error) {
 
 func GetMovieTMDBId(id int) (int, error) {
 	radarrCache := TrailarrRoot + "/movies.json"
-	cacheData, err := os.ReadFile(radarrCache)
-	if err != nil {
-		TrailarrLog("Warn", "TMDB", "failed to read Radarr cache: %v", err)
-		return 0, fmt.Errorf("failed to read Radarr cache: %w", err)
-	}
 	var movies []map[string]interface{}
-	if err := json.Unmarshal(cacheData, &movies); err != nil {
-		TrailarrLog("Warn", "TMDB", "failed to decode Radarr cache: %v", err)
-		return 0, fmt.Errorf("failed to decode Radarr cache: %w", err)
+	if err := ReadJSONFile(radarrCache, &movies); CheckErrLog("Warn", "TMDB", "failed to read or decode Radarr cache", err) != nil {
+		return 0, fmt.Errorf("failed to read or decode Radarr cache: %w", err)
 	}
 	for _, m := range movies {
 		if mid, ok := m["id"].(float64); ok && int(mid) == id {
@@ -71,15 +63,9 @@ func GetMovieTMDBId(id int) (int, error) {
 
 func GetTVTMDBId(id int, tmdbKey string) (int, error) {
 	sonarrCache := TrailarrRoot + "/series.json"
-	cacheData, err := os.ReadFile(sonarrCache)
-	if err != nil {
-		TrailarrLog("Warn", "TMDB", "failed to read Sonarr cache: %v", err)
-		return 0, fmt.Errorf("failed to read Sonarr cache: %w", err)
-	}
 	var series []map[string]interface{}
-	if err := json.Unmarshal(cacheData, &series); err != nil {
-		TrailarrLog("Warn", "TMDB", "failed to decode Sonarr cache: %v", err)
-		return 0, fmt.Errorf("failed to decode Sonarr cache: %w", err)
+	if err := ReadJSONFile(sonarrCache, &series); CheckErrLog("Warn", "TMDB", "failed to read or decode Sonarr cache", err) != nil {
+		return 0, fmt.Errorf("failed to read or decode Sonarr cache: %w", err)
 	}
 	var title string
 	for _, s := range series {
@@ -96,12 +82,12 @@ func GetTVTMDBId(id int, tmdbKey string) (int, error) {
 	}
 	tmdbSearchURL := fmt.Sprintf("https://api.themoviedb.org/3/search/tv?api_key=%s&query=%s", tmdbKey, url.QueryEscape(title))
 	resp, err := http.Get(tmdbSearchURL)
-	if err != nil {
+	if CheckErrLog("Warn", "TMDB", "http.Get tmdbSearchURL failed", err) != nil {
 		return 0, err
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
-	if err != nil {
+	if CheckErrLog("Warn", "TMDB", "io.ReadAll resp.Body failed", err) != nil {
 		return 0, err
 	}
 	var tmdbResult struct {
@@ -109,7 +95,7 @@ func GetTVTMDBId(id int, tmdbKey string) (int, error) {
 			ID int `json:"id"`
 		} `json:"results"`
 	}
-	if err := json.Unmarshal(body, &tmdbResult); err != nil {
+	if err := json.Unmarshal(body, &tmdbResult); CheckErrLog("Warn", "TMDB", "json.Unmarshal tmdbResult failed", err) != nil {
 		return 0, err
 	}
 	if len(tmdbResult.Results) == 0 {
@@ -122,12 +108,12 @@ func GetTVTMDBId(id int, tmdbKey string) (int, error) {
 func FetchTMDBExtras(mediaType MediaType, tmdbId int, tmdbKey string) ([]Extra, error) {
 	videosURL := fmt.Sprintf("https://api.themoviedb.org/3/%s/%d/videos?api_key=%s", mediaType, tmdbId, tmdbKey)
 	resp, err := http.Get(videosURL)
-	if err != nil {
+	if CheckErrLog("Warn", "TMDB", "http.Get videosURL failed", err) != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
-	if err != nil {
+	if CheckErrLog("Warn", "TMDB", "io.ReadAll resp.Body failed", err) != nil {
 		return nil, err
 	}
 	var result struct {
@@ -139,7 +125,7 @@ func FetchTMDBExtras(mediaType MediaType, tmdbId int, tmdbKey string) ([]Extra, 
 			Type string `json:"type"`
 		} `json:"results"`
 	}
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := json.Unmarshal(body, &result); CheckErrLog("Warn", "TMDB", "json.Unmarshal result failed", err) != nil {
 		return nil, err
 	}
 	extras := make([]Extra, 0)

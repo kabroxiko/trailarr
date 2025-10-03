@@ -12,6 +12,20 @@ import (
 	ytdlp "github.com/lrstanley/go-ytdlp"
 )
 
+// Deduplicate a slice of maps by a given key
+func DeduplicateByKey(list []map[string]string, key string) []map[string]string {
+	seen := make(map[string]bool)
+	unique := make([]map[string]string, 0, len(list))
+	for _, item := range list {
+		k := item[key]
+		if !seen[k] {
+			unique = append(unique, item)
+			seen[k] = true
+		}
+	}
+	return unique
+}
+
 type ExtraDownloadMetadata struct {
 	MediaType  MediaType // "movie" or "series"
 	MediaId    int       // Radarr or Sonarr ID as int
@@ -22,6 +36,21 @@ type ExtraDownloadMetadata struct {
 	FileName   string
 	Status     string
 	URL        string
+}
+
+// NewExtraDownloadMetadata constructs an ExtraDownloadMetadata with status and all fields
+func NewExtraDownloadMetadata(info *downloadInfo, extraURL string, status string) *ExtraDownloadMetadata {
+	return &ExtraDownloadMetadata{
+		MediaType:  info.MediaType,
+		MediaId:    info.MediaId,
+		MediaTitle: info.MediaTitle,
+		ExtraTitle: info.ExtraTitle,
+		ExtraType:  info.ExtraType,
+		YouTubeID:  info.YouTubeID,
+		FileName:   info.OutFile,
+		Status:     status,
+		URL:        extraURL,
+	}
 }
 
 type RejectedExtra struct {
@@ -224,18 +253,7 @@ func checkExistingExtra(info *downloadInfo, extraURL string) (*ExtraDownloadMeta
 	// Skip download if file already exists
 	if _, err := os.Stat(info.OutFile); err == nil {
 		TrailarrLog("info", "YouTube", "File already exists, skipping: %s", info.OutFile)
-		meta := &ExtraDownloadMetadata{
-			MediaType:  info.MediaType,
-			MediaId:    info.MediaId,
-			MediaTitle: info.MediaTitle,
-			ExtraTitle: info.ExtraTitle,
-			ExtraType:  info.ExtraType,
-			YouTubeID:  info.YouTubeID,
-			FileName:   info.OutFile,
-			Status:     "exists",
-			URL:        extraURL,
-		}
-		return meta, nil
+		return NewExtraDownloadMetadata(info, extraURL, "exists"), nil
 	}
 
 	return nil, nil
@@ -245,22 +263,11 @@ func checkRejectedExtras(info *downloadInfo, extraURL string) *ExtraDownloadMeta
 	rejectedPath := filepath.Join(TrailarrRoot, "rejected_extras.json")
 	rejected := make([]map[string]string, 0)
 
-	if data, err := os.ReadFile(rejectedPath); err == nil {
-		_ = json.Unmarshal(data, &rejected)
+	if err := ReadJSONFile(rejectedPath, &rejected); err == nil {
 		for _, r := range rejected {
 			if r["url"] == extraURL {
 				TrailarrLog("info", "YouTube", "Extra is in rejected list, skipping: %s", info.ExtraTitle)
-				return &ExtraDownloadMetadata{
-					MediaType:  info.MediaType,
-					MediaId:    info.MediaId,
-					MediaTitle: info.MediaTitle,
-					ExtraType:  info.ExtraType,
-					ExtraTitle: info.ExtraTitle,
-					YouTubeID:  info.YouTubeID,
-					FileName:   info.OutFile,
-					Status:     "rejected",
-					URL:        extraURL,
-				}
+				return NewExtraDownloadMetadata(info, extraURL, "rejected")
 			}
 		}
 		cleanupRejectedExtras(rejected, rejectedPath)
@@ -269,19 +276,10 @@ func checkRejectedExtras(info *downloadInfo, extraURL string) *ExtraDownloadMeta
 }
 
 func cleanupRejectedExtras(rejected []map[string]string, rejectedPath string) {
-	// Deduplicate rejected list by URL only
-	unique := make([]map[string]string, 0)
-	seen := make(map[string]bool)
-	for _, r := range rejected {
-		key := r["url"]
-		if !seen[key] {
-			unique = append(unique, r)
-			seen[key] = true
-		}
-	}
+	// Deduplicate by URL
+	unique := DeduplicateByKey(rejected, "url")
 	if len(unique) != len(rejected) {
-		rejBytes, _ := json.MarshalIndent(unique, "", "  ")
-		_ = os.WriteFile(rejectedPath, rejBytes, 0644)
+		_ = WriteJSONFile(rejectedPath, unique)
 	}
 }
 
@@ -487,9 +485,7 @@ func addToRejectedExtras(info *downloadInfo, extraURL, reason string) {
 	rejectedPath := filepath.Join(TrailarrRoot, "rejected_extras.json")
 	var rejectedList []RejectedExtra
 
-	if data, err := os.ReadFile(rejectedPath); err == nil {
-		_ = json.Unmarshal(data, &rejectedList)
-	}
+	_ = ReadJSONFile(rejectedPath, &rejectedList)
 
 	// Check if already rejected
 	for _, r := range rejectedList {
@@ -508,19 +504,22 @@ func addToRejectedExtras(info *downloadInfo, extraURL, reason string) {
 		Reason:     reason,
 	})
 
-	// Deduplicate
-	unique := make([]RejectedExtra, 0)
-	seen := make(map[string]bool)
+	// Deduplicate by URL
+	tempList := make([]map[string]string, 0, len(rejectedList))
 	for _, r := range rejectedList {
-		key := r.URL
-		if !seen[key] {
-			unique = append(unique, r)
-			seen[key] = true
+		tempList = append(tempList, map[string]string{"url": r.URL})
+	}
+	uniqueURLs := DeduplicateByKey(tempList, "url")
+	finalList := make([]RejectedExtra, 0, len(uniqueURLs))
+	for _, u := range uniqueURLs {
+		for _, r := range rejectedList {
+			if r.URL == u["url"] {
+				finalList = append(finalList, r)
+				break
+			}
 		}
 	}
-
-	rejBytes, _ := json.MarshalIndent(unique, "", "  ")
-	_ = os.WriteFile(rejectedPath, rejBytes, 0644)
+	_ = WriteJSONFile(rejectedPath, finalList)
 }
 
 func moveDownloadedFile(info *downloadInfo) error {
@@ -584,17 +583,7 @@ func copyFileAcrossDevices(tempFile, outFile string) error {
 }
 
 func createSuccessMetadata(info *downloadInfo, extraURL string) (*ExtraDownloadMetadata, error) {
-	meta := &ExtraDownloadMetadata{
-		MediaType:  info.MediaType,
-		MediaId:    info.MediaId,
-		MediaTitle: info.MediaTitle,
-		ExtraTitle: info.ExtraTitle,
-		ExtraType:  info.ExtraType,
-		YouTubeID:  info.YouTubeID,
-		FileName:   info.OutFile,
-		Status:     "downloaded",
-		URL:        extraURL,
-	}
+	meta := NewExtraDownloadMetadata(info, extraURL, "downloaded")
 
 	metaFile := info.OutFile + ".json"
 	metaBytes, _ := json.MarshalIndent(meta, "", "  ")
