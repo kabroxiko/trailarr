@@ -1,7 +1,9 @@
+import MediaInfoLane from './MediaInfoLane.jsx';
+import MediaCard from './MediaCard.jsx';
+import IconButton from './IconButton.jsx';
 import React, { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTrashCan, faBookmark, faCheckSquare } from '@fortawesome/free-regular-svg-icons';
-import { faPlay, faDownload } from '@fortawesome/free-solid-svg-icons';
+import { faBookmark } from '@fortawesome/free-regular-svg-icons';
 import ExtrasList from './ExtrasList';
 import { useParams } from 'react-router-dom';
 
@@ -144,13 +146,6 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
     }
   };
 
-  let background;
-  if (mediaType === 'tv') {
-    background = `url(/mediacover/Series/${media.id}/fanart-1280.jpg) center center/cover no-repeat`;
-  } else {
-    background = `url(/mediacover/Movies/${media.id}/fanart-1280.jpg) center center/cover no-repeat`;
-  }
-
   // Group extras by type
   const extrasByType = extras.reduce((acc, extra) => {
     const type = extra.Type || 'Others';
@@ -192,63 +187,8 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
           {modalMsg}
         </div>
       )}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', margin: '0px 0 0 0', padding: 0, width: '100%' }}>
-        <div
-          style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 'bold', color: '#e5e7eb', fontSize: 18 }}
-          onClick={handleSearchExtras}
-        >
-          <span style={{ fontSize: 20, display: 'flex', alignItems: 'center' }}>
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="9" cy="9" r="7" stroke="#e5e7eb" strokeWidth="2" />
-              <line x1="15" y1="15" x2="19" y2="19" stroke="#e5e7eb" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          </span>
-          <span>{searchLoading ? 'Searching...' : 'Search'}</span>
-        </div>
-      </div>
-      <div style={{
-        width: '100%',
-        position: 'relative',
-        background,
-        minHeight: 420,
-        display: 'flex',
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        boxSizing: 'border-box',
-        padding: 0,
-      }}>
-        <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          background: 'rgba(0,0,0,0.55)',
-          zIndex: 1,
-        }} />
-        <div style={{ minWidth: 150, zIndex: 2, display: 'flex', justifyContent: 'flex-start', alignItems: 'flex-start', height: '100%', padding: '32px 32px' }}>
-          <img
-            src={mediaType === 'tv'
-              ? `/mediacover/Series/${media.id}/poster-500.jpg`
-              : `/mediacover/Movies/${media.id}/poster-500.jpg`}
-            style={{ height: 370, objectFit: 'cover', borderRadius: 4, background: '#222', boxShadow: '0 2px 8px rgba(0,0,0,0.22)' }}
-            onError={e => { e.target.onerror = null; e.target.src = '/logo.svg'; }}
-          />
-        </div>
-        <div style={{ flex: 1, zIndex: 2, display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', height: '100%', marginLeft: 32, marginTop: 32 }}>
-          <h2 style={{ color: '#fff', margin: 0, fontSize: 32, fontWeight: 600, textShadow: '0 1px 2px #000', letterSpacing: 0.2, textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <FontAwesomeIcon icon={faBookmark} color="#eee" style={{ marginLeft: -10 }} />
-            {media.title}
-          </h2>
-          {media.overview && (
-            <div style={{ color: '#e5e7eb', fontSize: 15, margin: '10px 0 6px 0', textShadow: '0 1px 2px #000', textAlign: 'left', lineHeight: 1.5, maxWidth: 700 }}>
-              {media.overview}
-            </div>
-          )}
-          <div style={{ marginBottom: 6, color: '#e5e7eb', textAlign: 'left', fontSize: 13, textShadow: '0 1px 2px #000' }}>{media.year} &bull; {media.path}</div>
-          {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
-        </div>
-      </div>
+      <MediaInfoLane searchLoading={searchLoading} handleSearchExtras={handleSearchExtras} />
+      <MediaCard media={media} mediaType={mediaType} darkMode={darkMode} error={error} />
       {/* Grouped extras by type, with 'Trailers' first */}
       {Object.keys(extrasByType).length > 0 && (
         <div style={{ width: '100%', background: darkMode ? '#23232a' : '#f3e8ff', overflow: 'hidden', padding: '24px 10px', margin: 0 }}>

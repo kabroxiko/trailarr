@@ -1,6 +1,10 @@
+import IconButton from './IconButton.jsx';
+import SectionHeader from './SectionHeader.jsx';
 import React, { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSave, faPlug, faCheckCircle, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
+import { faPlug, faCheckCircle, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
+import SaveLane from './SaveLane.jsx';
+import Container from './Container.jsx';
 
 export default function GeneralSettings() {
   const [testing, setTesting] = useState(false);
@@ -82,21 +86,13 @@ export default function GeneralSettings() {
     setSaving(false);
   };
   return (
-  <div style={{ width: '100%', margin: 0, height: '100%', padding: '2rem', background: 'var(--settings-bg, #fff)', borderRadius: 12, boxShadow: '0 2px 12px #0002', color: 'var(--settings-text, #222)', boxSizing: 'border-box', overflowX: 'hidden', overflowY: 'auto', position: 'relative' }}>
+    <Container>
       {/* Save lane */}
-      <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', background: 'var(--save-lane-bg, #f3f4f6)', color: 'var(--save-lane-text, #222)', padding: '0.7rem 2rem', display: 'flex', alignItems: 'center', gap: '1rem', borderTopLeftRadius: 12, borderTopRightRadius: 12, zIndex: 10, boxShadow: '0 2px 8px #0001' }}>
-        <button onClick={handleSave} disabled={saving || !isChanged} style={{ background: 'none', color: '#222', border: 'none', borderRadius: 6, padding: '0.3rem 1rem', cursor: saving || !isChanged ? 'not-allowed' : 'pointer', opacity: saving || !isChanged ? 0.7 : 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
-          <FontAwesomeIcon icon={faSave} style={{ fontSize: 22, color: 'var(--save-lane-text, #222)' }} />
-          <span style={{ fontWeight: 500, fontSize: '0.85em', color: 'var(--save-lane-text, #222)', marginTop: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1.1 }}>
-            <span>{saving || !isChanged ? 'No' : 'Save'}</span>
-            <span>Changes</span>
-          </span>
-        </button>
-        {message && <div style={{ marginLeft: 16, color: message.includes('success') ? '#0f0' : '#f44', fontWeight: 500 }}>{message}</div>}
-      </div>
+      <SaveLane onSave={handleSave} saving={saving} isChanged={isChanged} error={message} />
       <div style={{ marginTop: '4.5rem', background: 'var(--settings-bg, #fff)', color: 'var(--settings-text, #222)', borderRadius: 12, boxShadow: '0 1px 4px #0001', padding: '2rem' }}>
-        <div style={{ marginBottom: '1.5rem', display: 'block', width: '100%' }}>
-          <label style={{ fontWeight: 600, fontSize: '1.15em', marginBottom: 6, display: 'block', textAlign: 'left' }}>TMDB API Key<br />
+        <SectionHeader>TMDB API Key</SectionHeader>
+        <div style={{ width: '100%' }}>
+          <label style={{ fontWeight: 600, fontSize: '1.15em', marginBottom: 6, display: 'block', textAlign: 'left' }}>
             <div style={{ width: '100%' }}>
               <input
                 type="text"
@@ -106,70 +102,58 @@ export default function GeneralSettings() {
               />
               <div style={{ marginTop: '0.7rem', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem', width: '60%' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', width: '100%' }}>
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={testTmdbKey}
-                    onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && !testing && tmdbKey) testTmdbKey(); }}
+                  <IconButton
                     title="Test TMDB Key"
                     aria-label="Test TMDB Key"
-                    style={{
-                      cursor: testing || !tmdbKey ? 'not-allowed' : 'pointer',
-                      opacity: testing || !tmdbKey ? 0.6 : 1,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      background: 'none',
-                      border: 'none',
-                      padding: 0,
-                      margin: 0,
-                      outline: 'none'
-                    }}
-                  >
-                    <span style={{ position: 'relative', display: 'inline-block', width: 22, height: 22 }}>
-                      <FontAwesomeIcon
-                        icon={faPlug}
-                        style={{
-                          fontSize: 22,
-                          color: 'var(--settings-text, #222)',
-                          transition: 'color 0.2s',
-                          position: 'absolute',
-                          left: 0,
-                          top: 0
-                        }}
-                      />
-                      {testResult && testResult.includes('success') && (
+                    onClick={testTmdbKey}
+                    disabled={testing || !tmdbKey}
+                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', padding: 0, margin: 0, outline: 'none', opacity: testing || !tmdbKey ? 0.6 : 1 }}
+                    icon={
+                      <span style={{ position: 'relative', display: 'inline-block', width: 22, height: 22 }}>
                         <FontAwesomeIcon
-                          icon={faCheckCircle}
+                          icon={faPlug}
                           style={{
-                            fontSize: 13,
-                            color: '#0a0',
+                            fontSize: 22,
+                            color: 'var(--settings-text, #222)',
+                            transition: 'color 0.2s',
                             position: 'absolute',
-                            right: -8,
-                            bottom: -8,
-                            pointerEvents: 'none',
-                            background: 'var(--settings-bg, #fff)',
-                            borderRadius: '50%'
+                            left: 0,
+                            top: 0
                           }}
                         />
-                      )}
-                      {testResult && !testResult.includes('success') && (
-                        <FontAwesomeIcon
-                          icon={faTimesCircle}
-                          style={{
-                            fontSize: 13,
-                            color: '#c00',
-                            position: 'absolute',
-                            right: -8,
-                            bottom: -8,
-                            pointerEvents: 'none',
-                            background: 'var(--settings-bg, #fff)',
-                            borderRadius: '50%'
-                          }}
-                        />
-                      )}
-                    </span>
-                  </span>
+                        {testResult && testResult.includes('success') && (
+                          <FontAwesomeIcon
+                            icon={faCheckCircle}
+                            style={{
+                              fontSize: 13,
+                              color: '#0a0',
+                              position: 'absolute',
+                              right: -8,
+                              bottom: -8,
+                              pointerEvents: 'none',
+                              background: 'var(--settings-bg, #fff)',
+                              borderRadius: '50%'
+                            }}
+                          />
+                        )}
+                        {testResult && !testResult.includes('success') && (
+                          <FontAwesomeIcon
+                            icon={faTimesCircle}
+                            style={{
+                              fontSize: 13,
+                              color: '#c00',
+                              position: 'absolute',
+                              right: -8,
+                              bottom: -8,
+                              pointerEvents: 'none',
+                              background: 'var(--settings-bg, #fff)',
+                              borderRadius: '50%'
+                            }}
+                          />
+                        )}
+                      </span>
+                    }
+                  />
                   {testResult && (
                     <span style={{ color: testResult.includes('success') ? '#0a0' : '#c00', fontWeight: 500 }}>{testResult}</span>
                   )}
@@ -178,7 +162,8 @@ export default function GeneralSettings() {
             </div>
           </label>
         </div>
-        <div style={{ marginBottom: '1.5rem', display: 'block', width: '100%' }}>
+        <SectionHeader>Extras Download</SectionHeader>
+        <div style={{ width: '100%' }}>
           <label style={{ fontWeight: 600, fontSize: '1.15em', marginBottom: 6, display: 'block', textAlign: 'left' }}>
             <input
               type="checkbox"
@@ -190,6 +175,6 @@ export default function GeneralSettings() {
           </label>
         </div>
       </div>
-    </div>
+    </Container>
   );
 }

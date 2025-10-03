@@ -36,9 +36,6 @@ export default function Wanted({ darkMode, type }) {
       {error && <div style={{ color: 'red' }}>{error}</div>}
       {!loading && (
         <div style={{ width: '100%' }}>
-          <h2 style={{ fontSize: 32, padding: '15px', marginBottom: '0', textAlign: 'left' }}>
-            {type === 'movie' ? 'Wanted Movies' : 'Wanted Series'}
-          </h2>
           <MediaList items={items} darkMode={darkMode} type={type} />
         </div>
       )}

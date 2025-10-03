@@ -1,8 +1,12 @@
+import IconButton from './IconButton.jsx';
+import SectionHeader from './SectionHeader.jsx';
 import React, { useEffect, useState } from 'react';
 import DirectoryPicker from './DirectoryPicker';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faFolderOpen, faSave, faPlug, faCheckCircle, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
+import { faFolderOpen, faPlug, faCheckCircle, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
 import { faTrashAlt } from '@fortawesome/free-regular-svg-icons';
+import SaveLane from './SaveLane.jsx';
+import Container from './Container.jsx';
 
 export default function SettingsPage({ type }) {
   const [testing, setTesting] = useState(false);
@@ -155,19 +159,10 @@ export default function SettingsPage({ type }) {
   };
 
   return (
-  <div style={{ width: '100%', margin: 0, height: '100%', padding: '2rem', background: 'var(--settings-bg, #fff)', borderRadius: 12, boxShadow: '0 2px 12px #0002', color: 'var(--settings-text, #222)', boxSizing: 'border-box', overflowX: 'hidden', overflowY: 'auto', position: 'relative' }}>
+    <Container>
       {/* Save lane */}
-      <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', background: 'var(--save-lane-bg, #f3f4f6)', color: 'var(--save-lane-text, #222)', padding: '0.7rem 2rem', display: 'flex', alignItems: 'center', gap: '1rem', borderTopLeftRadius: 12, borderTopRightRadius: 12, zIndex: 10, boxShadow: '0 2px 8px #0001' }}>
-        <button onClick={saveSettings} disabled={saving || !isSettingsChanged()} style={{ background: 'none', color: '#222', border: 'none', borderRadius: 6, padding: '0.3rem 1rem', cursor: saving || !isSettingsChanged() ? 'not-allowed' : 'pointer', opacity: saving || !isSettingsChanged() ? 0.7 : 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
-          <FontAwesomeIcon icon={faSave} style={{ fontSize: 22, color: 'var(--save-lane-text, #222)' }} />
-          <span style={{ fontWeight: 500, fontSize: '0.85em', color: 'var(--save-lane-text, #222)', marginTop: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1.1 }}>
-            <span>{saving || !isSettingsChanged() ? 'No' : 'Save'}</span>
-            <span>Changes</span>
-          </span>
-        </button>
-        {message && <div style={{ marginLeft: 16, color: message.includes('success') ? '#0f0' : '#f44', fontWeight: 500 }}>{message}</div>}
-      </div>
-  <div style={{ marginTop: '4.5rem', background: 'var(--settings-bg, #fff)', color: 'var(--settings-text, #222)', borderRadius: 12, boxShadow: '0 1px 4px #0001', padding: '2rem' }}>
+      <SaveLane onSave={saveSettings} saving={saving} isChanged={isSettingsChanged()} error={message} />
+      <div style={{ marginTop: '4.5rem', background: 'var(--settings-bg, #fff)', color: 'var(--settings-text, #222)', borderRadius: 12, boxShadow: '0 1px 4px #0001', padding: '2rem' }}>
         {loading ? (
           <div style={{ textAlign: 'center', margin: '2rem' }}>Loading...</div>
         ) : (
@@ -183,11 +178,9 @@ export default function SettingsPage({ type }) {
                   <input name="apiKey" value={settings.apiKey} onChange={handleChange} style={{ width: '60%', minWidth: 220, maxWidth: 600, padding: '0.5rem', borderRadius: 6, border: '1px solid #bbb', background: 'var(--settings-input-bg, #f5f5f5)', color: 'var(--settings-input-text, #222)' }} />
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', width: '100%' }}>
-                  <span
-                    role="button"
-                    tabIndex={0}
+                  <IconButton
                     onClick={testConnection}
-                    onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && !testing && settings.url && settings.apiKey) testConnection(); }}
+                    disabled={testing || !settings.url || !settings.apiKey}
                     title="Test Connection"
                     aria-label="Test Connection"
                     style={{
@@ -202,58 +195,59 @@ export default function SettingsPage({ type }) {
                       margin: 0,
                       outline: 'none'
                     }}
-                  >
-                    <span style={{ position: 'relative', display: 'inline-block', width: 22, height: 22 }}>
-                      <FontAwesomeIcon
-                        icon={faPlug}
-                        style={{
-                          fontSize: 22,
-                          color: 'var(--settings-text, #222)',
-                          transition: 'color 0.2s',
-                          position: 'absolute',
-                          left: 0,
-                          top: 0
-                        }}
-                      />
-                      {testResult && testResult.includes('success') && (
+                    icon={
+                      <span style={{ position: 'relative', display: 'inline-block', width: 22, height: 22 }}>
                         <FontAwesomeIcon
-                          icon={faCheckCircle}
+                          icon={faPlug}
                           style={{
-                            fontSize: 13,
-                            color: '#0a0',
+                            fontSize: 22,
+                            color: 'var(--settings-text, #222)',
+                            transition: 'color 0.2s',
                             position: 'absolute',
-                            right: -8,
-                            bottom: -8,
-                            pointerEvents: 'none',
-                            background: 'var(--settings-bg, #fff)',
-                            borderRadius: '50%'
+                            left: 0,
+                            top: 0
                           }}
                         />
-                      )}
-                      {testResult && !testResult.includes('success') && (
-                        <FontAwesomeIcon
-                          icon={faTimesCircle}
-                          style={{
-                            fontSize: 13,
-                            color: '#c00',
-                            position: 'absolute',
-                            right: -8,
-                            bottom: -8,
-                            pointerEvents: 'none',
-                            background: 'var(--settings-bg, #fff)',
-                            borderRadius: '50%'
-                          }}
-                        />
-                      )}
-                    </span>
-                  </span>
+                        {testResult && testResult.includes('success') && (
+                          <FontAwesomeIcon
+                            icon={faCheckCircle}
+                            style={{
+                              fontSize: 13,
+                              color: '#0a0',
+                              position: 'absolute',
+                              right: -8,
+                              bottom: -8,
+                              pointerEvents: 'none',
+                              background: 'var(--settings-bg, #fff)',
+                              borderRadius: '50%'
+                            }}
+                          />
+                        )}
+                        {testResult && !testResult.includes('success') && (
+                          <FontAwesomeIcon
+                            icon={faTimesCircle}
+                            style={{
+                              fontSize: 13,
+                              color: '#c00',
+                              position: 'absolute',
+                              right: -8,
+                              bottom: -8,
+                              pointerEvents: 'none',
+                              background: 'var(--settings-bg, #fff)',
+                              borderRadius: '50%'
+                            }}
+                          />
+                        )}
+                      </span>
+                    }
+                  />
                   {testResult && (
                     <span style={{ marginLeft: 12, color: testResult.includes('success') ? '#0a0' : '#c00', fontWeight: 500 }}>{testResult}</span>
                   )}
                 </div>
               </div>
             </div>
-            <h3 style={{ margin: '2rem 0 1rem', textAlign: 'left' }}>Path Mappings</h3>
+            <SectionHeader>Path Mappings</SectionHeader>
             <table style={{ width: '100%', minWidth: 300, maxWidth: 620, marginLeft: 0, marginRight: 'auto', borderCollapse: 'collapse', background: 'var(--settings-table-bg, #f5f5f5)', borderRadius: 8, overflow: 'hidden', marginTop: '1rem', color: 'var(--settings-table-text, #222)' }}>
               <thead>
                   <tr style={{ background: 'var(--settings-table-header-bg, #eaeaea)', color: 'var(--settings-table-header-text, #222)' }}>
@@ -275,22 +269,18 @@ export default function SettingsPage({ type }) {
                           onChange={path => handleMappingChange(idx, 'to', path)}
                           label={null}
                           disabled={saving || loading}
-                          icon={<FontAwesomeIcon icon={faFolderOpen} style={{ fontSize: 20, background: 'none', padding: 0, margin: 0, border: 'none' }} />}
+                          icon={<IconButton icon={<FontAwesomeIcon icon={faFolderOpen} style={{ fontSize: 20, background: 'none', padding: 0, margin: 0, border: 'none' }} />} disabled style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} />}
                         />
                       </div>
                     </td>
                     <td style={{ textAlign: 'left' }}>
-                        <span
-                          role="button"
-                          tabIndex={0}
+                        <IconButton
                           onClick={() => removeMapping(idx)}
-                          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') removeMapping(idx); }}
                           title="Remove"
-                          style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', height: '100%', justifyContent: 'center', verticalAlign: 'middle' }}
                           aria-label="Remove path mapping"
-                        >
-                          <FontAwesomeIcon icon={faTrashAlt} style={{ fontSize: 20, color: 'var(--settings-text, #222)', filter: 'drop-shadow(0 1px 2px #0002)', alignSelf: 'center' }} />
-                        </span>
+                          style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', height: '100%', justifyContent: 'center', verticalAlign: 'middle' }}
+                          icon={<FontAwesomeIcon icon={faTrashAlt} style={{ fontSize: 20, color: 'var(--settings-text, #222)', filter: 'drop-shadow(0 1px 2px #0002)', alignSelf: 'center' }} />}
+                        />
                     </td>
                   </tr>
                 ))}
@@ -299,6 +289,6 @@ export default function SettingsPage({ type }) {
           </>
         )}
       </div>
-    </div>
+    </Container>
   );
 }

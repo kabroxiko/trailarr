@@ -1,3 +1,4 @@
+import IconButton from './IconButton.jsx';
 import React from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCog, faFilm, faHistory, faStar, faBan, faServer } from '@fortawesome/free-solid-svg-icons';
@@ -19,13 +20,13 @@ export default function Sidebar({ selectedSection, setSelectedSection, selectedS
       <nav>
         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {[
-            { name: 'Movies', icon: <FontAwesomeIcon icon={faFilm} color={darkMode ? '#e5e7eb' : '#333'} />, route: '/' },
-            { name: 'Series', icon: <FontAwesomeIcon icon={faCog} color={darkMode ? '#e5e7eb' : '#333'} />, route: '/series' },
-            { name: 'History', icon: <FontAwesomeIcon icon={faHistory} color={darkMode ? '#e5e7eb' : '#333'} />, route: '/history' },
-            { name: 'Wanted', icon: <FontAwesomeIcon icon={faStar} color={darkMode ? '#e5e7eb' : '#333'} />},
-            { name: 'Blacklist', icon: <FontAwesomeIcon icon={faBan} color={darkMode ? '#e5e7eb' : '#333'} /> },
-            { name: 'Settings', icon: <FontAwesomeIcon icon={faCog} color={darkMode ? '#e5e7eb' : '#333'} /> },
-            { name: 'System', icon: <FontAwesomeIcon icon={faServer} color={darkMode ? '#e5e7eb' : '#333'} /> }
+            { name: 'Movies', icon: <IconButton icon={<FontAwesomeIcon icon={faFilm} color={darkMode ? '#e5e7eb' : '#333'} />} style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} disabled /> , route: '/' },
+            { name: 'Series', icon: <IconButton icon={<FontAwesomeIcon icon={faCog} color={darkMode ? '#e5e7eb' : '#333'} />} style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} disabled />, route: '/series' },
+            { name: 'History', icon: <IconButton icon={<FontAwesomeIcon icon={faHistory} color={darkMode ? '#e5e7eb' : '#333'} />} style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} disabled />, route: '/history' },
+            { name: 'Wanted', icon: <IconButton icon={<FontAwesomeIcon icon={faStar} color={darkMode ? '#e5e7eb' : '#333'} />} style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} disabled /> },
+            { name: 'Blacklist', icon: <IconButton icon={<FontAwesomeIcon icon={faBan} color={darkMode ? '#e5e7eb' : '#333'} />} style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} disabled /> },
+            { name: 'Settings', icon: <IconButton icon={<FontAwesomeIcon icon={faCog} color={darkMode ? '#e5e7eb' : '#333'} />} style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} disabled /> },
+            { name: 'System', icon: <IconButton icon={<FontAwesomeIcon icon={faServer} color={darkMode ? '#e5e7eb' : '#333'} />} style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} disabled /> }
           ].map(({ name, icon, route }) => (
             <li key={name} style={{ marginBottom: 16 }}>
               {name === 'Settings' ? (
