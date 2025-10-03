@@ -80,14 +80,17 @@ func GetYtdlpFlagsConfig() (YtdlpFlagsConfig, error) {
 	}
 	if v, ok := sec["timeout"].(float64); ok {
 		cfg.Timeout = v
+	} else if v, ok := sec["timeout"].(int); ok {
+		cfg.Timeout = float64(v)
 	}
 	if v, ok := sec["sleepInterval"].(float64); ok {
 		cfg.SleepInterval = v
+	} else if v, ok := sec["sleepInterval"].(int); ok {
+		cfg.SleepInterval = float64(v)
 	}
 	if v, ok := sec["maxDownloads"].(int); ok {
 		cfg.MaxDownloads = v
-	}
-	if v, ok := sec["maxDownloads"].(float64); ok {
+	} else if v, ok := sec["maxDownloads"].(float64); ok {
 		cfg.MaxDownloads = int(v)
 	}
 	if v, ok := sec["limitRate"].(string); ok {
@@ -95,9 +98,13 @@ func GetYtdlpFlagsConfig() (YtdlpFlagsConfig, error) {
 	}
 	if v, ok := sec["sleepRequests"].(float64); ok {
 		cfg.SleepRequests = v
+	} else if v, ok := sec["sleepRequests"].(int); ok {
+		cfg.SleepRequests = float64(v)
 	}
 	if v, ok := sec["maxSleepInterval"].(float64); ok {
 		cfg.MaxSleepInterval = v
+	} else if v, ok := sec["maxSleepInterval"].(int); ok {
+		cfg.MaxSleepInterval = float64(v)
 	}
 	return cfg, nil
 }
@@ -191,37 +198,37 @@ func GetExtraTypesConfig() (ExtraTypesConfig, error) {
 	if v, ok := sec["trailers"].(bool); ok {
 		cfg.Trailers = v
 	} else {
-		cfg.Trailers = true
+		cfg.Trailers = false
 	}
 	if v, ok := sec["scenes"].(bool); ok {
 		cfg.Scenes = v
 	} else {
-		cfg.Scenes = true
+		cfg.Scenes = false
 	}
 	if v, ok := sec["behindTheScenes"].(bool); ok {
 		cfg.BehindTheScenes = v
 	} else {
-		cfg.BehindTheScenes = true
+		cfg.BehindTheScenes = false
 	}
 	if v, ok := sec["interviews"].(bool); ok {
 		cfg.Interviews = v
 	} else {
-		cfg.Interviews = true
+		cfg.Interviews = false
 	}
 	if v, ok := sec["featurettes"].(bool); ok {
 		cfg.Featurettes = v
 	} else {
-		cfg.Featurettes = true
+		cfg.Featurettes = false
 	}
 	if v, ok := sec["deletedScenes"].(bool); ok {
 		cfg.DeletedScenes = v
 	} else {
-		cfg.DeletedScenes = true
+		cfg.DeletedScenes = false
 	}
 	if v, ok := sec["other"].(bool); ok {
 		cfg.Other = v
 	} else {
-		cfg.Other = true
+		cfg.Other = false
 	}
 	return cfg, nil
 }
