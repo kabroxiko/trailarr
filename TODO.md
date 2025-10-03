@@ -7,6 +7,6 @@
 
 Add new tasks below as needed:
 - [x] Fix: extras.go is not returning status rejected
-- [ ] Sidebar icons must work
+- [x] Sidebar icons must work
 - [ ] Fix: youtube is playing twice
 - [ ] Implement log page
