@@ -223,7 +223,7 @@ function App() {
               <Route path="/system/tasks" element={<Tasks />} />
               <Route path="/wanted/movies" element={<Wanted darkMode={darkMode} type="movie" />} />
               <Route path="/wanted/series" element={<Wanted darkMode={darkMode} type="series" />} />
-              <Route path="/settings/extras" element={<ExtrasSettings />} />
+              <Route path="/settings/extras" element={<ExtrasSettings darkMode={darkMode} />} />
             </Routes>
           </div>
         </main>

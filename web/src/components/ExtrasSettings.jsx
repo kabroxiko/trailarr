@@ -1,4 +1,7 @@
 import React, { useEffect, useState } from 'react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faSave } from '@fortawesome/free-solid-svg-icons';
+import Select from 'react-select';
 import axios from 'axios';
 
 const EXTRA_TYPES = [
@@ -29,7 +32,27 @@ const YTDLP_FLAGS = [
   { key: 'maxSleepInterval', label: 'Max Sleep Interval (s)', type: 'number' },
 ];
 
-export default function ExtrasSettings() {
+export default function ExtrasSettings({ darkMode }) {
+  useEffect(() => {
+    const setColors = () => {
+      const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.style.setProperty('--settings-bg', isDark ? '#222' : '#fff');
+      document.documentElement.style.setProperty('--settings-text', isDark ? '#eee' : '#222');
+      document.documentElement.style.setProperty('--save-lane-bg', isDark ? '#333' : '#e5e7eb');
+      document.documentElement.style.setProperty('--save-lane-text', isDark ? '#eee' : '#222');
+      document.documentElement.style.setProperty('--settings-input-bg', isDark ? '#333' : '#f5f5f5');
+      document.documentElement.style.setProperty('--settings-input-text', isDark ? '#eee' : '#222');
+      document.documentElement.style.setProperty('--settings-table-bg', isDark ? '#444' : '#f7f7f7');
+      document.documentElement.style.setProperty('--settings-table-text', isDark ? '#f3f3f3' : '#222');
+      document.documentElement.style.setProperty('--settings-table-header-bg', isDark ? '#555' : '#ededed');
+      document.documentElement.style.setProperty('--settings-table-header-text', isDark ? '#fff' : '#222');
+    };
+    setColors();
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', setColors);
+    return () => {
+      window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', setColors);
+    };
+  }, [darkMode]);
   const [settings, setSettings] = useState({});
   const [ytFlags, setYtFlags] = useState({});
   const [loading, setLoading] = useState(true);
@@ -87,65 +110,153 @@ export default function ExtrasSettings() {
       });
   };
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) return (
+    <div style={{ width: '100%', margin: 0, height: '100%', padding: '2rem', background: 'var(--settings-bg, #fff)', borderRadius: 12, boxShadow: '0 2px 12px #0002', color: 'var(--settings-text, #222)', boxSizing: 'border-box', overflowX: 'hidden', overflowY: 'auto', position: 'relative' }}>
+      <div style={{ textAlign: 'center', margin: '2rem' }}>Loading...</div>
+    </div>
+  );
+
+  // Save lane logic
+  const isChanged = EXTRA_TYPES.some(({ key }) => settings[key] !== undefined && settings[key] !== false) || Object.keys(ytFlags).length > 0;
 
   return (
-    <div style={{ maxWidth: 600, margin: '2em auto', padding: '2em', background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px #0001' }}>
-      <h2 style={{ marginBottom: '1em' }}>Extras Download Settings</h2>
-      <p>Enable or disable automatic downloads for each extra type:</p>
-      <form onSubmit={e => { e.preventDefault(); handleSave(); }}>
-        {EXTRA_TYPES.map(({ key, label }) => (
-          <div key={key} style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-            <input
-              type="checkbox"
-              id={key}
-              checked={!!settings[key]}
-              onChange={() => handleChange(key)}
-              style={{ marginRight: 12 }}
-            />
-            <label htmlFor={key} style={{ fontSize: 16 }}>{label}</label>
-          </div>
-        ))}
-        {error && <div style={{ color: 'red', marginBottom: 12 }}>{error}</div>}
-        <button type="submit" disabled={saving} style={{ padding: '0.5em 1.5em', fontSize: 16, background: '#a855f7', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
-          {saving ? 'Saving...' : 'Save'}
+    <div style={{ width: '100%', margin: 0, height: '100%', padding: '2rem', background: 'var(--settings-bg, #fff)', borderRadius: 12, boxShadow: '0 2px 12px #0002', color: 'var(--settings-text, #222)', boxSizing: 'border-box', overflowX: 'hidden', overflowY: 'auto', position: 'relative' }}>
+      {/* Save lane */}
+      <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', background: 'var(--save-lane-bg, #f3f4f6)', color: 'var(--save-lane-text, #222)', padding: '0.7rem 2rem', display: 'flex', alignItems: 'center', gap: '1rem', borderTopLeftRadius: 12, borderTopRightRadius: 12, zIndex: 10, boxShadow: '0 2px 8px #0001' }}>
+        <button onClick={handleSave} disabled={saving || !isChanged} style={{ background: 'none', color: '#222', border: 'none', borderRadius: 6, padding: '0.3rem 1rem', cursor: saving || !isChanged ? 'not-allowed' : 'pointer', opacity: saving || !isChanged ? 0.7 : 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
+          <FontAwesomeIcon icon={faSave} style={{ fontSize: 22, color: 'var(--save-lane-text, #222)' }} />
+          <span style={{ fontWeight: 500, fontSize: '0.85em', color: 'var(--save-lane-text, #222)', marginTop: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1.1 }}>
+            <span>{saving || !isChanged ? 'No' : 'Save'}</span>
+            <span>Changes</span>
+          </span>
         </button>
-      </form>
-      <hr style={{ margin: '2em 0' }} />
-      <h3 style={{ marginBottom: '1em' }}>yt-dlp Download Flags</h3>
-      <form onSubmit={e => { e.preventDefault(); handleYtSave(); }}>
-        {YTDLP_FLAGS.map(({ key, label, type }) => (
-          <div key={key} style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-            {type === 'boolean' ? (
-              <>
-                <input
-                  type="checkbox"
-                  id={key}
-                  checked={!!ytFlags[key]}
-                  onChange={() => handleYtFlagChange(key, !ytFlags[key])}
-                  style={{ marginRight: 12 }}
-                />
-                <label htmlFor={key} style={{ fontSize: 16 }}>{label}</label>
-              </>
-            ) : (
-              <>
-                <label htmlFor={key} style={{ fontSize: 16, minWidth: 180 }}>{label}</label>
-                <input
-                  type={type === 'number' ? 'number' : 'text'}
-                  id={key}
-                  value={ytFlags[key] ?? ''}
-                  onChange={e => handleYtFlagChange(key, type === 'number' ? Number(e.target.value) : e.target.value)}
-                  style={{ marginLeft: 12, flex: 1, padding: '0.3em 0.7em', fontSize: 15, border: '1px solid #ccc', borderRadius: 4 }}
-                />
-              </>
-            )}
-          </div>
-        ))}
+        {error && <div style={{ marginLeft: 16, color: '#f44', fontWeight: 500 }}>{error}</div>}
+      </div>
+      <div style={{ marginTop: '4.5rem', background: 'var(--settings-bg, #fff)', color: 'var(--settings-text, #222)', borderRadius: 12, boxShadow: '0 1px 4px #0001', padding: '2rem' }}>
+        <h2 style={{ marginBottom: '1em', color: '#fff', textAlign: 'left', fontSize: 20, fontWeight: 600 }}>Extra Types</h2>
+        <div style={{ marginBottom: '2em' }}>
+          <Select
+            isMulti
+            options={EXTRA_TYPES.map(({ key, label }) => ({ value: key, label }))}
+            value={EXTRA_TYPES.filter(({ key }) => settings[key]).map(({ key, label }) => ({ value: key, label }))}
+            onChange={selected => {
+              const newSettings = { ...settings };
+              EXTRA_TYPES.forEach(({ key }) => { newSettings[key] = false; });
+              selected.forEach(({ value }) => { newSettings[value] = true; });
+              setSettings(newSettings);
+            }}
+            styles={{
+              control: (base, state) => ({
+                ...base,
+                background: darkMode ? '#23232a' : '#222',
+                borderColor: state.isFocused ? '#a855f7' : '#444',
+                boxShadow: state.isFocused ? '0 0 0 2px #a855f7' : 'none',
+                color: '#fff',
+                borderRadius: 8,
+                minHeight: 32,
+                fontSize: 13,
+                padding: '0 4px',
+                maxWidth: 480,
+              }),
+              valueContainer: base => ({
+                ...base,
+                padding: '2px 4px',
+              }),
+              indicatorsContainer: base => ({
+                ...base,
+                height: 32,
+              }),
+              multiValue: base => ({
+                ...base,
+                background: darkMode ? '#333' : '#e5e7eb',
+                color: darkMode ? '#fff' : '#222',
+                borderRadius: 6,
+                fontSize: 13,
+                height: 24,
+                margin: '2px 2px',
+              }),
+              multiValueLabel: base => ({
+                ...base,
+                color: darkMode ? '#fff' : '#222',
+                fontWeight: 500,
+                fontSize: 13,
+                padding: '0 6px',
+              }),
+              multiValueRemove: base => ({
+                ...base,
+                color: darkMode ? '#a855f7' : '#6d28d9',
+                fontSize: 13,
+                height: 24,
+                ':hover': { background: darkMode ? '#a855f7' : '#6d28d9', color: '#fff' },
+              }),
+              menu: base => ({
+                ...base,
+                background: darkMode ? '#23232a' : '#fff',
+                color: darkMode ? '#fff' : '#222',
+                borderRadius: 8,
+                fontSize: 13,
+              }),
+              option: (base, state) => ({
+                ...base,
+                background: state.isSelected ? (darkMode ? '#a855f7' : '#6d28d9') : (state.isFocused ? (darkMode ? '#333' : '#eee') : (darkMode ? '#23232a' : '#fff')),
+                color: state.isSelected ? '#fff' : (darkMode ? '#fff' : '#222'),
+                fontWeight: state.isSelected ? 600 : 400,
+                fontSize: 13,
+                height: 32,
+                lineHeight: '32px',
+              }),
+            }}
+            placeholder="Select extra types..."
+            closeMenuOnSelect={false}
+            hideSelectedOptions={false}
+            menuPortalTarget={document.body}
+          />
+        </div>
+        <hr style={{ margin: '2em 0', borderColor: darkMode ? '#444' : '#eee' }} />
+        <h3 style={{ marginBottom: '1em', color: '#fff', textAlign: 'left' }}>yt-dlp Download Flags</h3>
+        <form onSubmit={e => { e.preventDefault(); handleYtSave(); }}>
+          {YTDLP_FLAGS.map(({ key, label, type }) => (
+            <div key={key} style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+              {type === 'boolean' ? (
+                <>
+                  <input
+                    type="checkbox"
+                    id={key}
+                    checked={!!ytFlags[key]}
+                    onChange={() => handleYtFlagChange(key, !ytFlags[key])}
+                    style={{ marginRight: 12, accentColor: darkMode ? '#2563eb' : '#6d28d9' }}
+                  />
+                  <label htmlFor={key} style={{ fontSize: 16 }}>{label}</label>
+                </>
+              ) : (
+                <>
+                  <label htmlFor={key} style={{ fontSize: 16, minWidth: 180, textAlign: 'left', width: 180 }}>{label}</label>
+                  <input
+                    type={type === 'number' ? 'number' : 'text'}
+                    id={key}
+                    value={ytFlags[key] ?? ''}
+                    onChange={e => handleYtFlagChange(key, type === 'number' ? Number(e.target.value) : e.target.value)}
+                    style={{
+                      marginLeft: 12,
+                      width: 120,
+                      minWidth: 80,
+                      maxWidth: 160,
+                      padding: '0.15em 0.5em',
+                      fontSize: 13,
+                      border: '1px solid',
+                      borderColor: darkMode ? '#444' : '#ccc',
+                      borderRadius: 4,
+                      background: darkMode ? '#23232a' : '#fff',
+                      color: darkMode ? '#e5e7eb' : '#222',
+                    }}
+                  />
+                </>
+              )}
+            </div>
+          ))}
+        </form>
         {ytError && <div style={{ color: 'red', marginBottom: 12 }}>{ytError}</div>}
-        <button type="submit" disabled={ytSaving} style={{ padding: '0.5em 1.5em', fontSize: 16, background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
-          {ytSaving ? 'Saving...' : 'Save yt-dlp Flags'}
-        </button>
-      </form>
+      </div>
     </div>
   );
 }
