@@ -22,7 +22,7 @@ func GetAllTasksStatus() gin.HandlerFunc {
 		schedules := buildTaskSchedules()
 		queues := buildTaskQueues()
 		sortTaskQueuesByQueuedDesc(queues)
-		c.JSON(http.StatusOK, gin.H{
+		respondJSON(c, http.StatusOK, gin.H{
 			"schedules": schedules,
 			"queues":    queues,
 		})
@@ -57,21 +57,22 @@ func buildTaskSchedules() []gin.H {
 func buildTaskQueues() []map[string]interface{} {
 	queues := make([]map[string]interface{}, 0)
 	for _, item := range GlobalSyncQueue {
-		queueType := getQueueType(item.TaskName)
-		startedOut := getTimeOrEmpty(item.Started)
-		endedOut := getTimeOrEmpty(item.Ended)
-		durationOut := getDurationOrEmpty(item.Duration)
-		queues = append(queues, map[string]interface{}{
-			"type":     queueType,
-			"Queued":   item.Queued,
-			"Started":  startedOut,
-			"Ended":    endedOut,
-			"Duration": durationOut,
-			"Status":   item.Status,
-			"Error":    item.Error,
-		})
+		queues = append(queues, NewQueueStatusMap(item))
 	}
 	return queues
+}
+
+// NewQueueStatusMap constructs a status map for a SyncQueueItem
+func NewQueueStatusMap(item SyncQueueItem) map[string]interface{} {
+	return map[string]interface{}{
+		"type":     getQueueType(item.TaskName),
+		"Queued":   item.Queued,
+		"Started":  getTimeOrEmpty(item.Started),
+		"Ended":    getTimeOrEmpty(item.Ended),
+		"Duration": getDurationOrEmpty(item.Duration),
+		"Status":   item.Status,
+		"Error":    item.Error,
+	}
 }
 
 func getQueueType(taskName string) string {
@@ -117,19 +118,19 @@ func TaskHandler() gin.HandlerFunc {
 			Name string `json:"name"`
 		}
 		if err := c.BindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+			respondError(c, http.StatusBadRequest, "invalid request")
 			return
 		}
 		println("[FORCE] Requested force execution for:", req.Name)
 		switch req.Name {
 		case TaskSyncWithRadarr:
 			go SyncRadarr()
-			c.JSON(http.StatusOK, gin.H{"status": "Sync Radarr forced"})
+			respondJSON(c, http.StatusOK, gin.H{"status": "Sync Radarr forced"})
 		case TaskSyncWithSonarr:
 			go SyncSonarr()
-			c.JSON(http.StatusOK, gin.H{"status": "Sync Sonarr forced"})
+			respondJSON(c, http.StatusOK, gin.H{"status": "Sync Sonarr forced"})
 		default:
-			c.JSON(http.StatusBadRequest, gin.H{"error": "unknown task"})
+			respondError(c, http.StatusBadRequest, "unknown task")
 		}
 	}
 }
@@ -193,8 +194,7 @@ func waitOrDone(ctx context.Context, d time.Duration) bool {
 
 func mustLoadSearchExtrasConfig() SearchExtrasConfig {
 	cfg, err := GetSearchExtrasConfig()
-	if err != nil {
-		TrailarrLog("Warn", "Tasks", "Could not load search extras config: %v", err)
+	if CheckErrLog("Warn", "Tasks", "Could not load search extras config", err) != nil {
 		cfg.SearchMoviesExtras = true
 		cfg.SearchSeriesExtras = true
 		cfg.AutoDownloadExtras = true
@@ -212,9 +212,7 @@ func getExtrasInterval() int {
 
 func processExtras(cfg SearchExtrasConfig) {
 	extraTypesCfg, err := GetExtraTypesConfig()
-	if err != nil {
-		TrailarrLog("Warn", "Tasks", "Could not load extra types config: %v", err)
-	}
+	CheckErrLog("Warn", "Tasks", "Could not load extra types config", err)
 	if cfg.SearchMoviesExtras {
 		TrailarrLog("Info", "Tasks", "[TASK] Searching for missing movie extras...")
 		DownloadMissingMoviesExtrasWithTypeFilter(extraTypesCfg)
@@ -246,8 +244,7 @@ func DownloadMissingSeriesExtrasWithTypeFilter(cfg ExtraTypesConfig) {
 // Shared logic for type-filtered extras download
 func downloadMissingExtrasWithTypeFilter(cfg ExtraTypesConfig, mediaType MediaType, cacheFile string) {
 	items, err := loadCache(cacheFile)
-	if err != nil {
-		TrailarrLog("Debug", "Tasks", "Failed to load cache: %v", err)
+	if CheckErrLog("Debug", "Tasks", "Failed to load cache", err) != nil {
 		return
 	}
 	for _, item := range items {
@@ -276,9 +273,7 @@ func filterAndDownloadTypeFilteredExtras(cfg ExtraTypesConfig, mediaType MediaTy
 		}
 		if extra.Status == "missing" && extra.URL != "" {
 			err := handleTypeFilteredExtraDownload(mediaType, item, extra)
-			if err != nil {
-				TrailarrLog("Warn", "Tasks", "[DownloadMissingExtrasWithTypeFilter] Failed to download: %v", err)
-			}
+			CheckErrLog("Warn", "Tasks", "[DownloadMissingExtrasWithTypeFilter] Failed to download", err)
 		}
 	}
 }

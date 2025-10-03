@@ -14,7 +14,7 @@ func ListServerFoldersHandler(c *gin.Context) {
 	reqPath := c.Query("path")
 	if reqPath == "" {
 		// If no path, return allowed roots
-		c.JSON(200, gin.H{"folders": allowedRoots})
+		respondJSON(c, 200, gin.H{"folders": allowedRoots})
 		return
 	}
 	// Security: ensure reqPath is under allowed roots
@@ -26,13 +26,13 @@ func ListServerFoldersHandler(c *gin.Context) {
 		}
 	}
 	if !valid {
-		c.JSON(400, gin.H{"error": "Invalid path"})
+		respondError(c, 400, "Invalid path")
 		return
 	}
 	// List subfolders
 	entries, err := os.ReadDir(reqPath)
-	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
+	if cerr := CheckErrLog("Error", "Server", "ReadDir failed", err); cerr != nil {
+		respondError(c, 500, cerr.Error())
 		return
 	}
 	var folders []string
@@ -41,5 +41,5 @@ func ListServerFoldersHandler(c *gin.Context) {
 			folders = append(folders, filepath.Join(reqPath, entry.Name()))
 		}
 	}
-	c.JSON(200, gin.H{"folders": folders})
+	respondJSON(c, 200, gin.H{"folders": folders})
 }

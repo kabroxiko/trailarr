@@ -12,19 +12,18 @@ func RegisterRoutes(r *gin.Engine) {
 	r.GET("/api/test/tmdb", func(c *gin.Context) {
 		apiKey := c.Query("apiKey")
 		if apiKey == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Missing apiKey"})
+			respondError(c, http.StatusBadRequest, "Missing apiKey")
 			return
 		}
-		// Make a simple TMDB API request to validate the key
 		testUrl := "https://api.themoviedb.org/3/configuration?api_key=" + apiKey
 		resp, err := http.Get(testUrl)
-		if err != nil {
-			c.JSON(http.StatusOK, gin.H{"success": false, "error": err.Error()})
+		if CheckErrLog("Warn", "API", "TMDB testUrl http.Get failed", err) != nil {
+			respondError(c, http.StatusOK, err.Error())
 			return
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode == 200 {
-			c.JSON(http.StatusOK, gin.H{"success": true})
+			respondJSON(c, http.StatusOK, gin.H{"success": true})
 		} else {
 			var body struct {
 				StatusMessage string `json:"status_message"`
@@ -34,7 +33,7 @@ func RegisterRoutes(r *gin.Engine) {
 			if msg == "" {
 				msg = "Invalid TMDB API Key"
 			}
-			c.JSON(http.StatusOK, gin.H{"success": false, "error": msg})
+			respondError(c, http.StatusOK, msg)
 		}
 	})
 	// Ensure yt-dlp config exists at startup
@@ -55,48 +54,35 @@ func RegisterRoutes(r *gin.Engine) {
 		url := c.Query("url")
 		apiKey := c.Query("apiKey")
 		if url == "" || apiKey == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Missing url or apiKey"})
+			respondError(c, http.StatusBadRequest, "Missing url or apiKey")
 			return
 		}
 		folders, err := FetchRootFolders(url, apiKey)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "folders": []string{}})
+		if CheckErrLog("Warn", "API", "FetchRootFolders failed", err) != nil {
+			respondError(c, http.StatusInternalServerError, err.Error())
 			return
 		}
-		c.JSON(http.StatusOK, folders)
+		respondJSON(c, http.StatusOK, folders)
 	})
-	// Test connection endpoints for Radarr/Sonarr
-	r.GET("/api/test/radarr", func(c *gin.Context) {
+	// Combined test connection endpoint for Radarr/Sonarr
+	r.GET("/api/test/:provider", func(c *gin.Context) {
+		provider := c.Param("provider")
 		url := c.Query("url")
 		apiKey := c.Query("apiKey")
 		if url == "" || apiKey == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Missing url or apiKey"})
+			respondError(c, http.StatusBadRequest, "Missing url or apiKey")
 			return
 		}
-		err := testMediaConnection(url, apiKey, "radarr")
-		if err != nil {
-			c.JSON(http.StatusOK, gin.H{"success": false, "error": err.Error()})
+		err := testMediaConnection(url, apiKey, provider)
+		if CheckErrLog("Warn", "API", "testMediaConnection "+provider+" failed", err) != nil {
+			respondError(c, http.StatusOK, err.Error())
 		} else {
-			c.JSON(http.StatusOK, gin.H{"success": true})
-		}
-	})
-	r.GET("/api/test/sonarr", func(c *gin.Context) {
-		url := c.Query("url")
-		apiKey := c.Query("apiKey")
-		if url == "" || apiKey == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Missing url or apiKey"})
-			return
-		}
-		err := testMediaConnection(url, apiKey, "sonarr")
-		if err != nil {
-			c.JSON(http.StatusOK, gin.H{"success": false, "error": err.Error()})
-		} else {
-			c.JSON(http.StatusOK, gin.H{"success": true})
+			respondJSON(c, http.StatusOK, gin.H{"success": true})
 		}
 	})
 	// Health check
 	r.GET("/api/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+		respondJSON(c, http.StatusOK, gin.H{"status": "ok"})
 	})
 
 	// API endpoint for scheduled/queue status
@@ -113,42 +99,57 @@ func RegisterRoutes(r *gin.Engine) {
 	// Serve static files for movie posters
 	r.Static("/mediacover", MediaCoverPath)
 	r.StaticFile("/logo.svg", "web/public/logo.svg")
-	r.GET("/api/movies", getRadarrHandler)
-	var defaultMoviePath string
-	movieMappings, err := GetPathMappings("radarr")
-	if err == nil && len(movieMappings) > 0 {
-		for _, m := range movieMappings {
-			if len(m) > 1 && m[1] != "" {
-				defaultMoviePath = m[1]
-				break
+	// Helper for default media path
+	getDefaultPath := func(provider, fallback string) string {
+		var mediaType MediaType
+		switch provider {
+		case "radarr":
+			mediaType = MediaTypeMovie
+		case "sonarr":
+			mediaType = MediaTypeTV
+		default:
+			return fallback
+		}
+		mappings, err := GetPathMappings(mediaType)
+		if CheckErrLog("Warn", "API", "GetPathMappings "+provider+" failed", err) == nil && len(mappings) > 0 {
+			for _, m := range mappings {
+				if len(m) > 1 && m[1] != "" {
+					return m[1]
+				}
 			}
 		}
+		return fallback
 	}
-	if defaultMoviePath == "" {
-		defaultMoviePath = "/Movies"
-	}
-	r.GET("/api/movies/wanted", GetMediaWithoutTrailerExtraHandler("radarr", TrailarrRoot+"/movies_wanted.json", defaultMoviePath))
-	r.GET("/api/series", getSonarrHandler)
-	var defaultSeriesPath string
-	seriesMappings, err := GetPathMappings("sonarr")
-	if err == nil && len(seriesMappings) > 0 {
-		for _, m := range seriesMappings {
-			if len(m) > 1 && m[1] != "" {
-				defaultSeriesPath = m[1]
-				break
-			}
+	// Group movies/series endpoints
+	for _, media := range []struct {
+		section      string
+		cacheFile    string
+		wantedFile   string
+		fallbackPath string
+		extrasType   MediaType
+	}{
+		{"movies", TrailarrRoot + "/movies.json", TrailarrRoot + "/movies_wanted.json", "/Movies", MediaTypeMovie},
+		{"series", TrailarrRoot + "/series.json", TrailarrRoot + "/series_wanted.json", "/Series", MediaTypeTV},
+	} {
+		r.GET("/api/"+media.section, GetMediaHandler(media.section, media.cacheFile, "id"))
+		var provider string
+		if media.section == "movies" {
+			provider = "radarr"
+		} else {
+			provider = "sonarr"
 		}
+		r.GET("/api/"+media.section+"/wanted", GetMediaWithoutTrailerExtraHandler(
+			provider,
+			media.wantedFile,
+			getDefaultPath(provider, media.fallbackPath),
+		))
+		r.GET("/api/"+media.section+"/:id/extras", sharedExtrasHandler(media.extrasType))
 	}
-	if defaultSeriesPath == "" {
-		defaultSeriesPath = "/Series"
+	// Group settings endpoints for Radarr/Sonarr
+	for _, provider := range []string{"radarr", "sonarr"} {
+		r.GET("/api/settings/"+provider, GetSettingsHandler(provider))
+		r.POST("/api/settings/"+provider, SaveSettingsHandler(provider))
 	}
-	r.GET("/api/series/wanted", GetMediaWithoutTrailerExtraHandler("sonarr", TrailarrRoot+"/series_wanted.json", defaultSeriesPath))
-	r.GET("/api/movies/:id/extras", getMovieExtrasHandler)
-	r.GET("/api/series/:id/extras", getSeriesExtrasHandler)
-	r.GET("/api/settings/radarr", GetSettingsHandler("radarr"))
-	r.POST("/api/settings/radarr", SaveSettingsHandler("radarr"))
-	r.GET("/api/settings/sonarr", GetSettingsHandler("sonarr"))
-	r.POST("/api/settings/sonarr", SaveSettingsHandler("sonarr"))
 	r.POST("/api/extras/download", downloadExtraHandler)
 	r.DELETE("/api/extras", deleteExtraHandler)
 	r.GET("/api/extras/existing", existingExtrasHandler)

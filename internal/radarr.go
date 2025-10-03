@@ -1,66 +1,16 @@
 package internal
 
 import (
-	"fmt"
-	"net/http"
 	"time"
-
-	"github.com/gin-gonic/gin"
 )
 
-func getRadarrHandler(c *gin.Context) {
-	cacheFile := TrailarrRoot + "/movies.json"
-	movies, err := loadCache(cacheFile)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Movie cache not found"})
-		return
-	}
-	// If id query param is present, filter for that movie only
-	idParam := c.Query("id")
-	var filtered []map[string]interface{}
-	if idParam != "" {
-		for _, m := range movies {
-			if id, ok := m["id"]; ok && fmt.Sprintf("%v", id) == idParam {
-				filtered = append(filtered, m)
-				break
-			}
-		}
-	} else {
-		filtered = movies
-	}
-	// Removed extras download check from list endpoint; should only be done in detail endpoint
-	c.JSON(http.StatusOK, gin.H{"movies": filtered})
-}
+// ...existing code...
 
-// getMovieExtrasHandler is now a wrapper for sharedExtrasHandler
-var getMovieExtrasHandler = sharedExtrasHandler("movie")
-
-// SyncRadarrQueueItem tracks a Radarr sync operation
-type SyncRadarrQueueItem struct {
-	TaskName string
-	Queued   time.Time
-	Started  time.Time
-	Ended    time.Time
-	Duration time.Duration
-	Status   string
-	Error    string
-}
-
-// syncRadarrStatus tracks last sync status and times for Radarr
-var syncRadarrStatus = struct {
-	LastExecution time.Time
-	LastDuration  time.Duration
-	NextExecution time.Time
-	LastError     string
-	Queue         []SyncRadarrQueueItem
-}{
-	Queue: make([]SyncRadarrQueueItem, 0),
-}
+// Use shared SyncStatus from media.go
+var syncRadarrStatus = NewSyncStatus()
 
 // Handler to force sync Radarr
 func SyncRadarr() {
-	// Use generic ForceSyncMedia from media.go
-	// Only use GlobalSyncQueue for persistence and display
 	SyncMedia(
 		"radarr",
 		SyncRadarrImages,
@@ -73,55 +23,31 @@ func SyncRadarr() {
 	syncRadarrStatus.Queue = nil
 	for _, item := range GlobalSyncQueue {
 		if item.TaskName == "radarr" {
-			syncRadarrStatus.Queue = append(syncRadarrStatus.Queue, SyncRadarrQueueItem(item))
+			syncRadarrStatus.Queue = append(syncRadarrStatus.Queue, item)
 		}
 	}
 }
 
 // Exported Radarr status getters for main.go
-func RadarrLastExecution() time.Time     { return syncRadarrStatus.LastExecution }
-func RadarrLastDuration() time.Duration  { return syncRadarrStatus.LastDuration }
-func RadarrNextExecution() time.Time     { return syncRadarrStatus.NextExecution }
-func RadarrLastError() string            { return syncRadarrStatus.LastError }
-func RadarrQueue() []SyncRadarrQueueItem { return syncRadarrStatus.Queue }
+func RadarrLastExecution() time.Time    { return LastExecution(syncRadarrStatus) }
+func RadarrLastDuration() time.Duration { return LastDuration(syncRadarrStatus) }
+func RadarrNextExecution() time.Time    { return NextExecution(syncRadarrStatus) }
+func RadarrLastError() string           { return LastError(syncRadarrStatus) }
+func RadarrQueue() []SyncQueueItem      { return Queue(syncRadarrStatus) }
 
 // Exported handler for Radarr status
-func GetRadarrStatusHandler() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		interval := Timings["radarr"]
-		c.JSON(http.StatusOK, gin.H{
-			"scheduled": gin.H{
-				"name":          "Sync with Radarr",
-				"interval":      fmt.Sprintf("%d minutes", interval),
-				"lastExecution": RadarrLastExecution(),
-				"lastDuration":  RadarrLastDuration().String(),
-				"nextExecution": RadarrNextExecution(),
-				"lastError":     RadarrLastError(),
-			},
-			"queue": RadarrQueue(),
-		})
-	}
-}
+var GetRadarrStatusHandler = GetSyncStatusHandler("radarr", syncRadarrStatus, "Radarr")
 
 func SyncRadarrImages() error {
-	err := SyncMediaCacheJson("radarr", "/api/v3/movie", TrailarrRoot+"/movies.json", func(m map[string]interface{}) bool {
-		hasFile, ok := m["hasFile"].(bool)
-		return ok && hasFile
-	})
-	if err != nil {
-		return err
-	}
-	movies, err := loadCache(TrailarrRoot + "/movies.json")
-	if err != nil {
-		return err
-	}
-	CacheMediaPosters(
+	return SyncMediaImages(
 		"radarr",
+		"/api/v3/movie",
+		TrailarrRoot+"/movies.json",
+		func(m map[string]interface{}) bool {
+			hasFile, ok := m["hasFile"].(bool)
+			return ok && hasFile
+		},
 		MediaCoverPath+"/Movies",
-		movies,
-		"id",
 		[]string{"/poster-500.jpg", "/fanart-1280.jpg"},
-		true, // debug
 	)
-	return nil
 }

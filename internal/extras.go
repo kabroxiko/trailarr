@@ -1,7 +1,6 @@
 package internal
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -25,16 +24,10 @@ type Extra struct {
 func GetRejectedExtrasForMedia(mediaType MediaType, id int) []RejectedExtra {
 	rejectedPath := filepath.Join(TrailarrRoot, "rejected_extras.json")
 	var rejected []RejectedExtra
-	if data, err := os.ReadFile(rejectedPath); err == nil {
-		_ = json.Unmarshal(data, &rejected)
-	}
-	filtered := make([]RejectedExtra, 0)
-	for _, rejected := range rejected {
-		if rejected.MediaType == mediaType && rejected.MediaId == id {
-			filtered = append(filtered, rejected)
-		}
-	}
-	return filtered
+	_ = ReadJSONFile(rejectedPath, &rejected)
+	return Filter(rejected, func(r RejectedExtra) bool {
+		return r.MediaType == mediaType && r.MediaId == id
+	})
 }
 
 // Handler to delete an extra and record history
@@ -46,7 +39,7 @@ func deleteExtraHandler(c *gin.Context) {
 		ExtraTitle string    `json:"extraTitle"`
 	}
 	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": ErrInvalidRequest})
+		respondError(c, http.StatusBadRequest, ErrInvalidRequest)
 		return
 	}
 
@@ -54,19 +47,19 @@ func deleteExtraHandler(c *gin.Context) {
 
 	mediaPath, err := FindMediaPathByID(cacheFile, fmt.Sprintf("%d", req.MediaId))
 	if err != nil || mediaPath == "" {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Media not found"})
+		respondError(c, http.StatusNotFound, "Media not found")
 		return
 	}
 
 	mediaTitle := lookupMediaTitle(cacheFile, req.MediaId)
 
 	if err := deleteExtraFiles(mediaPath, req.ExtraType, req.ExtraTitle); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete extra", "detail": err.Error()})
+		respondError(c, http.StatusInternalServerError, "Failed to delete extra: "+err.Error())
 		return
 	}
 
 	recordDeleteHistory(req.MediaType, mediaTitle, req.ExtraType, req.ExtraTitle)
-	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+	respondJSON(c, http.StatusOK, gin.H{"status": "deleted"})
 }
 
 func resolveCachePath(mediaType MediaType) (string, error) {
@@ -81,7 +74,7 @@ func resolveCachePath(mediaType MediaType) (string, error) {
 
 func lookupMediaTitle(cacheFile string, mediaId int) string {
 	items, err := loadCache(cacheFile)
-	if err != nil {
+	if CheckErrLog("Warn", "lookupMediaTitle", "Failed to load cache", err) != nil {
 		return ""
 	}
 	for _, m := range items {
@@ -101,7 +94,7 @@ func deleteExtraFiles(mediaPath, extraType, extraTitle string) error {
 	err1 := os.Remove(extraFile)
 	err2 := os.Remove(metaFile)
 	if err1 != nil && err2 != nil {
-		TrailarrLog("Warn", "Extras", "Failed to delete extra files: %v, meta: %v", err1, err2)
+		CheckErrLog("Warn", "Extras", "Failed to delete extra files", err1)
 		return fmt.Errorf("file error: %v, meta error: %v", err1, err2)
 	}
 	return nil
@@ -158,19 +151,19 @@ func ExtractYouTubeID(url string) (string, error) {
 	if strings.Contains(url, "youtube.com/watch?v=") {
 		parts := strings.Split(url, "v=")
 		if len(parts) < 2 {
-			TrailarrLog("Warn", "Extras", "Could not extract YouTube video ID from URL: %s", url)
+			CheckErrLog("Warn", "Extras", "Could not extract YouTube video ID from URL", fmt.Errorf("url: %s", url))
 			return "", fmt.Errorf("could not extract YouTube video ID from URL: %s", url)
 		}
 		return strings.Split(parts[1], "&")[0], nil
 	} else if strings.Contains(url, "youtu.be/") {
 		parts := strings.Split(url, "/")
 		if len(parts) < 2 {
-			TrailarrLog("Warn", "Extras", "Could not extract YouTube video ID from URL: %s", url)
+			CheckErrLog("Warn", "Extras", "Could not extract YouTube video ID from URL", fmt.Errorf("url: %s", url))
 			return "", fmt.Errorf("could not extract YouTube video ID from URL: %s", url)
 		}
 		return parts[len(parts)-1], nil
 	}
-	TrailarrLog("Warn", "Extras", "Not a valid YouTube URL: %s", url)
+	CheckErrLog("Warn", "Extras", "Not a valid YouTube URL", fmt.Errorf("url: %s", url))
 	return "", fmt.Errorf("not a valid YouTube URL: %s", url)
 }
 
@@ -212,14 +205,14 @@ func SanitizeFilename(name string) string {
 func existingExtrasHandler(c *gin.Context) {
 	moviePath := c.Query("moviePath")
 	if moviePath == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "moviePath required"})
+		respondError(c, http.StatusBadRequest, "moviePath required")
 		return
 	}
 	// Scan subfolders for .mkv files and their metadata
 	var existing []map[string]interface{}
 	entries, err := os.ReadDir(moviePath)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"existing": []map[string]interface{}{}})
+	if CheckErrLog("Warn", "existingExtrasHandler", "ReadDir failed", err) != nil {
+		respondJSON(c, http.StatusOK, gin.H{"existing": []map[string]interface{}{}})
 		return
 	}
 	// Track duplicate index for each type/title
@@ -239,8 +232,7 @@ func existingExtrasHandler(c *gin.Context) {
 					YouTubeID string `json:"youtube_id"`
 				}
 				status := "not-downloaded"
-				if metaBytes, err := os.ReadFile(metaFile); err == nil {
-					_ = json.Unmarshal(metaBytes, &meta)
+				if err := ReadJSONFile(metaFile, &meta); err == nil {
 					status = "downloaded"
 				}
 				key := entry.Name() + "|" + meta.Title
@@ -255,7 +247,7 @@ func existingExtrasHandler(c *gin.Context) {
 			}
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"existing": existing})
+	respondJSON(c, http.StatusOK, gin.H{"existing": existing})
 }
 
 func downloadExtraHandler(c *gin.Context) {
@@ -266,9 +258,8 @@ func downloadExtraHandler(c *gin.Context) {
 		ExtraTitle string    `json:"extraTitle"`
 		URL        string    `json:"url"`
 	}
-	if err := c.BindJSON(&req); err != nil {
-		TrailarrLog("Warn", "Extras", "[downloadExtraHandler] Invalid request: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": ErrInvalidRequest})
+	if err := c.BindJSON(&req); CheckErrLog("Warn", "Extras", "[downloadExtraHandler] Invalid request", err) != nil {
+		respondError(c, http.StatusBadRequest, ErrInvalidRequest)
 		return
 	}
 	TrailarrLog("Info", "Extras", "[downloadExtraHandler] Download request: mediaType=%s, mediaId=%d, extraType=%s, extraTitle=%s, url=%s", req.MediaType, req.MediaId, req.ExtraType, req.ExtraTitle, req.URL)
@@ -276,9 +267,8 @@ func downloadExtraHandler(c *gin.Context) {
 	// Convert MediaId (int) to string for DownloadYouTubeExtra
 	mediaIdStr := fmt.Sprintf("%d", req.MediaId)
 	meta, err := DownloadYouTubeExtra(req.MediaType, mediaIdStr, req.ExtraType, req.ExtraTitle, req.URL, true)
-	if err != nil {
-		TrailarrLog("Warn", "Extras", "[downloadExtraHandler] Download error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if CheckErrLog("Warn", "Extras", "[downloadExtraHandler] Download error", err) != nil {
+		respondError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -300,7 +290,7 @@ func downloadExtraHandler(c *gin.Context) {
 		mediaTitle = "Unknown"
 	}
 	recordDownloadHistory(req.MediaType, mediaTitle, req.ExtraType, req.ExtraTitle)
-	c.JSON(http.StatusOK, gin.H{"status": "downloaded", "meta": meta})
+	respondJSON(c, http.StatusOK, gin.H{"status": "downloaded", "meta": meta})
 }
 
 func recordDownloadHistory(mediaType MediaType, mediaTitle string, extraType, extraTitle string) {
@@ -326,7 +316,7 @@ func findMediaWithTrailers(baseDirs ...string) map[string]bool {
 
 func walkMediaDirs(baseDir string, found map[string]bool) {
 	_ = filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || !info.IsDir() {
+		if CheckErrLog("Warn", "walkMediaDirs", "filepath.Walk error", err) != nil || !info.IsDir() {
 			return nil
 		}
 		if isTrailerDir(path) && hasVideoFiles(path) {

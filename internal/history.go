@@ -1,9 +1,7 @@
 package internal
 
 import (
-	"encoding/json"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 
@@ -23,7 +21,7 @@ var historyMutex sync.Mutex
 
 func historyHandler(c *gin.Context) {
 	events := LoadHistoryEvents()
-	c.JSON(http.StatusOK, gin.H{"history": events})
+	respondJSON(c, http.StatusOK, gin.H{"history": events})
 }
 
 var historyFile = TrailarrRoot + "/history.json"
@@ -33,18 +31,11 @@ func AppendHistoryEvent(event HistoryEvent) error {
 	defer historyMutex.Unlock()
 	events := LoadHistoryEvents()
 	events = append(events, event)
-	data, err := json.MarshalIndent(events, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(historyFile, data, 0644)
+	return WriteJSONFile(historyFile, events)
 }
 
 func LoadHistoryEvents() []HistoryEvent {
 	var events []HistoryEvent
-	data, err := os.ReadFile(historyFile)
-	if err == nil {
-		_ = json.Unmarshal(data, &events)
-	}
+	_ = ReadJSONFile(historyFile, &events)
 	return events
 }
