@@ -2,7 +2,6 @@ package internal
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
@@ -62,10 +61,6 @@ var syncSonarrStatus = struct {
 
 // Handler to force sync Sonarr
 func SyncSonarr() {
-	if !GetAutoDownloadExtras() {
-		log.Println("[FORCE] Auto download of extras is disabled by general settings. Skipping forced Sonarr sync.")
-		return
-	}
 	// Use generic ForceSyncMedia from media.go
 	// Only use GlobalSyncQueue for persistence and display
 	SyncMedia(
