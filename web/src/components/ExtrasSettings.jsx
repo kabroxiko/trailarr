@@ -57,11 +57,11 @@ export default function ExtrasSettings({ darkMode }) {
   }, [darkMode]);
   const [settings, setSettings] = useState({});
   const [ytFlags, setYtFlags] = useState({});
+  const [originalSettings, setOriginalSettings] = useState({});
+  const [originalYtFlags, setOriginalYtFlags] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [ytError, setYtError] = useState('');
-  const [ytSaving, setYtSaving] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -72,6 +72,8 @@ export default function ExtrasSettings({ darkMode }) {
       .then(([extrasRes, ytRes]) => {
         setSettings(extrasRes.data);
         setYtFlags(ytRes.data);
+        setOriginalSettings(extrasRes.data);
+        setOriginalYtFlags(ytRes.data);
         setLoading(false);
       })
       .catch(() => {
@@ -88,40 +90,51 @@ export default function ExtrasSettings({ darkMode }) {
     setYtFlags(prev => ({ ...prev, [key]: value }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaving(true);
-    axios.post('/api/settings/extratypes', settings)
-      .then(() => {
-        setSaving(false);
-      })
-      .catch(() => {
-        setError('Failed to save settings');
-        setSaving(false);
-      });
-  };
-
-  const handleYtSave = () => {
+    setError('');
+    let extrasOk = false, ytOk = false;
+    let extrasErr = '', ytErr = '';
+    try {
+      await axios.post('/api/settings/extratypes', settings);
+      setOriginalSettings(settings);
+      extrasOk = true;
+    } catch {
+      extrasErr = 'Failed to save extras settings';
+    }
     if (
       typeof ytFlags.maxSleepInterval === 'number' &&
       typeof ytFlags.sleepInterval === 'number' &&
       ytFlags.maxSleepInterval < ytFlags.sleepInterval
     ) {
-      setYtError('Max Sleep Interval must not be lower than Sleep Interval.');
-      return;
+      ytErr = 'Max Sleep Interval must not be lower than Sleep Interval.';
+    } else {
+      try {
+        await axios.post('/api/settings/ytdlpflags', ytFlags);
+        setOriginalYtFlags(ytFlags);
+        ytOk = true;
+      } catch {
+        ytErr = 'Failed to save yt-dlp flags';
+      }
     }
-    setYtSaving(true);
-    axios.post('/api/settings/ytdlpflags', ytFlags)
-      .then(() => {
-        setYtSaving(false);
-      })
-      .catch(() => {
-        setYtError('Failed to save yt-dlp flags');
-        setYtSaving(false);
-      });
+    setSaving(false);
+    setError([extrasErr, ytErr].filter(Boolean).join(' | '));
   };
 
   // Save lane logic
-  const isChanged = EXTRA_TYPES.some(({ key }) => settings[key] !== undefined && settings[key] !== false) || Object.keys(ytFlags).length > 0;
+  function shallowEqual(objA, objB) {
+    const keysA = Object.keys(objA);
+    const keysB = Object.keys(objB);
+    if (keysA.length !== keysB.length) return false;
+    for (let key of keysA) {
+      if (objA[key] !== objB[key]) return false;
+    }
+    return true;
+  }
+
+  const isChanged =
+    !shallowEqual(settings, originalSettings) ||
+    !shallowEqual(ytFlags, originalYtFlags);
 
   return (
     <Container>
@@ -209,7 +222,7 @@ export default function ExtrasSettings({ darkMode }) {
         </div>
         <hr style={{ margin: '2em 0', borderColor: darkMode ? '#444' : '#eee' }} />
         <SectionHeader>yt-dlp Download Flags</SectionHeader>
-        <form onSubmit={e => { e.preventDefault(); handleYtSave(); }}>
+  <form onSubmit={e => { e.preventDefault(); handleSave(); }}>
           {YTDLP_FLAGS.map(({ key, label, type }) => (
             <div key={key} style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
               {type === 'boolean' ? (
@@ -250,7 +263,6 @@ export default function ExtrasSettings({ darkMode }) {
             </div>
           ))}
         </form>
-        {ytError && <div style={{ color: 'red', marginBottom: 12 }}>{ytError}</div>}
       </div>
     </Container>
   );
