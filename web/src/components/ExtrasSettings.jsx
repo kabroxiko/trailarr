@@ -99,6 +99,14 @@ export default function ExtrasSettings({ darkMode }) {
   };
 
   const handleYtSave = () => {
+    if (
+      typeof ytFlags.maxSleepInterval === 'number' &&
+      typeof ytFlags.sleepInterval === 'number' &&
+      ytFlags.maxSleepInterval < ytFlags.sleepInterval
+    ) {
+      setYtError('Max Sleep Interval must not be lower than Sleep Interval.');
+      return;
+    }
     setYtSaving(true);
     axios.post('/api/settings/ytdlpflags', ytFlags)
       .then(() => {
