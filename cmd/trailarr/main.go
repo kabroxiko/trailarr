@@ -2,6 +2,8 @@ package main
 
 import (
 	"os"
+	"path/filepath"
+	"strings"
 	"trailarr/internal"
 
 	"github.com/gin-gonic/gin"
@@ -10,6 +12,8 @@ import (
 var timings map[string]int
 
 func main() {
+	// Clean up yt-dlp-tmp directories at startup
+	cleanYTDLPTmpDirs()
 
 	// Ensure cookies.txt exists and is in Netscape format
 	cookiesPath := internal.TrailarrRoot + "/cookies.txt"
@@ -35,6 +39,20 @@ func main() {
 	internal.RegisterRoutes(r)
 	internal.StartBackgroundTasks()
 	r.Run(":8080")
+}
+
+// cleanYTDLPTmpDirs removes all yt-dlp-tmp-* directories from /tmp
+func cleanYTDLPTmpDirs() {
+	tmpDir := "/tmp"
+	entries, err := os.ReadDir(tmpDir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if entry.IsDir() && strings.HasPrefix(entry.Name(), "yt-dlp-tmp-") {
+			os.RemoveAll(filepath.Join(tmpDir, entry.Name()))
+		}
+	}
 }
 
 // ensureNetscapeCookiesFile creates a valid Netscape-format cookies.txt if missing or empty
