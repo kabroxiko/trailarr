@@ -3,28 +3,21 @@ package internal
 import (
 	"fmt"
 	"os"
-	"sync"
-
 	"path/filepath"
+	"sync"
+	"time"
 )
 
 var (
 	logWriter     *os.File
 	logWriterOnce sync.Once
 	logFileBase   string
-	logFileNum    int
 )
-var logCounterMu sync.Mutex
-var logCounter int
 
 // Call this once at startup to set up the log file writer and reset log counter
 func InitTrailarrLogWriter(logPath string) {
 	logWriterOnce.Do(func() {
 		logFileBase = logPath
-		logFileNum = 1
-		logCounterMu.Lock()
-		logCounter = 1
-		logCounterMu.Unlock()
 		openLogFile()
 	})
 }
@@ -40,23 +33,17 @@ func openLogFile() {
 	}
 }
 
-func numberedLogFileName() string {
-	ext := filepath.Ext(logFileBase)
-	base := logFileBase[:len(logFileBase)-len(ext)]
-	return fmt.Sprintf("%s-%d%s", base, logFileNum, ext)
-}
-
 // LogLevel can be Info, Warn, Error, Debug, etc.
 func TrailarrLog(level, component, message string, args ...interface{}) {
 	if !ShouldLog(level) {
 		return
 	}
-	logCounterMu.Lock()
-	entryNum := logCounter
-	logCounter++
-	logCounterMu.Unlock()
 	msg := fmt.Sprintf(message, args...)
-	logLine := fmt.Sprintf("%d|%s|%s|%s\n", entryNum, level, component, msg)
+	// Format timestamp: yyyy-mm-dd HH:MM:SS.s (1 decimal ms)
+	now := time.Now()
+	timestamp := now.Format("2006-01-02 15:04:05")
+	ms := now.Nanosecond() / 1e8 // tenths of a second
+	logLine := fmt.Sprintf("%s.%d|%s|%s|%s\n", timestamp, ms, level, component, msg)
 	fmt.Fprint(os.Stdout, logLine)
 	if logWriter != nil {
 		logWriter.Write([]byte(logLine))
