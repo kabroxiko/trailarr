@@ -1,5 +1,7 @@
 # TODO List
 
+## TODO
+- [ ] Fix: YouTube player plays twice (ensure only one iframe/audio stream is active when modal opens/closes)
 - [x] Refactor error handling/logging in all files
   - Refactor repeated error handling and logging in all internal Go files to use CheckErrLog helper. Validate each file after refactoring.
 

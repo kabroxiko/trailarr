@@ -192,11 +192,15 @@ export default function ExtraCard({
             }}>
               <IconButton
                 icon={<span style={{ fontSize: 28, color: '#fff' }}>×</span>}
-                onClick={() => setYoutubeModal({ open: false, videoId: '' })}
+                onClick={() => {
+                  // Unmount the iframe immediately by closing modal and clearing videoId
+                  setYoutubeModal({ open: false, videoId: '' });
+                }}
                 title="Close"
                 style={{ position: 'absolute', top: 8, right: 12, background: 'transparent', zIndex: 2 }}
               />
-              <YoutubeEmbed videoId={youtubeModal.videoId} />
+              {/* Only render YoutubeEmbed if modal is open and videoId is set */}
+              {youtubeModal.open && youtubeModal.videoId && <YoutubeEmbed videoId={youtubeModal.videoId} />}
             </div>
           </div>
         )}
