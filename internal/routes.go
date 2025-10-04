@@ -18,16 +18,18 @@ func RegisterRoutes(r *gin.Engine) {
 			return
 		}
 		type LogInfo struct {
+			Number    int    `json:"number"`
 			Filename  string `json:"filename"`
 			LastWrite string `json:"lastWrite"`
 		}
 		var logs []LogInfo
-		for _, path := range entries {
+		for i, path := range entries {
 			fi, err := os.Stat(path)
 			if err != nil {
 				continue
 			}
 			logs = append(logs, LogInfo{
+				Number:    i + 1,
 				Filename:  filepath.Base(path),
 				LastWrite: fi.ModTime().Format("02 Jan 2006 15:04"),
 			})

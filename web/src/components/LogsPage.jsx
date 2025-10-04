@@ -14,6 +14,22 @@ const fetchLogs = async () => {
 };
 
 export default function LogsPage() {
+  // Helper to format date
+  function formatLogDate(dateStr) {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const isYesterday = d.toDateString() === yesterday.toDateString();
+    if (isToday) {
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    } else if (isYesterday) {
+      return 'Yesterday';
+    } else {
+      return d.toLocaleDateString([], { day: '2-digit', month: 'short', year: 'numeric' });
+    }
+  }
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [logDir, setLogDir] = useState('');
@@ -22,7 +38,12 @@ export default function LogsPage() {
     fetch('/api/logs/list')
       .then(res => res.json())
       .then(data => {
-        setLogs((data.logs || []).slice().reverse());
+        const sortedLogs = (data.logs || []).slice().sort((a, b) => {
+          const aDate = new Date(a.lastWrite);
+          const bDate = new Date(b.lastWrite);
+          return bDate - aDate;
+        });
+        setLogs(sortedLogs);
         setLoading(false);
         setLogDir(data.logDir || '');
       });
@@ -46,6 +67,7 @@ export default function LogsPage() {
       <table style={{ width: '100%', borderCollapse: 'collapse', background: tableBg, borderRadius: 8 }}>
         <thead>
           <tr style={{ background: tableHeaderBg, color: textColor }}>
+            <th style={{ textAlign: 'left', padding: '0.75em' }}>#</th>
             <th style={{ textAlign: 'left', padding: '0.75em' }}>Filename</th>
             <th style={{ textAlign: 'left', padding: '0.75em' }}>Last Write Time</th>
             <th style={{ textAlign: 'left', padding: '0.75em' }}>Download</th>
@@ -53,12 +75,13 @@ export default function LogsPage() {
         </thead>
         <tbody>
           {loading ? (
-            <tr><td colSpan={3}>Loading...</td></tr>
+            <tr><td colSpan={4}>Loading...</td></tr>
           ) : (
             logs.map((log) => (
               <tr key={log.filename} style={{ borderBottom: `1px solid ${borderColor}` }}>
+                <td style={{ padding: '0.75em', textAlign: 'left', color: textColor }}>{logs.indexOf(log) + 1}</td>
                 <td style={{ padding: '0.75em', textAlign: 'left', color: textColor }}>{log.filename}</td>
-                <td style={{ padding: '0.75em', textAlign: 'left', color: textColor }}>{log.lastWrite}</td>
+                <td style={{ padding: '0.75em', textAlign: 'left', color: textColor }}>{formatLogDate(log.lastWrite)}</td>
                 <td style={{ padding: '0.75em', textAlign: 'left' }}>
                   <a href={log.url} style={{ color: isDark ? '#90cdf4' : '#2563eb', textDecoration: 'none' }}>Download</a>
                 </td>
