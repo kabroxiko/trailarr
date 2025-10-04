@@ -83,7 +83,7 @@ export default function LogsPage() {
                 <td style={{ padding: '0.75em', textAlign: 'left', color: textColor }}>{log.filename}</td>
                 <td style={{ padding: '0.75em', textAlign: 'left', color: textColor }}>{formatLogDate(log.lastWrite)}</td>
                 <td style={{ padding: '0.75em', textAlign: 'left' }}>
-                  <a href={log.url} style={{ color: isDark ? '#90cdf4' : '#2563eb', textDecoration: 'none' }}>Download</a>
+                  <a href={`/logs/${encodeURIComponent(log.filename)}`} target="_blank" rel="noopener noreferrer" style={{ color: isDark ? '#90cdf4' : '#2563eb', textDecoration: 'none' }}>Download</a>
                 </td>
               </tr>
             ))
