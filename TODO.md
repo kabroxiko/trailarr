@@ -9,4 +9,6 @@ Add new tasks below as needed:
 - [x] Fix: extras.go is not returning status rejected
 - [x] Sidebar icons must work
 - [ ] Fix: youtube is playing twice
-- [ ] Implement log page
+- [x] Implement log page
+- [ ] History is empty
+- [x] Remove hardcoded /api/settings/general

@@ -13,7 +13,17 @@ function SaveLane({ onSave, saving, isChanged, error }) {
           <span>Changes</span>
         </span>
       </button>
-      {error && <div style={{ marginLeft: 16, color: '#f44', fontWeight: 500 }}>{error}</div>}
+      {error && (
+        <div
+          style={{
+            marginLeft: 16,
+            color: error.toLowerCase().includes('success') ? '#0a0' : '#f44',
+            fontWeight: 500
+          }}
+        >
+          {error}
+        </div>
+      )}
     </div>
   );
 }

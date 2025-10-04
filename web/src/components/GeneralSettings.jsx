@@ -11,8 +11,10 @@ export default function GeneralSettings() {
   const [testResult, setTestResult] = useState('');
   const [tmdbKey, setTmdbKey] = useState('');
   const [autoDownloadExtras, setAutoDownloadExtras] = useState(true);
+  const [logLevel, setLogLevel] = useState('Debug');
   const [originalKey, setOriginalKey] = useState('');
   const [originalAutoDownload, setOriginalAutoDownload] = useState(true);
+  const [originalLogLevel, setOriginalLogLevel] = useState('Debug');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   useEffect(() => {
@@ -39,9 +41,11 @@ export default function GeneralSettings() {
         setOriginalKey(data.tmdbKey || '');
         setAutoDownloadExtras(data.autoDownloadExtras !== false); // default true
         setOriginalAutoDownload(data.autoDownloadExtras !== false);
+        setLogLevel(data.logLevel || 'Debug');
+        setOriginalLogLevel(data.logLevel || 'Debug');
       });
   }, []);
-  const isChanged = tmdbKey !== originalKey || autoDownloadExtras !== originalAutoDownload;
+  const isChanged = tmdbKey !== originalKey || autoDownloadExtras !== originalAutoDownload || logLevel !== originalLogLevel;
 
   const testTmdbKey = async () => {
     setTesting(true);
@@ -71,12 +75,13 @@ export default function GeneralSettings() {
       const res = await fetch('/api/settings/general', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tmdbKey, autoDownloadExtras })
+        body: JSON.stringify({ tmdbKey, autoDownloadExtras, logLevel })
       });
       if (res.ok) {
         setMessage('Settings saved successfully!');
-        setOriginalKey(tmdbKey);
-        setOriginalAutoDownload(autoDownloadExtras);
+  setOriginalKey(tmdbKey);
+  setOriginalAutoDownload(autoDownloadExtras);
+  setOriginalLogLevel(logLevel);
       } else {
         setMessage('Error saving settings.');
       }
@@ -160,6 +165,21 @@ export default function GeneralSettings() {
                 </div>
               </div>
             </div>
+          </label>
+        </div>
+        <SectionHeader>Log Level</SectionHeader>
+        <div style={{ width: '100%' }}>
+          <label style={{ fontWeight: 600, fontSize: '1.15em', marginBottom: 6, display: 'block', textAlign: 'left' }}>
+            <select
+              value={logLevel}
+              onChange={e => setLogLevel(e.target.value)}
+              style={{ width: '60%', minWidth: 120, maxWidth: 300, padding: '0.5rem', borderRadius: 6, border: '1px solid #bbb', background: 'var(--settings-input-bg, #f5f5f5)', color: 'var(--settings-input-text, #222)' }}
+            >
+              <option value="Debug">Debug</option>
+              <option value="Info">Info</option>
+              <option value="Warn">Warn</option>
+              <option value="Error">Error</option>
+            </select>
           </label>
         </div>
         <SectionHeader>Extras Download</SectionHeader>

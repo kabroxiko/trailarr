@@ -391,7 +391,6 @@ func CacheMediaPosters(
 				continue
 			}
 			if _, err := os.Stat(job.localPath); err == nil {
-				TrailarrLog("Debug", "CacheMediaPosters", "Poster already exists: %s", job.localPath)
 				continue
 			}
 			TrailarrLog("Info", "CacheMediaPosters", "Attempting to cache poster for %s id=%s: %s -> %s", section, job.id, job.posterUrl, job.localPath)
