@@ -8,7 +8,12 @@ function formatDate(date) {
   const d = typeof date === 'string' ? new Date(date) : date;
   const now = new Date();
   const diff = Math.floor((now - d) / 86400000);
-  if (diff === 0) return 'Today';
+  if (diff === 0) {
+    // Show as hh:mm in 24h format
+    const hours = d.getHours().toString().padStart(2, '0');
+    const minutes = d.getMinutes().toString().padStart(2, '0');
+    return `${hours}:${minutes}`;
+  }
   if (diff === 1) return 'Yesterday';
   return `${diff} days ago`;
 }
