@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import Container from './Container';
 // ...existing code...
 import { FaDownload, FaTrash } from 'react-icons/fa';
 
@@ -52,7 +53,7 @@ const HistoryPage = () => {
     color: 'var(--history-table-text, #222)'
   };
   const thStyles = {
-    padding: '14px 10px',
+    padding: '8px 6px',
     textAlign: 'left',
     borderBottom: '2px solid var(--history-table-border, #e5e7eb)',
     background: 'var(--history-table-header-bg, #f3e8ff)',
@@ -65,7 +66,7 @@ const HistoryPage = () => {
     transition: 'background 0.2s'
   });
   const tdStyles = {
-    padding: '10px 10px',
+    padding: '6px 6px',
     textAlign: 'left',
     color: 'var(--history-table-cell-text, #222)'
   };
@@ -75,8 +76,8 @@ const HistoryPage = () => {
     content = <div style={{ color: 'red' }}>{error}</div>;
   } else {
     content = (
-      <div style={{ overflowX: 'auto', boxShadow: '0 2px 12px rgba(0,0,0,0.08)', borderRadius: 12, background: 'var(--history-table-bg, #fff)', padding: 0 }}>
-        <table className="history-table" style={tableStyles}>
+      <div style={{ overflowX: 'auto', boxShadow: '0 2px 12px rgba(0,0,0,0.08)', background: 'var(--history-table-bg, #fff)' }}>
+        <table className="history-table" style={{ ...tableStyles }}>
           <colgroup>
             <col style={{ width: '20px' }} />
             <col style={{ width: '20px' }} />
@@ -132,11 +133,11 @@ const HistoryPage = () => {
       const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       document.documentElement.style.setProperty('--history-table-bg', isDark ? '#18181b' : '#fff');
       document.documentElement.style.setProperty('--history-table-text', isDark ? '#e5e7eb' : '#222');
-      document.documentElement.style.setProperty('--history-table-header-bg', isDark ? '#27272a' : '#f3e8ff');
-      document.documentElement.style.setProperty('--history-table-header-text', isDark ? '#c7d2fe' : '#7c3aed');
+      document.documentElement.style.setProperty('--history-table-header-bg', isDark ? '#27272a' : '#fff');
+      document.documentElement.style.setProperty('--history-table-header-text', isDark ? '#fff' : '#222');
       document.documentElement.style.setProperty('--history-table-border', isDark ? '#444' : '#e5e7eb');
-      document.documentElement.style.setProperty('--history-table-row-bg1', isDark ? '#232326' : '#fafafc');
-      document.documentElement.style.setProperty('--history-table-row-bg2', isDark ? '#18181b' : '#f3e8ff');
+      document.documentElement.style.setProperty('--history-table-row-bg1', isDark ? '#232326' : '#f3f3f3');
+      document.documentElement.style.setProperty('--history-table-row-bg2', isDark ? '#18181b' : '#fff');
       document.documentElement.style.setProperty('--history-table-cell-text', isDark ? '#e5e7eb' : '#222');
       document.documentElement.style.setProperty('--history-table-media-type', isDark ? '#a5b4fc' : '#7c3aed');
       document.documentElement.style.setProperty('--history-table-extra-type', isDark ? '#c4b5fd' : '#6d28d9');
@@ -151,9 +152,9 @@ const HistoryPage = () => {
     };
   }, []);
   return (
-    <div className="history-page" style={{ padding: '32px', width: '100vw', margin: '0', boxSizing: 'border-box' }}>
+    <Container>
       {content}
-    </div>
+    </Container>
   );
 };
 
