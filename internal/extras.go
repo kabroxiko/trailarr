@@ -44,21 +44,18 @@ func deleteExtraHandler(c *gin.Context) {
 	}
 
 	cacheFile, _ := resolveCachePath(req.MediaType)
-
 	mediaPath, err := FindMediaPathByID(cacheFile, req.MediaId)
 	if err != nil || mediaPath == "" {
 		respondError(c, http.StatusNotFound, "Media not found")
 		return
 	}
 
-	mediaTitle := lookupMediaTitle(cacheFile, req.MediaId)
-
 	if err := deleteExtraFiles(mediaPath, req.ExtraType, req.ExtraTitle); err != nil {
 		respondError(c, http.StatusInternalServerError, "Failed to delete extra: "+err.Error())
 		return
 	}
 
-	recordDeleteHistory(req.MediaType, mediaTitle, req.ExtraType, req.ExtraTitle)
+	recordDeleteHistory(req.MediaType, req.MediaId, req.ExtraType, req.ExtraTitle)
 	respondJSON(c, http.StatusOK, gin.H{"status": "deleted"})
 }
 
@@ -101,7 +98,12 @@ func deleteExtraFiles(mediaPath, extraType, extraTitle string) error {
 	return nil
 }
 
-func recordDeleteHistory(mediaType MediaType, mediaTitle, extraType, extraTitle string) {
+func recordDeleteHistory(mediaType MediaType, mediaId int, extraType, extraTitle string) {
+	cacheFile, _ := resolveCachePath(mediaType)
+	mediaTitle := lookupMediaTitle(cacheFile, mediaId)
+	if mediaTitle == "" {
+		mediaTitle = "Unknown"
+	}
 	event := HistoryEvent{
 		Action:     "delete",
 		Title:      mediaTitle,
@@ -273,28 +275,16 @@ func downloadExtraHandler(c *gin.Context) {
 	}
 
 	// Lookup media title from cache for history
-	cacheFile, _ := resolveCachePath(req.MediaType)
-	mediaTitle := ""
-	if cacheFile != "" {
-		items, _ := loadCache(cacheFile)
-		for _, m := range items {
-			idInt, ok := parseMediaID(m["id"])
-			if ok && idInt == req.MediaId {
-				if t, ok := m["title"].(string); ok {
-					mediaTitle = t
-					break
-				}
-			}
-		}
-	}
-	if mediaTitle == "" {
-		mediaTitle = "Unknown"
-	}
-	recordDownloadHistory(req.MediaType, mediaTitle, req.ExtraType, req.ExtraTitle)
+	recordDownloadHistory(req.MediaType, req.MediaId, req.ExtraType, req.ExtraTitle)
 	respondJSON(c, http.StatusOK, gin.H{"status": "downloaded", "meta": meta})
 }
 
-func recordDownloadHistory(mediaType MediaType, mediaTitle string, extraType, extraTitle string) {
+func recordDownloadHistory(mediaType MediaType, mediaId int, extraType, extraTitle string) {
+	cacheFile, _ := resolveCachePath(mediaType)
+	mediaTitle := lookupMediaTitle(cacheFile, mediaId)
+	if mediaTitle == "" {
+		mediaTitle = "Unknown"
+	}
 	event := HistoryEvent{
 		Action:     "download",
 		Title:      mediaTitle,

@@ -21,6 +21,10 @@ const HistoryPage = () => {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
+  const totalPages = Math.ceil(history.length / pageSize);
+  const paginatedHistory = history.slice((page - 1) * pageSize, page * pageSize);
 
   useEffect(() => {
     setLoading(true);
@@ -53,7 +57,8 @@ const HistoryPage = () => {
     borderBottom: '2px solid var(--history-table-border, #e5e7eb)',
     background: 'var(--history-table-header-bg, #f3e8ff)',
     color: 'var(--history-table-header-text, #7c3aed)',
-    fontWeight: 600
+    fontWeight: 600,
+    width: undefined // will be set per column
   };
   const trStyles = idx => ({
     background: idx % 2 === 0 ? 'var(--history-table-row-bg1, #fafafc)' : 'var(--history-table-row-bg2, #f3e8ff)',
@@ -72,18 +77,26 @@ const HistoryPage = () => {
     content = (
       <div style={{ overflowX: 'auto', boxShadow: '0 2px 12px rgba(0,0,0,0.08)', borderRadius: 12, background: 'var(--history-table-bg, #fff)', padding: 0 }}>
         <table className="history-table" style={tableStyles}>
+          <colgroup>
+            <col style={{ width: '20px' }} />
+            <col style={{ width: '20px' }} />
+            <col style={{ width: '220px' }} />
+            <col style={{ width: '140px' }} />
+            <col style={{ width: '180px' }} />
+            <col style={{ width: '120px' }} />
+          </colgroup>
           <thead>
             <tr>
-              <th style={{ ...thStyles, textAlign: 'center' }}></th>
-              <th style={{ ...thStyles, textAlign: 'center' }}>Media Type</th>
-              <th style={thStyles}>Title</th>
-              <th style={thStyles}>Extra Type</th>
-              <th style={thStyles}>Extra Title</th>
-              <th style={thStyles}>Date</th>
+              <th style={{ ...thStyles, textAlign: 'center', width: '20px' }}></th>
+              <th style={{ ...thStyles, textAlign: 'center', width: '20px' }}>Media Type</th>
+              <th style={{ ...thStyles, width: '220px' }}>Title</th>
+              <th style={{ ...thStyles, width: '140px' }}>Extra Type</th>
+              <th style={{ ...thStyles, width: '180px' }}>Extra Title</th>
+              <th style={{ ...thStyles, width: '120px' }}>Date</th>
             </tr>
           </thead>
           <tbody>
-            {history.map((item, idx) => {
+            {paginatedHistory.map((item, idx) => {
               const key = item.date + '-' + item.title + '-' + item.extraTitle + '-' + item.action;
               let icon = null;
               if (item.action === 'download') {
@@ -104,6 +117,12 @@ const HistoryPage = () => {
             })}
           </tbody>
         </table>
+        {/* Pagination Controls */}
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, margin: '18px 0' }}>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} style={{ padding: '6px 16px', borderRadius: 6, border: '1px solid #ccc', background: page === 1 ? '#eee' : '#fff', color: '#222', cursor: page === 1 ? 'not-allowed' : 'pointer', fontWeight: 500 }}>Prev</button>
+          <span style={{ fontWeight: 600, fontSize: 16 }}>Page {page} of {totalPages}</span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} style={{ padding: '6px 16px', borderRadius: 6, border: '1px solid #ccc', background: page === totalPages ? '#eee' : '#fff', color: '#222', cursor: page === totalPages ? 'not-allowed' : 'pointer', fontWeight: 500 }}>Next</button>
+        </div>
       </div>
     );
   }
