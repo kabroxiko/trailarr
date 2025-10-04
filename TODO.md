@@ -14,6 +14,7 @@ Add new tasks below as needed:
 - [x] Implement log page
 - [x] History is empty
 - [x] Remove hardcoded /api/settings/general
-- [ ] Tasks must have dark mode
+- [x] Tasks must have dark mode
 - [ ] Extra types are being grouped random in trailers
-- [ ] Button text connect must be reset beteen pages
+- [ ] Button text connect must be reset between pages
+- [ ] Logs must be numbered
