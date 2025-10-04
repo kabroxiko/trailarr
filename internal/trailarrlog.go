@@ -29,6 +29,9 @@ func InitTrailarrLogWriter(logPath string) {
 
 // LogLevel can be Info, Warn, Error, Debug, etc.
 func TrailarrLog(level, component, message string, args ...interface{}) {
+	if !ShouldLog(level) {
+		return
+	}
 	timestamp := time.Now().Format("2006-01-02 15:04:05.0")
 	msg := fmt.Sprintf(message, args...)
 	logLine := fmt.Sprintf("%s|%s|%s|%s\n", timestamp, level, component, msg)
@@ -44,4 +47,26 @@ func CheckErrLog(level, component, context string, err error) error {
 		TrailarrLog(level, component, "%s: %v", context, err)
 	}
 	return err
+}
+
+// Helper to get log level from config
+func GetLogLevel() string {
+	config, err := readConfigFile()
+	if err != nil {
+		return "Debug"
+	}
+	if general, ok := config["general"].(map[string]interface{}); ok {
+		if v, ok := general["logLevel"].(string); ok {
+			return v
+		}
+	}
+	return "Debug"
+}
+
+// ShouldLog returns true if the message should be logged at the given level
+func ShouldLog(level string) bool {
+	levels := map[string]int{"Debug": 1, "Info": 2, "Warn": 3, "Error": 4}
+	cur := levels[GetLogLevel()]
+	msg := levels[level]
+	return msg >= cur
 }

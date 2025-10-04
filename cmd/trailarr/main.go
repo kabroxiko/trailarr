@@ -10,9 +10,12 @@ import (
 var timings map[string]int
 
 func main() {
+
 	// Ensure cookies.txt exists and is in Netscape format
 	cookiesPath := internal.TrailarrRoot + "/cookies.txt"
 	ensureNetscapeCookiesFile(cookiesPath)
+	// Ensure config.yml exists and is filled with defaults
+	_ = internal.EnsureConfigDefaults()
 	// Only log backend/server logs to file. Gin (frontend HTTP) logs go to stdout only.
 	logDir := internal.TrailarrRoot + "/logs"
 	logFile := logDir + "/trailarr.txt"

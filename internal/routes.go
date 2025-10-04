@@ -3,11 +3,38 @@ package internal
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/gin-gonic/gin"
 )
 
 func RegisterRoutes(r *gin.Engine) {
+	r.GET("/api/logs/list", func(c *gin.Context) {
+		logDir := TrailarrRoot + "/logs"
+		entries, err := filepath.Glob(logDir + "/*.txt")
+		if err != nil {
+			respondError(c, http.StatusInternalServerError, err.Error())
+			return
+		}
+		type LogInfo struct {
+			Filename  string `json:"filename"`
+			LastWrite string `json:"lastWrite"`
+		}
+		var logs []LogInfo
+		for _, path := range entries {
+			fi, err := os.Stat(path)
+			if err != nil {
+				continue
+			}
+			logs = append(logs, LogInfo{
+				Filename:  filepath.Base(path),
+				LastWrite: fi.ModTime().Format("02 Jan 2006 15:04"),
+			})
+		}
+		respondJSON(c, http.StatusOK, gin.H{"logs": logs, "logDir": logDir})
+	})
+	// ...existing code...
 	// Test TMDB API key endpoint
 	r.GET("/api/test/tmdb", func(c *gin.Context) {
 		apiKey := c.Query("apiKey")
@@ -92,6 +119,20 @@ func RegisterRoutes(r *gin.Engine) {
 	// Serve React static files and SPA fallback
 	r.Static("/assets", "./web/dist/assets")
 	r.StaticFile("/", "./web/dist/index.html")
+
+	// Serve log files for frontend log viewer
+	r.GET("/logs/:filename", func(c *gin.Context) {
+		filename := c.Param("filename")
+		logDir := TrailarrRoot + "/logs"
+		filePath := logDir + "/" + filename
+		// Security: only allow .txt files and prevent path traversal
+		if len(filename) < 5 || filename[len(filename)-4:] != ".txt" || filename != filepath.Base(filename) {
+			respondError(c, http.StatusBadRequest, "Invalid log filename")
+			return
+		}
+		c.File(filePath)
+	})
+
 	r.NoRoute(func(c *gin.Context) {
 		c.File("./web/dist/index.html")
 	})

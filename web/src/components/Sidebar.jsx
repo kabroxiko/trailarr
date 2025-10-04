@@ -91,9 +91,9 @@ export default function Sidebar({ selectedSection, setSelectedSection, selectedS
                 <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0 0', background: darkMode ? '#23232a' : '#f3f4f6', borderRadius: 6, color: darkMode ? '#e5e7eb' : '#222', textAlign: 'left' }}>
                   {['Tasks', 'Logs', 'Providers', 'Backups', 'Status', 'Releases'].map((submenu) => (
                     <li key={submenu} style={{ padding: '0.5em 1em', borderLeft: selectedSystemSub === submenu ? '3px solid #a855f7' : '3px solid transparent', background: 'none', color: selectedSystemSub === submenu ? (darkMode ? '#a855f7' : '#6d28d9') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSystemSub === submenu ? 'bold' : 'normal', cursor: 'pointer', textAlign: 'left' }}>
-                      {submenu === 'Tasks' ? (
+                      {(submenu === 'Tasks' || submenu === 'Logs') ? (
                         <Link
-                          to="/system/tasks"
+                          to={submenu === 'Tasks' ? "/system/tasks" : "/system/logs"}
                           style={{ color: 'inherit', textDecoration: 'none', display: 'block', width: '100%', textAlign: 'left' }}
                           onClick={() => setSelectedSystemSub(submenu)}
                         >{submenu}</Link>

@@ -10,6 +10,7 @@ import Wanted from './components/Wanted';
 import SettingsPage from './components/SettingsPage';
 import { Routes, Route } from 'react-router-dom';
 import ExtrasSettings from './components/ExtrasSettings';
+import LogsPage from './components/LogsPage';
 import './App.css';
 // Removed static import of api.js
 // Refactored to use dynamic imports
@@ -241,6 +242,7 @@ function App() {
               <Route path="/settings/general" element={<GeneralSettings />} />
               <Route path="/settings/extras" element={<ExtrasSettings darkMode={darkMode} />} />
               <Route path="/system/tasks" element={<Tasks />} />
+              <Route path="/system/logs" element={<LogsPage />} />
             </Routes>
           </div>
         </main>

@@ -1,3 +1,4 @@
+// ...existing code...
 package internal
 
 import (
@@ -11,8 +12,152 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Default values for config.yml
+func DefaultGeneralConfig() map[string]interface{} {
+	return map[string]interface{}{
+		"tmdbKey":            "",
+		"autoDownloadExtras": true,
+		"logLevel":           "Debug",
+	}
+}
+
+func EnsureConfigDefaults() error {
+	var changed bool
+	config, err := readConfigFileRaw()
+	if err != nil {
+		// Create file with all defaults
+		config = map[string]interface{}{
+			"general":    DefaultGeneralConfig(),
+			"ytdlpFlags": DefaultYtdlpFlagsConfig(),
+		}
+		changed = true
+	}
+	// Fill in missing sections/keys even if file exists
+	// General
+	if config["general"] == nil {
+		config["general"] = DefaultGeneralConfig()
+		changed = true
+	} else {
+		general := config["general"].(map[string]interface{})
+		for k, v := range DefaultGeneralConfig() {
+			if _, ok := general[k]; !ok {
+				general[k] = v
+				changed = true
+			}
+		}
+		config["general"] = general
+	}
+	// ytdlpFlags
+	if config["ytdlpFlags"] == nil {
+		config["ytdlpFlags"] = DefaultYtdlpFlagsConfig()
+		changed = true
+	}
+	// radarr
+	if config["radarr"] == nil {
+		config["radarr"] = map[string]interface{}{
+			"url":          "http://localhost:7878",
+			"apiKey":       "",
+			"pathMappings": []map[string]string{},
+		}
+		changed = true
+	} else {
+		radarr := config["radarr"].(map[string]interface{})
+		if _, ok := radarr["url"]; !ok {
+			radarr["url"] = "http://localhost:7878"
+			changed = true
+		}
+		if _, ok := radarr["apiKey"]; !ok {
+			radarr["apiKey"] = ""
+			changed = true
+		}
+		if _, ok := radarr["pathMappings"]; !ok {
+			radarr["pathMappings"] = []map[string]string{}
+			changed = true
+		}
+		config["radarr"] = radarr
+	}
+	// sonarr
+	if config["sonarr"] == nil {
+		config["sonarr"] = map[string]interface{}{
+			"url":          "http://localhost:8989",
+			"apiKey":       "",
+			"pathMappings": []map[string]string{},
+		}
+		changed = true
+	} else {
+		sonarr := config["sonarr"].(map[string]interface{})
+		if _, ok := sonarr["url"]; !ok {
+			sonarr["url"] = "http://localhost:8989"
+			changed = true
+		}
+		if _, ok := sonarr["apiKey"]; !ok {
+			sonarr["apiKey"] = ""
+			changed = true
+		}
+		if _, ok := sonarr["pathMappings"]; !ok {
+			sonarr["pathMappings"] = []map[string]string{}
+			changed = true
+		}
+		config["sonarr"] = sonarr
+	}
+	// extraTypes
+	if config["extraTypes"] == nil {
+		config["extraTypes"] = map[string]interface{}{
+			"trailers":        true,
+			"scenes":          true,
+			"behindTheScenes": true,
+			"interviews":      true,
+			"featurettes":     true,
+			"deletedScenes":   true,
+			"other":           true,
+		}
+		changed = true
+	} else {
+		extraTypes := config["extraTypes"].(map[string]interface{})
+		defaults := map[string]bool{
+			"trailers":        true,
+			"scenes":          true,
+			"behindTheScenes": true,
+			"interviews":      true,
+			"featurettes":     true,
+			"deletedScenes":   true,
+			"other":           true,
+		}
+		for k, v := range defaults {
+			if _, ok := extraTypes[k]; !ok {
+				extraTypes[k] = v
+				changed = true
+			}
+		}
+		config["extraTypes"] = extraTypes
+	}
+	if changed {
+		return writeConfigFile(config)
+	}
+	return nil
+}
+
+// Raw config file reader (no defaults)
+func readConfigFileRaw() (map[string]interface{}, error) {
+	data, err := os.ReadFile(ConfigPath)
+	if CheckErrLog("Warn", "Settings", "os.ReadFile ConfigPath failed", err) != nil {
+		return nil, err
+	}
+	var config map[string]interface{}
+	if len(data) == 0 {
+		// Treat empty file as missing config
+		return nil, fmt.Errorf("empty config file")
+	}
+	err = yaml.Unmarshal(data, &config)
+	if CheckErrLog("Warn", "Settings", "yaml.Unmarshal failed", err) != nil {
+		return nil, err
+	}
+	return config, nil
+}
+
 // Helper to read config file and unmarshal into map[string]interface{}
 func readConfigFile() (map[string]interface{}, error) {
+	_ = EnsureConfigDefaults()
 	data, err := os.ReadFile(ConfigPath)
 	if CheckErrLog("Warn", "Settings", "os.ReadFile ConfigPath failed", err) != nil {
 		return nil, err
@@ -655,6 +800,7 @@ func getGeneralSettingsHandler(c *gin.Context) {
 	_ = yaml.Unmarshal(data, &config)
 	var tmdbKey string
 	var autoDownloadExtras bool = true
+	var logLevel string = "Debug"
 	if general, ok := config["general"].(map[string]interface{}); ok {
 		if v, ok := general["tmdbKey"].(string); ok {
 			tmdbKey = v
@@ -662,14 +808,18 @@ func getGeneralSettingsHandler(c *gin.Context) {
 		if v, ok := general["autoDownloadExtras"].(bool); ok {
 			autoDownloadExtras = v
 		}
+		if v, ok := general["logLevel"].(string); ok {
+			logLevel = v
+		}
 	}
-	respondJSON(c, http.StatusOK, gin.H{"tmdbKey": tmdbKey, "autoDownloadExtras": autoDownloadExtras})
+	respondJSON(c, http.StatusOK, gin.H{"tmdbKey": tmdbKey, "autoDownloadExtras": autoDownloadExtras, "logLevel": logLevel})
 }
 
 func saveGeneralSettingsHandler(c *gin.Context) {
 	var req struct {
 		TMDBApiKey         string `json:"tmdbKey" yaml:"tmdbKey"`
 		AutoDownloadExtras *bool  `json:"autoDownloadExtras" yaml:"autoDownloadExtras"`
+		LogLevel           string `json:"logLevel" yaml:"logLevel"`
 	}
 	if err := c.BindJSON(&req); CheckErrLog("Warn", "Settings", "BindJSON failed", err) != nil {
 		respondError(c, http.StatusBadRequest, ErrInvalidRequest)
@@ -699,6 +849,9 @@ func saveGeneralSettingsHandler(c *gin.Context) {
 		} else if !*req.AutoDownloadExtras && prevAutoDownload {
 			StopExtrasDownloadTask()
 		}
+	}
+	if req.LogLevel != "" {
+		general["logLevel"] = req.LogLevel
 	}
 	config["general"] = general
 	err = writeConfigFile(config)
