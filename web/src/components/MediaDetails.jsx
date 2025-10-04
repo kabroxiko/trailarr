@@ -1,9 +1,6 @@
 import MediaInfoLane from './MediaInfoLane.jsx';
 import MediaCard from './MediaCard.jsx';
-import IconButton from './IconButton.jsx';
 import React, { useState, useEffect } from 'react';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faBookmark } from '@fortawesome/free-regular-svg-icons';
 import ExtrasList from './ExtrasList';
 import { useParams } from 'react-router-dom';
 

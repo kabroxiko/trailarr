@@ -1,10 +1,6 @@
 import ExtraCard from './ExtraCard.jsx';
-import IconButton from './IconButton.jsx';
 import SectionHeader from './SectionHeader.jsx';
 import React, { useState } from 'react';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faTrashCan, faBookmark, faCheckSquare } from '@fortawesome/free-regular-svg-icons';
-import { faPlay, faDownload } from '@fortawesome/free-solid-svg-icons';
 import Toast from './Toast';
 
 function ExtrasList({
