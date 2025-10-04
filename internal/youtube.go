@@ -70,6 +70,8 @@ type RequestBody struct {
 }
 
 func DownloadYouTubeExtra(mediaType MediaType, mediaId int, extraType, extraTitle, extraURL string, forceDownload ...bool) (*ExtraDownloadMetadata, error) {
+	TrailarrLog(DEBUG, "YouTube", "DownloadYouTubeExtra called with mediaType=%s, mediaId=%d, extraType=%s, extraTitle=%s, extraURL=%s, forceDownload=%v",
+		mediaType, mediaId, extraType, extraTitle, extraURL, forceDownload)
 	var downloadInfo *downloadInfo
 	var err error
 

@@ -58,7 +58,9 @@ export default function ExtraCard({
         })
       });
       if (res.ok) {
-        setExtras(prev => prev.map((e, i) => i === idx && e.Type === type ? { ...e, Status: 'downloaded' } : e));
+        setExtras(prev => prev.map((e, i) =>
+          e.Title === extra.Title && e.Type === extra.Type ? { ...e, Status: 'downloaded' } : e
+        ));
         setErrorCard(null);
       } else {
         const data = await res.json();
@@ -156,7 +158,9 @@ export default function ExtraCard({
                       extraTitle: extra.Title
                     };
                     await deleteExtra(payload);
-                    setExtras(prev => prev.map((e, i) => i === idx && e.Type === type ? { ...e, Status: 'missing' } : e));
+                    setExtras(prev => prev.map((e, i) =>
+                      e.Title === extra.Title && e.Type === extra.Type ? { ...e, Status: 'missing' } : e
+                    ));
                   } catch (e) {
                     let msg = e?.message || e;
                     if (e?.detail) msg += `\n${e.detail}`;

@@ -298,7 +298,7 @@ func isExtraTypeEnabled(cfg ExtraTypesConfig, typ string) bool {
 		return cfg.Featurettes
 	case "Deleted Scenes":
 		return cfg.DeletedScenes
-	case "Others", "Other":
+	case "Other":
 		return cfg.Other
 	default:
 		return false

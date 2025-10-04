@@ -12,6 +12,65 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// CanonicalizeExtraTypeConfig holds mapping from TMDB extra types to Plex extra types
+type CanonicalizeExtraTypeConfig struct {
+	Mapping map[string]string `yaml:"mapping" json:"mapping"`
+}
+
+// GetCanonicalizeExtraTypeConfig loads mapping config from config.yml
+func GetCanonicalizeExtraTypeConfig() (CanonicalizeExtraTypeConfig, error) {
+	data, err := os.ReadFile(ConfigPath)
+	if err != nil {
+		return CanonicalizeExtraTypeConfig{Mapping: map[string]string{}}, err
+	}
+	var config map[string]interface{}
+	_ = yaml.Unmarshal(data, &config)
+	sec, ok := config["canonicalizeExtraType"].(map[string]interface{})
+	cfg := CanonicalizeExtraTypeConfig{Mapping: map[string]string{}}
+	if ok {
+		if m, ok := sec["mapping"].(map[string]interface{}); ok {
+			for k, v := range m {
+				if s, ok := v.(string); ok {
+					cfg.Mapping[k] = s
+				}
+			}
+		}
+	}
+	return cfg, nil
+}
+
+// SaveCanonicalizeExtraTypeConfig saves mapping config to config.yml
+func SaveCanonicalizeExtraTypeConfig(cfg CanonicalizeExtraTypeConfig) error {
+	config, err := readConfigFile()
+	if err != nil {
+		config = map[string]interface{}{}
+	}
+	config["canonicalizeExtraType"] = map[string]interface{}{
+		"mapping": cfg.Mapping,
+	}
+	return writeConfigFile(config)
+}
+
+// Handler to get canonicalizeExtraType config
+func GetCanonicalizeExtraTypeConfigHandler(c *gin.Context) {
+	cfg, _ := GetCanonicalizeExtraTypeConfig()
+	respondJSON(c, http.StatusOK, cfg)
+}
+
+// Handler to save canonicalizeExtraType config
+func SaveCanonicalizeExtraTypeConfigHandler(c *gin.Context) {
+	var req CanonicalizeExtraTypeConfig
+	if err := c.BindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, ErrInvalidRequest)
+		return
+	}
+	if err := SaveCanonicalizeExtraTypeConfig(req); err != nil {
+		respondError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(c, http.StatusOK, gin.H{"status": "saved"})
+}
+
 // Default values for config.yml
 func DefaultGeneralConfig() map[string]interface{} {
 	return map[string]interface{}{
@@ -130,6 +189,23 @@ func EnsureConfigDefaults() error {
 			}
 		}
 		config["extraTypes"] = extraTypes
+	}
+	// Ensure canonicalizeExtraType mapping exists
+	if config["canonicalizeExtraType"] == nil {
+		// Default mapping: singular TMDB types to Plex types
+		config["canonicalizeExtraType"] = map[string]interface{}{
+			"mapping": map[string]string{
+				"Trailer":          "Trailers",
+				"Featurette":       "Featurettes",
+				"Behind the Scene": "Behind The Scenes",
+				"Deleted Scene":    "Deleted Scenes",
+				"Interview":        "Interviews",
+				"Scene":            "Scenes",
+				"Short":            "Shorts",
+				"Other":            "Other",
+			},
+		}
+		changed = true
 	}
 	if changed {
 		return writeConfigFile(config)
@@ -725,9 +801,10 @@ func GetSettingsHandler(section string) gin.HandlerFunc {
 		if sectionData != nil {
 			url, _ = sectionData["url"].(string)
 			apiKey, _ = sectionData["apiKey"].(string)
-			if section == "radarr" {
+			switch section {
+			case "radarr":
 				folders, _ = FetchRootFolders(url, apiKey)
-			} else if section == "sonarr" {
+			case "sonarr":
 				folders, _ = FetchRootFolders(url, apiKey)
 			}
 		}
@@ -894,7 +971,7 @@ func FetchRootFolders(apiURL, apiKey string) ([]map[string]interface{}, error) {
 }
 
 // Test connection to Radarr/Sonarr by calling /api/v3/system/status
-func testMediaConnection(url, apiKey, mediaType string) error {
+func testMediaConnection(url, apiKey, _ string) error {
 	endpoint := "/api/v3/system/status"
 	req, err := http.NewRequest("GET", url+endpoint, nil)
 	if CheckErrLog(WARN, "Settings", "http.NewRequest failed", err) != nil {

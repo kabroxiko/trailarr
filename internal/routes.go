@@ -206,6 +206,15 @@ func RegisterRoutes(r *gin.Engine) {
 	r.GET("/api/settings/extratypes", GetExtraTypesConfigHandler)
 	r.POST("/api/settings/extratypes", SaveExtraTypesConfigHandler)
 
+	// CanonicalizeExtraType config endpoints
+	r.GET("/api/settings/canonicalizeextratype", GetCanonicalizeExtraTypeConfigHandler)
+	r.POST("/api/settings/canonicalizeextratype", SaveCanonicalizeExtraTypeConfigHandler)
+
+	// TMDB extra types endpoint
+	r.GET("/api/tmdb/extratypes", func(c *gin.Context) {
+		respondJSON(c, http.StatusOK, gin.H{"tmdbExtraTypes": TMDBExtraTypes})
+	})
+
 	// Server-side file browser for directory picker
 	r.GET("/api/files/list", ListServerFoldersHandler)
 }

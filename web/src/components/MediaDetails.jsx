@@ -1,6 +1,6 @@
+import React, { useState, useEffect } from 'react';
 import MediaInfoLane from './MediaInfoLane.jsx';
 import MediaCard from './MediaCard.jsx';
-import React, { useState, useEffect } from 'react';
 import ExtrasList from './ExtrasList';
 import { useParams } from 'react-router-dom';
 
@@ -145,7 +145,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
 
   // Group extras by type
   const extrasByType = extras.reduce((acc, extra) => {
-    const type = extra.Type || 'Others';
+    const type = extra.Type || 'Other';
     if (!acc[type]) acc[type] = [];
     acc[type].push(extra);
     return acc;

@@ -1,9 +1,10 @@
-import SectionHeader from './SectionHeader.jsx';
-import React, { useEffect, useState } from 'react';
-import SaveLane from './SaveLane.jsx';
+import React, { useEffect, useState, Suspense } from 'react';
 import Select from 'react-select';
 import axios from 'axios';
 import Container from './Container.jsx';
+import SaveLane from './SaveLane.jsx';
+import SectionHeader from './SectionHeader.jsx';
+const ExtrasTypeMappingConfig = React.lazy(() => import('./ExtrasTypeMappingConfig.jsx'));
 
 const EXTRA_TYPES = [
   { key: 'trailers', label: 'Trailers' },
@@ -61,15 +62,29 @@ export default function ExtrasSettings({ darkMode }) {
   const [error, setError] = useState('');
   const [ytError, setYtError] = useState('');
   const [ytSaving, setYtSaving] = useState(false);
+  const [tmdbTypes, setTmdbTypes] = useState([]);
+  const [plexTypes, setPlexTypes] = useState([]);
+  const [mapping, setMapping] = useState({});
 
   useEffect(() => {
     setLoading(true);
     Promise.all([
+      axios.get('/api/tmdb/extratypes'),
       axios.get('/api/settings/extratypes'),
+      axios.get('/api/settings/canonicalizeextratype'),
       axios.get('/api/settings/ytdlpflags'),
     ])
-      .then(([extrasRes, ytRes]) => {
-        setSettings(extrasRes.data);
+      .then(([tmdbRes, plexRes, mapRes, ytRes]) => {
+        setTmdbTypes(tmdbRes.data.tmdbExtraTypes || []);
+        setPlexTypes(Object.keys(plexRes.data));
+        const initialMapping = { ...mapRes.data.mapping };
+        tmdbRes.data.tmdbExtraTypes.forEach(type => {
+          if (!initialMapping[type]) {
+            initialMapping[type] = "Other";
+          }
+        });
+        setMapping(initialMapping);
+        setSettings(plexRes.data);
         setYtFlags(ytRes.data);
         setLoading(false);
       })
@@ -77,7 +92,11 @@ export default function ExtrasSettings({ darkMode }) {
         setError('Failed to load settings');
         setLoading(false);
       });
-  }, []);
+  }, [darkMode]);
+
+  const handleMappingChange = (newMapping) => {
+    setMapping(newMapping);
+  };
 
   const handleChange = (key) => {
     setSettings(prev => ({ ...prev, [key]: !prev[key] }));
@@ -87,16 +106,16 @@ export default function ExtrasSettings({ darkMode }) {
     setYtFlags(prev => ({ ...prev, [key]: value }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaving(true);
-    axios.post('/api/settings/extratypes', settings)
-      .then(() => {
-        setSaving(false);
-      })
-      .catch(() => {
-        setError('Failed to save settings');
-        setSaving(false);
-      });
+    try {
+      await axios.post('/api/settings/extratypes', settings);
+      await axios.post('/api/settings/canonicalizeextratype', { mapping });
+      setSaving(false);
+    } catch {
+      setError('Failed to save settings or mapping');
+      setSaving(false);
+    }
   };
 
   const handleYtSave = () => {
@@ -206,6 +225,27 @@ export default function ExtrasSettings({ darkMode }) {
             menuPortalTarget={document.body}
           />
         </div>
+        {/* Mapping config UI integration */}
+        <Suspense fallback={<div>Loading mapping config...</div>}>
+          <ExtrasTypeMappingConfig
+            mapping={mapping}
+            onMappingChange={handleMappingChange}
+            tmdbTypes={tmdbTypes}
+            plexTypes={plexTypes.map(key => {
+              switch (key) {
+                case "behindTheScenes": return "Behind The Scenes";
+                case "deletedScenes": return "Deleted Scenes";
+                case "featurettes": return "Featurettes";
+                case "interviews": return "Interviews";
+                case "scenes": return "Scenes";
+                case "shorts": return "Shorts";
+                case "trailers": return "Trailers";
+                case "other": return "Other";
+                default: return key;
+              }
+            })}
+          />
+        </Suspense>
         <hr style={{ margin: '2em 0', borderColor: darkMode ? '#444' : '#eee' }} />
         <SectionHeader>yt-dlp Download Flags</SectionHeader>
         <form onSubmit={e => { e.preventDefault(); handleYtSave(); }}>

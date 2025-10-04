@@ -122,7 +122,7 @@ const (
 	ExtraTypeFeaturettes     ExtraType = "Featurettes"
 	ExtraTypeScenes          ExtraType = "Scenes"
 	ExtraTypeTrailers        ExtraType = "Trailers"
-	ExtraTypeOthers          ExtraType = "Others"
+	ExtraTypeOther           ExtraType = "Other"
 )
 
 func canonicalizeExtraType(extraType, name string) string {
@@ -133,20 +133,13 @@ func canonicalizeExtraType(extraType, name string) string {
 			extraType = "Video"
 		}
 	}
-	switch extraType {
-	case "Behind the Scenes":
-		return string(ExtraTypeBehindTheScenes)
-	case "Featurette":
-		return string(ExtraTypeFeaturettes)
-	case "Clip":
-		return string(ExtraTypeScenes)
-	case "Trailer", "Teaser":
-		return string(ExtraTypeTrailers)
-	case "Bloopers":
-		return string(ExtraTypeOthers)
-	default:
-		return extraType
+	cfg, err := GetCanonicalizeExtraTypeConfig()
+	if err == nil {
+		if mapped, ok := cfg.Mapping[extraType]; ok {
+			return mapped
+		}
 	}
+	return extraType
 }
 
 // ExtractYouTubeID parses a YouTube URL and returns the video ID or an error
@@ -265,10 +258,12 @@ func downloadExtraHandler(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, ErrInvalidRequest)
 		return
 	}
-	TrailarrLog(INFO, "Extras", "[downloadExtraHandler] Download request: mediaType=%s, mediaId=%d, extraType=%s, extraTitle=%s, url=%s", req.MediaType, req.MediaId, req.ExtraType, req.ExtraTitle, req.URL)
+	TrailarrLog(INFO, "Extras", "[downloadExtraHandler] Download request: mediaType=%s, mediaId=%d, extraType=%s, extraTitle=%s, url=%s",
+		req.MediaType, req.MediaId, req.ExtraType, req.ExtraTitle, req.URL)
 
 	// Convert MediaId (int) to string for DownloadYouTubeExtra
 	meta, err := DownloadYouTubeExtra(req.MediaType, req.MediaId, req.ExtraType, req.ExtraTitle, req.URL, true)
+	TrailarrLog(INFO, "Extras", "[downloadExtraHandler] DownloadYouTubeExtra returned: meta=%v, err=%v", meta, err)
 	if CheckErrLog(WARN, "Extras", "[downloadExtraHandler] Download error", err) != nil {
 		respondError(c, http.StatusInternalServerError, err.Error())
 		return

@@ -1,6 +1,6 @@
+import React, { useState } from 'react';
 import ExtraCard from './ExtraCard.jsx';
 import SectionHeader from './SectionHeader.jsx';
-import React, { useState } from 'react';
 import Toast from './Toast';
 
 function ExtrasList({
@@ -52,15 +52,15 @@ function ExtrasList({
     </div>
   );
 
-  // Render 'Trailers' first, then others except 'Others', then 'Others' last
+  // Render 'Trailers' first, then others except 'Other', then 'Other' last
   return (
     <>
       <Toast message={toastMsg} onClose={() => setToastMsg('')} darkMode={darkMode} />
       {extrasByType['Trailers'] && renderExtrasGroup('Trailers', extrasByType['Trailers'])}
       {Object.entries(extrasByType)
-        .filter(([type]) => type !== 'Trailers' && type !== 'Others')
+        .filter(([type]) => type !== 'Trailers' && type !== 'Other')
         .map(([type, typeExtras]) => renderExtrasGroup(type, typeExtras))}
-      {extrasByType['Others'] && renderExtrasGroup('Others', extrasByType['Others'])}
+      {extrasByType['Other'] && renderExtrasGroup('Other', extrasByType['Other'])}
     </>
   );
 }
