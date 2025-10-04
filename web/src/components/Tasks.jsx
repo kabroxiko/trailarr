@@ -1,39 +1,59 @@
 import React, { useEffect, useState } from 'react';
 import { FaArrowsRotate } from 'react-icons/fa6';
 
-const tableStyle = {
-  width: '100%',
-  marginBottom: '2em',
-  borderCollapse: 'collapse',
-  background: '#f6f7f9',
-  color: '#222',
-  fontSize: '15px',
-};
-const thStyle = {
-  textAlign: 'left',
-  padding: '0.75em 0.5em',
-  fontWeight: 500,
-  background: '#f6f7f9',
-  borderBottom: '1px solid #e5e7eb',
-};
-const tdStyle = {
-  padding: '0.75em 0.5em',
-  borderBottom: '1px solid #e5e7eb',
-  background: '#fff',
-  textAlign: 'left',
-};
-const headerStyle = {
-  fontSize: '1.4em',
-  fontWeight: 600,
-  margin: '0 0 1em 0',
-  color: '#222',
-};
+const getStyles = (darkMode) => ({
+  table: {
+    width: '100%',
+    marginBottom: '2em',
+    borderCollapse: 'collapse',
+    background: darkMode ? '#23272f' : '#f6f7f9',
+    color: darkMode ? '#eee' : '#222',
+    fontSize: '15px',
+  },
+  th: {
+    textAlign: 'left',
+    padding: '0.75em 0.5em',
+    fontWeight: 500,
+    background: darkMode ? '#23272f' : '#f6f7f9',
+    borderBottom: darkMode ? '1px solid #444' : '1px solid #e5e7eb',
+    color: darkMode ? '#eee' : '#222',
+  },
+  td: {
+    padding: '0.75em 0.5em',
+    borderBottom: darkMode ? '1px solid #444' : '1px solid #e5e7eb',
+    background: darkMode ? '#181a20' : '#fff',
+    textAlign: 'left',
+    color: darkMode ? '#eee' : '#222',
+  },
+  header: {
+    fontSize: '1.4em',
+    fontWeight: 600,
+    margin: '0 0 1em 0',
+    color: darkMode ? '#eee' : '#222',
+  },
+  container: {
+    padding: '2em',
+    background: darkMode ? '#181a20' : '#f6f7f9',
+    minHeight: '100vh',
+    color: darkMode ? '#eee' : '#222',
+  },
+});
 
 export default function Tasks() {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [spinning, setSpinning] = useState({});
   const [rotation, setRotation] = useState({});
+  const [darkMode, setDarkMode] = useState(false);
+
+  useEffect(() => {
+    // Detect dark mode
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    setDarkMode(mq.matches);
+    const handler = (e) => setDarkMode(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
 
   useEffect(() => {
     async function fetchStatus() {
@@ -125,37 +145,39 @@ export default function Tasks() {
       .toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   }
 
-  if (loading) return <div>Loading...</div>;
-  if (!status) return <div>Error loading task status.</div>;
+  const styles = getStyles(darkMode);
+
+  if (loading) return <div style={styles.container}>Loading...</div>;
+  if (!status) return <div style={styles.container}>Error loading task status.</div>;
 
   const schedules = status.schedules || [];
   const queues = status.queues || [];
 
   return (
-    <div style={{ padding: '2em', background: '#f6f7f9', minHeight: '100vh' }}>
-      <div style={headerStyle}>Scheduled</div>
-      <table style={tableStyle}>
+    <div style={styles.container}>
+      <div style={styles.header}>Scheduled</div>
+      <table style={styles.table}>
         <thead>
           <tr>
-            <th style={thStyle}>Name</th>
-            <th style={thStyle}>Interval</th>
-            <th style={thStyle}>Last Execution</th>
-            <th style={thStyle}>Last Duration</th>
-            <th style={thStyle}>Next Execution</th>
-            <th style={thStyle}></th>
+            <th style={styles.th}>Name</th>
+            <th style={styles.th}>Interval</th>
+            <th style={styles.th}>Last Execution</th>
+            <th style={styles.th}>Last Duration</th>
+            <th style={styles.th}>Next Execution</th>
+            <th style={styles.th}></th>
           </tr>
         </thead>
         <tbody>
           {schedules.length === 0 ? (
-            <tr><td colSpan={6} style={tdStyle}>No scheduled tasks</td></tr>
+            <tr><td colSpan={6} style={styles.td}>No scheduled tasks</td></tr>
           ) : schedules.map((scheduled, idx) => (
             <tr key={idx}>
-              <td style={tdStyle}>{scheduled.name}</td>
-              <td style={tdStyle}>{scheduled.interval}</td>
-              <td style={tdStyle}>{scheduled.lastExecution ? formatLastExecution(scheduled.lastExecution) : '-'}</td>
-              <td style={tdStyle}>{scheduled.lastDuration ? formatDuration(scheduled.lastDuration) : '-'}</td>
-              <td style={tdStyle}>{scheduled.nextExecution ? formatNextExecution(scheduled.nextExecution) : '-'}</td>
-              <td style={tdStyle}>
+              <td style={styles.td}>{scheduled.name}</td>
+              <td style={styles.td}>{scheduled.interval}</td>
+              <td style={styles.td}>{scheduled.lastExecution ? formatLastExecution(scheduled.lastExecution) : '-'}</td>
+              <td style={styles.td}>{scheduled.lastDuration ? formatDuration(scheduled.lastDuration) : '-'}</td>
+              <td style={styles.td}>{scheduled.nextExecution ? formatNextExecution(scheduled.nextExecution) : '-'}</td>
+              <td style={styles.td}>
                 <span
                   style={{
                     display: 'inline-block',
@@ -167,7 +189,9 @@ export default function Tasks() {
                     onClick={() => forceExecute(scheduled.name)}
                     style={{
                       cursor: 'pointer',
-                      color: spinning[scheduled.name] ? '#007bff' : '#888',
+                      color: spinning[scheduled.name]
+                        ? (darkMode ? '#66aaff' : '#007bff')
+                        : (darkMode ? '#aaa' : '#888'),
                       transition: spinning[scheduled.name]
                         ? 'transform 5s cubic-bezier(0.4, 0.2, 0.2, 1)'
                         : 'none',
@@ -182,37 +206,37 @@ export default function Tasks() {
           ))}
         </tbody>
       </table>
-      <div style={headerStyle}>Queue</div>
-      <table style={tableStyle}>
+      <div style={styles.header}>Queue</div>
+      <table style={styles.table}>
         <thead>
           <tr>
-            <th style={thStyle}></th>
-            <th style={thStyle}>Name</th>
-            <th style={thStyle}>Queued</th>
-            <th style={thStyle}>Started</th>
-            <th style={thStyle}>Ended</th>
-            <th style={thStyle}>Duration</th>
+            <th style={styles.th}></th>
+            <th style={styles.th}>Name</th>
+            <th style={styles.th}>Queued</th>
+            <th style={styles.th}>Started</th>
+            <th style={styles.th}>Ended</th>
+            <th style={styles.th}>Duration</th>
           </tr>
         </thead>
         <tbody>
           {queues.length === 0 ? (
-            <tr><td colSpan={6} style={tdStyle}>No queue items</td></tr>
+            <tr><td colSpan={6} style={styles.td}>No queue items</td></tr>
           ) : queues.map((item, idx) => (
             <tr key={idx}>
-              <td style={{...tdStyle, textAlign: 'center'}}>
+              <td style={{...styles.td, textAlign: 'center'}}>
                 {(() => {
                   if (!item.Status) return <span title="Unknown">-</span>;
-                  if (item.Status === 'success') return <span title="Success" style={{color:'#28a745'}}>&#x2714;</span>;
-                  if (item.Status === 'running') return <span title="Running" style={{color:'#007bff'}}>&#x25D4;</span>;
-                  if (item.Status === 'failed') return <span title="Failed" style={{color:'#dc3545'}}>&#x2716;</span>;
+                  if (item.Status === 'success') return <span title="Success" style={{color: darkMode ? '#4fdc7b' : '#28a745'}}>&#x2714;</span>;
+                  if (item.Status === 'running') return <span title="Running" style={{color: darkMode ? '#66aaff' : '#007bff'}}>&#x25D4;</span>;
+                  if (item.Status === 'failed') return <span title="Failed" style={{color: darkMode ? '#ff6b6b' : '#dc3545'}}>&#x2716;</span>;
                   return <span title={item.Status}>{item.Status}</span>;
                 })()}
               </td>
-              <td style={tdStyle}>{item.type}</td>
-              <td style={tdStyle}>{item.Queued ? new Date(item.Queued).toLocaleString() : '—'}</td>
-              <td style={tdStyle}>{item.Started ? new Date(item.Started).toLocaleString() : '—'}</td>
-              <td style={tdStyle}>{item.Ended ? new Date(item.Ended).toLocaleString() : '—'}</td>
-              <td style={tdStyle}>{(() => {
+              <td style={styles.td}>{item.type}</td>
+              <td style={styles.td}>{item.Queued ? new Date(item.Queued).toLocaleString() : '—'}</td>
+              <td style={styles.td}>{item.Started ? new Date(item.Started).toLocaleString() : '—'}</td>
+              <td style={styles.td}>{item.Ended ? new Date(item.Ended).toLocaleString() : '—'}</td>
+              <td style={styles.td}>{(() => {
                 if (!item.Duration || item.Duration === '') return '—';
                 if (typeof item.Duration === 'number') {
                   // If > 1s, show seconds, else show ms
