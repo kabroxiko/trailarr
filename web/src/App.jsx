@@ -1,21 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import MediaList from './components/MediaList';
-import MediaDetails from './components/MediaDetails';
-import Header from './components/Header';
+import { useLocation } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
-import GeneralSettings from './components/GeneralSettings';
-import Tasks from './components/Tasks';
-import HistoryPage from './components/HistoryPage';
-import Wanted from './components/Wanted';
-import SettingsPage from './components/SettingsPage';
+import Header from './components/Header';
 import { Routes, Route } from 'react-router-dom';
-import ExtrasSettings from './components/ExtrasSettings';
-import LogsPage from './components/LogsPage';
+import { routeMap, appRoutes } from './components/routeMap';
 import './App.css';
 // Removed static import of api.js
 // Refactored to use dynamic imports
 
 function App() {
+  const location = useLocation();
   const [search, setSearch] = useState('');
   const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   const [darkMode, setDarkMode] = useState(prefersDark);
@@ -38,35 +32,22 @@ function App() {
   const [seriesError, setSeriesError] = useState('');
   const [seriesLoading, setSeriesLoading] = useState(true);
 
-  // Sync sidebar state with route on mount/refresh
+  // Sync sidebar state with route changes
   useEffect(() => {
-    const path = window.location.pathname;
-    if (path.startsWith('/settings/')) {
-      setSelectedSection('Settings');
-      const sub = path.split('/')[2];
-      if (sub) {
-        setSelectedSettingsSub(sub.charAt(0).toUpperCase() + sub.slice(1));
+    const path = location.pathname;
+    for (const entry of routeMap) {
+      if (entry.pattern.test(path)) {
+        setSelectedSection(entry.section);
+        if (entry.submenu) setSelectedSettingsSub(entry.submenu);
+        if (entry.systemSub) setSelectedSystemSub(entry.systemSub);
+        if (entry.section === 'Settings' && !entry.submenu && path.startsWith('/settings/')) {
+          const sub = path.split('/')[2];
+          if (sub) setSelectedSettingsSub(sub.charAt(0).toUpperCase() + sub.slice(1));
+        }
+        return;
       }
-    } else if (path.startsWith('/settings')) {
-      setSelectedSection('Settings');
-      setSelectedSettingsSub('General');
-    } else if (path.startsWith('/wanted/movies')) {
-      setSelectedSection('Wanted');
-      setSelectedSettingsSub('Movies');
-    } else if (path.startsWith('/wanted/series')) {
-      setSelectedSection('Wanted');
-      setSelectedSettingsSub('Series');
-    } else if (path === '/' || path.match(/^\/[0-9a-zA-Z_-]+$/)) {
-      setSelectedSection('Movies');
-    } else if (path.startsWith('/series')) {
-      setSelectedSection('Series');
-    } else if (path.startsWith('/history')) {
-      setSelectedSection('History');
-    } else if (path.startsWith('/system/tasks')) {
-      setSelectedSection('System');
-      setSelectedSystemSub('Tasks');
     }
-  }, []);
+  }, [location.pathname]);
 
   // Sonarr series fetch from backend
   useEffect(() => {
@@ -194,55 +175,32 @@ function App() {
           {/* Radarr Connection block is now rendered via a dedicated route below */}
           <div style={{ background: darkMode ? '#23232a' : '#fff', boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb', padding: '0em', width: '100%', maxWidth: '100%', flex: 1, overflowY: 'auto', overflowX: 'hidden', color: darkMode ? '#e5e7eb' : '#222' }}>
             <Routes>
-              <Route path="/series" element={
-                (() => {
-                  const { titleMatches, overviewMatches } = getSearchSections(series);
+              {appRoutes.map((route, idx) => {
+                if (route.dynamic) {
+                  // Pass all needed props for dynamic routes
                   return (
-                    <>
-                      {search.trim() ? (
-                        <>
-                          <MediaList items={titleMatches} darkMode={darkMode} type="series" />
-                          <div style={{ margin: '1.5em 0 0.5em 1em', fontWeight: 700, fontSize: 26, textAlign: 'left', width: '100%', letterSpacing: 0.5 }}>Other Results</div>
-                          <MediaList items={overviewMatches} darkMode={darkMode} type="series" />
-                        </>
-                      ) : (
-                        <MediaList items={series} darkMode={darkMode} type="series" />
-                      )}
-                      {seriesError && <div style={{ color: 'red', marginTop: '1em' }}>{seriesError}</div>}
-                    </>
+                    <Route
+                      key={route.path}
+                      path={route.path}
+                      element={route.render({
+                        movies,
+                        series,
+                        search,
+                        darkMode,
+                        getSearchSections,
+                        moviesError,
+                        seriesError,
+                        moviesLoading,
+                        seriesLoading,
+                      })}
+                    />
                   );
-                })()
-              } />
-              <Route path="/" element={
-                (() => {
-                  const { titleMatches, overviewMatches } = getSearchSections(movies);
+                } else {
                   return (
-                    <>
-                      {search.trim() ? (
-                        <>
-                          <MediaList items={titleMatches} darkMode={darkMode} type="movie" />
-                          <div style={{ margin: '1.5em 0 0.5em 1em', fontWeight: 700, fontSize: 26, textAlign: 'left', width: '100%', letterSpacing: 0.5 }}>Other Results</div>
-                          <MediaList items={overviewMatches} darkMode={darkMode} type="movie" />
-                        </>
-                      ) : (
-                        <MediaList items={movies} darkMode={darkMode} type="movie" />
-                      )}
-                      {moviesError && <div style={{ color: 'red', marginTop: '1em' }}>{moviesError}</div>}
-                    </>
+                    <Route key={route.path} path={route.path} element={route.element} />
                   );
-                })()
-              } />
-              <Route path="/movies/:id" element={<MediaDetails mediaItems={movies} loading={moviesLoading} mediaType="movie" />} />
-              <Route path="/series/:id" element={<MediaDetails mediaItems={series} loading={seriesLoading} mediaType="tv" />} />
-              <Route path="/history" element={<HistoryPage />} />
-              <Route path="/wanted/movies" element={<Wanted darkMode={darkMode} type="movie" />} />
-              <Route path="/wanted/series" element={<Wanted darkMode={darkMode} type="series" />} />
-              <Route path="/settings/radarr" element={<SettingsPage type="radarr"/>} />
-              <Route path="/settings/sonarr" element={<SettingsPage type="sonarr"/>} />
-              <Route path="/settings/general" element={<GeneralSettings />} />
-              <Route path="/settings/extras" element={<ExtrasSettings darkMode={darkMode} />} />
-              <Route path="/system/tasks" element={<Tasks />} />
-              <Route path="/system/logs" element={<LogsPage />} />
+                }
+              })}
             </Routes>
           </div>
         </main>
