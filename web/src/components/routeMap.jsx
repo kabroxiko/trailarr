@@ -1,9 +1,7 @@
-// Centralized route definitions for <Routes>
 import MediaList from './MediaList';
 import MediaDetails from './MediaDetails';
 import GeneralSettings from './GeneralSettings';
 import ExtrasSettings from './ExtrasSettings';
-import Header from './Header';
 import HistoryPage from './HistoryPage';
 import LogsPage from './LogsPage';
 import SettingsPage from './SettingsPage';
@@ -88,8 +86,16 @@ export const appRoutes = [
   },
   // Static routes
   { path: '/history', element: <HistoryPage /> },
-  { path: '/wanted/movies', element: <Wanted type="movie" /> },
-  { path: '/wanted/series', element: <Wanted type="series" /> },
+  {
+    path: '/wanted/movies',
+    dynamic: true,
+    render: (props) => <Wanted type="movie" darkMode={props.darkMode} items={props.movies} />
+  },
+  {
+    path: '/wanted/series',
+    dynamic: true,
+    render: (props) => <Wanted type="series" darkMode={props.darkMode} items={props.series} />
+  },
   { path: '/settings/radarr', element: <SettingsPage type="radarr" /> },
   { path: '/settings/sonarr', element: <SettingsPage type="sonarr" /> },
   { path: '/settings/general', element: <GeneralSettings /> },

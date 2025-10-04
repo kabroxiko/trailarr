@@ -26,7 +26,7 @@ export default function MediaList({ items, darkMode, type }) {
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            height: 410, // 300 for image + 120 for text/details
+            height: 410,
             transition: 'box-shadow 0.2s',
             border: darkMode ? '1px solid #333' : '1px solid #eee',
             overflow: 'hidden',
