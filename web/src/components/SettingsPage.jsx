@@ -28,10 +28,10 @@ export default function SettingsPage({ type }) {
         document.documentElement.style.setProperty('--save-lane-text', isDark ? '#eee' : '#222');
         document.documentElement.style.setProperty('--settings-input-bg', isDark ? '#333' : '#f5f5f5');
         document.documentElement.style.setProperty('--settings-input-text', isDark ? '#eee' : '#222');
-  document.documentElement.style.setProperty('--settings-table-bg', isDark ? '#444' : '#f7f7f7');
-  document.documentElement.style.setProperty('--settings-table-text', isDark ? '#f3f3f3' : '#222');
-  document.documentElement.style.setProperty('--settings-table-header-bg', isDark ? '#555' : '#ededed');
-  document.documentElement.style.setProperty('--settings-table-header-text', isDark ? '#fff' : '#222');
+        document.documentElement.style.setProperty('--settings-table-bg', isDark ? '#444' : '#f7f7f7');
+        document.documentElement.style.setProperty('--settings-table-text', isDark ? '#f3f3f3' : '#222');
+        document.documentElement.style.setProperty('--settings-table-header-bg', isDark ? '#555' : '#ededed');
+        document.documentElement.style.setProperty('--settings-table-header-text', isDark ? '#fff' : '#222');
     };
     setColors();
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', setColors);

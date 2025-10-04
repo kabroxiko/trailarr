@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import MediaList from './MediaList';
 
-// type: "movie" or "series"
 export default function Wanted({ darkMode, type }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -35,9 +34,7 @@ export default function Wanted({ darkMode, type }) {
       {loading && <div>Loading...</div>}
       {error && <div style={{ color: 'red' }}>{error}</div>}
       {!loading && (
-        <div style={{ width: '100%' }}>
-          <MediaList items={items} darkMode={darkMode} type={type} />
-        </div>
+        <MediaList items={items} darkMode={darkMode} type={type} />
       )}
     </div>
   );
