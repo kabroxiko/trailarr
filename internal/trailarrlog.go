@@ -33,8 +33,20 @@ func openLogFile() {
 	}
 }
 
-// LogLevel can be Info, Warn, Error, Debug, etc.
-func TrailarrLog(level, component, message string, args ...interface{}) {
+// LogLevel struct for log levels
+type LogLevel struct {
+	Name  string
+	Value int
+}
+
+var (
+	DEBUG = LogLevel{"Debug", 1}
+	INFO  = LogLevel{"Info", 2}
+	WARN  = LogLevel{"Warn", 3}
+	ERROR = LogLevel{"Error", 4}
+)
+
+func TrailarrLog(level LogLevel, component, message string, args ...interface{}) {
 	if !ShouldLog(level) {
 		return
 	}
@@ -43,7 +55,7 @@ func TrailarrLog(level, component, message string, args ...interface{}) {
 	now := time.Now()
 	timestamp := now.Format("2006-01-02 15:04:05")
 	ms := now.Nanosecond() / 1e8 // tenths of a second
-	logLine := fmt.Sprintf("%s.%d|%s|%s|%s\n", timestamp, ms, level, component, msg)
+	logLine := fmt.Sprintf("%s.%d|%s|%s|%s\n", timestamp, ms, level.Name, component, msg)
 	fmt.Fprint(os.Stdout, logLine)
 	if logWriter != nil {
 		logWriter.Write([]byte(logLine))
@@ -89,7 +101,7 @@ func TrailarrLog(level, component, message string, args ...interface{}) {
 }
 
 // CheckErrLog logs the error with context and returns it (for propagation)
-func CheckErrLog(level, component, context string, err error) error {
+func CheckErrLog(level LogLevel, component, context string, err error) error {
 	if err != nil {
 		TrailarrLog(level, component, "%s: %v", context, err)
 	}
@@ -97,23 +109,30 @@ func CheckErrLog(level, component, context string, err error) error {
 }
 
 // Helper to get log level from config
-func GetLogLevel() string {
+func GetLogLevel() LogLevel {
 	config, err := readConfigFile()
 	if err != nil {
-		return "Debug"
+		return DEBUG
 	}
 	if general, ok := config["general"].(map[string]interface{}); ok {
 		if v, ok := general["logLevel"].(string); ok {
-			return v
+			switch v {
+			case "Debug":
+				return DEBUG
+			case "Info":
+				return INFO
+			case "Warn":
+				return WARN
+			case "Error":
+				return ERROR
+			}
 		}
 	}
-	return "Debug"
+	return DEBUG
 }
 
 // ShouldLog returns true if the message should be logged at the given level
-func ShouldLog(level string) bool {
-	levels := map[string]int{"Debug": 1, "Info": 2, "Warn": 3, "Error": 4}
-	cur := levels[GetLogLevel()]
-	msg := levels[level]
-	return msg >= cur
+func ShouldLog(level LogLevel) bool {
+	cur := GetLogLevel().Value
+	return level.Value >= cur
 }

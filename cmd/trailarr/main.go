@@ -31,10 +31,10 @@ func main() {
 	var err error
 	timings, err = internal.EnsureSyncTimingsConfig()
 	if err != nil {
-		internal.TrailarrLog("Warn", "Startup", "Could not load sync timings: %v", err)
+		internal.TrailarrLog(internal.WARN, "Startup", "Could not load sync timings: %v", err)
 	}
 	internal.Timings = timings
-	internal.TrailarrLog("Info", "Startup", "Sync timings: %v", timings)
+	internal.TrailarrLog(internal.INFO, "Startup", "Sync timings: %v", timings)
 	r := gin.Default()
 	internal.RegisterRoutes(r)
 	internal.StartBackgroundTasks()

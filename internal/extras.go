@@ -71,7 +71,7 @@ func resolveCachePath(mediaType MediaType) (string, error) {
 
 func lookupMediaTitle(cacheFile string, mediaId int) string {
 	items, err := loadCache(cacheFile)
-	if CheckErrLog("Warn", "lookupMediaTitle", "Failed to load cache", err) != nil {
+	if CheckErrLog(WARN, "lookupMediaTitle", "Failed to load cache", err) != nil {
 		return ""
 	}
 	for _, m := range items {
@@ -92,7 +92,7 @@ func deleteExtraFiles(mediaPath, extraType, extraTitle string) error {
 	err1 := os.Remove(extraFile)
 	err2 := os.Remove(metaFile)
 	if err1 != nil && err2 != nil {
-		CheckErrLog("Warn", "Extras", "Failed to delete extra files", err1)
+		CheckErrLog(WARN, "Extras", "Failed to delete extra files", err1)
 		return fmt.Errorf("file error: %v, meta error: %v", err1, err2)
 	}
 	return nil
@@ -154,19 +154,19 @@ func ExtractYouTubeID(url string) (string, error) {
 	if strings.Contains(url, "youtube.com/watch?v=") {
 		parts := strings.Split(url, "v=")
 		if len(parts) < 2 {
-			CheckErrLog("Warn", "Extras", "Could not extract YouTube video ID from URL", fmt.Errorf("url: %s", url))
+			CheckErrLog(WARN, "Extras", "Could not extract YouTube video ID from URL", fmt.Errorf("url: %s", url))
 			return "", fmt.Errorf("could not extract YouTube video ID from URL: %s", url)
 		}
 		return strings.Split(parts[1], "&")[0], nil
 	} else if strings.Contains(url, "youtu.be/") {
 		parts := strings.Split(url, "/")
 		if len(parts) < 2 {
-			CheckErrLog("Warn", "Extras", "Could not extract YouTube video ID from URL", fmt.Errorf("url: %s", url))
+			CheckErrLog(WARN, "Extras", "Could not extract YouTube video ID from URL", fmt.Errorf("url: %s", url))
 			return "", fmt.Errorf("could not extract YouTube video ID from URL: %s", url)
 		}
 		return parts[len(parts)-1], nil
 	}
-	CheckErrLog("Warn", "Extras", "Not a valid YouTube URL", fmt.Errorf("url: %s", url))
+	CheckErrLog(WARN, "Extras", "Not a valid YouTube URL", fmt.Errorf("url: %s", url))
 	return "", fmt.Errorf("not a valid YouTube URL: %s", url)
 }
 
@@ -214,7 +214,7 @@ func existingExtrasHandler(c *gin.Context) {
 	// Scan subfolders for .mkv files and their metadata
 	var existing []map[string]interface{}
 	entries, err := os.ReadDir(moviePath)
-	if CheckErrLog("Warn", "existingExtrasHandler", "ReadDir failed", err) != nil {
+	if CheckErrLog(WARN, "existingExtrasHandler", "ReadDir failed", err) != nil {
 		respondJSON(c, http.StatusOK, gin.H{"existing": []map[string]interface{}{}})
 		return
 	}
@@ -261,15 +261,15 @@ func downloadExtraHandler(c *gin.Context) {
 		ExtraTitle string    `json:"extraTitle"`
 		URL        string    `json:"url"`
 	}
-	if err := c.BindJSON(&req); CheckErrLog("Warn", "Extras", "[downloadExtraHandler] Invalid request", err) != nil {
+	if err := c.BindJSON(&req); CheckErrLog(WARN, "Extras", "[downloadExtraHandler] Invalid request", err) != nil {
 		respondError(c, http.StatusBadRequest, ErrInvalidRequest)
 		return
 	}
-	TrailarrLog("Info", "Extras", "[downloadExtraHandler] Download request: mediaType=%s, mediaId=%d, extraType=%s, extraTitle=%s, url=%s", req.MediaType, req.MediaId, req.ExtraType, req.ExtraTitle, req.URL)
+	TrailarrLog(INFO, "Extras", "[downloadExtraHandler] Download request: mediaType=%s, mediaId=%d, extraType=%s, extraTitle=%s, url=%s", req.MediaType, req.MediaId, req.ExtraType, req.ExtraTitle, req.URL)
 
 	// Convert MediaId (int) to string for DownloadYouTubeExtra
 	meta, err := DownloadYouTubeExtra(req.MediaType, req.MediaId, req.ExtraType, req.ExtraTitle, req.URL, true)
-	if CheckErrLog("Warn", "Extras", "[downloadExtraHandler] Download error", err) != nil {
+	if CheckErrLog(WARN, "Extras", "[downloadExtraHandler] Download error", err) != nil {
 		respondError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -307,7 +307,7 @@ func findMediaWithTrailers(baseDirs ...string) map[string]bool {
 
 func walkMediaDirs(baseDir string, found map[string]bool) {
 	_ = filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
-		if CheckErrLog("Warn", "walkMediaDirs", "filepath.Walk error", err) != nil || !info.IsDir() {
+		if CheckErrLog(WARN, "walkMediaDirs", "filepath.Walk error", err) != nil || !info.IsDir() {
 			return nil
 		}
 		if isTrailerDir(path) && hasVideoFiles(path) {

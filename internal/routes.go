@@ -46,7 +46,7 @@ func RegisterRoutes(r *gin.Engine) {
 		}
 		testUrl := "https://api.themoviedb.org/3/configuration?api_key=" + apiKey
 		resp, err := http.Get(testUrl)
-		if CheckErrLog("Warn", "API", "TMDB testUrl http.Get failed", err) != nil {
+		if CheckErrLog(WARN, "API", "TMDB testUrl http.Get failed", err) != nil {
 			respondError(c, http.StatusOK, err.Error())
 			return
 		}
@@ -73,7 +73,7 @@ func RegisterRoutes(r *gin.Engine) {
 	// Log all API calls except /mediacover
 	r.Use(func(c *gin.Context) {
 		if len(c.Request.URL.Path) < 11 || c.Request.URL.Path[:11] != "/mediacover" {
-			TrailarrLog("Info", "API", "%s %s", c.Request.Method, c.Request.URL.Path)
+			TrailarrLog(INFO, "API", "%s %s", c.Request.Method, c.Request.URL.Path)
 		}
 		c.Next()
 	})
@@ -87,7 +87,7 @@ func RegisterRoutes(r *gin.Engine) {
 			return
 		}
 		folders, err := FetchRootFolders(url, apiKey)
-		if CheckErrLog("Warn", "API", "FetchRootFolders failed", err) != nil {
+		if CheckErrLog(WARN, "API", "FetchRootFolders failed", err) != nil {
 			respondError(c, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -103,7 +103,7 @@ func RegisterRoutes(r *gin.Engine) {
 			return
 		}
 		err := testMediaConnection(url, apiKey, provider)
-		if CheckErrLog("Warn", "API", "testMediaConnection "+provider+" failed", err) != nil {
+		if CheckErrLog(WARN, "API", "testMediaConnection "+provider+" failed", err) != nil {
 			respondError(c, http.StatusOK, err.Error())
 		} else {
 			respondJSON(c, http.StatusOK, gin.H{"success": true})
@@ -154,7 +154,7 @@ func RegisterRoutes(r *gin.Engine) {
 			return fallback
 		}
 		mappings, err := GetPathMappings(mediaType)
-		if CheckErrLog("Warn", "API", "GetPathMappings "+provider+" failed", err) == nil && len(mappings) > 0 {
+		if CheckErrLog(WARN, "API", "GetPathMappings "+provider+" failed", err) == nil && len(mappings) > 0 {
 			for _, m := range mappings {
 				if len(m) > 1 && m[1] != "" {
 					return m[1]

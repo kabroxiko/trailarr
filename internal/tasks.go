@@ -169,7 +169,7 @@ func StartExtrasDownloadTask() {
 
 func handleExtrasDownloadLoop(ctx context.Context) bool {
 	if !GetAutoDownloadExtras() {
-		TrailarrLog("info", "Tasks", "[TASK] Auto download of extras is disabled by general settings.")
+		TrailarrLog(INFO, "Tasks", "[TASK] Auto download of extras is disabled by general settings.")
 		return waitOrDone(ctx, 360*time.Minute)
 	}
 	cfg := mustLoadSearchExtrasConfig()
@@ -177,7 +177,7 @@ func handleExtrasDownloadLoop(ctx context.Context) bool {
 	if cfg.AutoDownloadExtras {
 		processExtras(cfg)
 	} else {
-		TrailarrLog("info", "Tasks", "[TASK] Auto download of extras is disabled by searchExtras config.")
+		TrailarrLog(INFO, "Tasks", "[TASK] Auto download of extras is disabled by searchExtras config.")
 	}
 	return waitOrDone(ctx, time.Duration(interval)*time.Minute)
 }
@@ -185,7 +185,7 @@ func handleExtrasDownloadLoop(ctx context.Context) bool {
 func waitOrDone(ctx context.Context, d time.Duration) bool {
 	select {
 	case <-ctx.Done():
-		TrailarrLog("info", "Tasks", "[TASK] Extras download task stopped by cancel.")
+		TrailarrLog(INFO, "Tasks", "[TASK] Extras download task stopped by cancel.")
 		return true
 	case <-time.After(d):
 		return false
@@ -194,7 +194,7 @@ func waitOrDone(ctx context.Context, d time.Duration) bool {
 
 func mustLoadSearchExtrasConfig() SearchExtrasConfig {
 	cfg, err := GetSearchExtrasConfig()
-	if CheckErrLog("Warn", "Tasks", "Could not load search extras config", err) != nil {
+	if CheckErrLog(WARN, "Tasks", "Could not load search extras config", err) != nil {
 		cfg.SearchMoviesExtras = true
 		cfg.SearchSeriesExtras = true
 		cfg.AutoDownloadExtras = true
@@ -212,13 +212,13 @@ func getExtrasInterval() int {
 
 func processExtras(cfg SearchExtrasConfig) {
 	extraTypesCfg, err := GetExtraTypesConfig()
-	CheckErrLog("Warn", "Tasks", "Could not load extra types config", err)
+	CheckErrLog(WARN, "Tasks", "Could not load extra types config", err)
 	if cfg.SearchMoviesExtras {
-		TrailarrLog("Info", "Tasks", "[TASK] Searching for missing movie extras...")
+		TrailarrLog(INFO, "Tasks", "[TASK] Searching for missing movie extras...")
 		DownloadMissingMoviesExtrasWithTypeFilter(extraTypesCfg)
 	}
 	if cfg.SearchSeriesExtras {
-		TrailarrLog("Info", "Tasks", "[TASK] Searching for missing series extras...")
+		TrailarrLog(INFO, "Tasks", "[TASK] Searching for missing series extras...")
 		DownloadMissingSeriesExtrasWithTypeFilter(extraTypesCfg)
 	}
 }
@@ -244,7 +244,7 @@ func DownloadMissingSeriesExtrasWithTypeFilter(cfg ExtraTypesConfig) {
 // Shared logic for type-filtered extras download
 func downloadMissingExtrasWithTypeFilter(cfg ExtraTypesConfig, mediaType MediaType, cacheFile string) {
 	items, err := loadCache(cacheFile)
-	if CheckErrLog("Debug", "Tasks", "Failed to load cache", err) != nil {
+	if CheckErrLog(DEBUG, "Tasks", "Failed to load cache", err) != nil {
 		return
 	}
 	for _, item := range items {
@@ -273,7 +273,7 @@ func filterAndDownloadTypeFilteredExtras(cfg ExtraTypesConfig, mediaType MediaTy
 		}
 		if extra.Status == "missing" && extra.URL != "" {
 			err := handleTypeFilteredExtraDownload(mediaType, item["id"].(int), extra)
-			CheckErrLog("Warn", "Tasks", "[DownloadMissingExtrasWithTypeFilter] Failed to download", err)
+			CheckErrLog(WARN, "Tasks", "[DownloadMissingExtrasWithTypeFilter] Failed to download", err)
 		}
 	}
 }
