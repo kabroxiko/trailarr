@@ -5,7 +5,7 @@ export default function Container({ children, style = {}, ...props }) {
 		width: '100%',
 		margin: 0,
 		height: '100%',
-		padding: '2rem',
+		padding: '0',
 		background: 'var(--settings-bg, #fff)',
 		borderRadius: 0,
 		boxShadow: '0 2px 12px #0002',
