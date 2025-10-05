@@ -6,29 +6,24 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
-
-	"gopkg.in/yaml.v3"
 )
 
 func GetTMDBKey() (string, error) {
-	settingsData, err := os.ReadFile(ConfigPath)
-	if CheckErrLog(WARN, "TMDB", "failed to read config", err) != nil {
-		return "", fmt.Errorf("failed to read config: %w", err)
+	if Config == nil {
+		TrailarrLog(WARN, "TMDB", "Config not loaded")
+		return "", fmt.Errorf("Config not loaded")
 	}
-	var allSettings struct {
-		General struct {
-			TMDBKey string `yaml:"tmdbKey"`
-		} `yaml:"general"`
+	general, ok := Config["general"].(map[string]interface{})
+	if !ok {
+		TrailarrLog(WARN, "TMDB", "general section missing in config")
+		return "", fmt.Errorf("general section missing in config")
 	}
-	if err := yaml.Unmarshal(settingsData, &allSettings); CheckErrLog(WARN, "TMDB", "failed to decode config", err) != nil {
-		return "", fmt.Errorf("failed to decode config: %w", err)
-	}
-	if allSettings.General.TMDBKey == "" {
+	tmdbKey, ok := general["tmdbKey"].(string)
+	if !ok || tmdbKey == "" {
 		TrailarrLog(WARN, "TMDB", "TMDB key not set in general settings")
 		return "", fmt.Errorf("TMDB key not set in general settings")
 	}
-	return allSettings.General.TMDBKey, nil
+	return tmdbKey, nil
 }
 
 func GetTMDBId(mediaType MediaType, id int, tmdbKey string) (int, error) {

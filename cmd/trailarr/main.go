@@ -20,6 +20,10 @@ func main() {
 	ensureNetscapeCookiesFile(cookiesPath)
 	// Ensure config.yml exists and is filled with defaults
 	_ = internal.EnsureConfigDefaults()
+	// Load config.yml into memory
+	if err := internal.LoadConfig(); err != nil {
+		internal.TrailarrLog(internal.WARN, "Startup", "Could not load config.yml: %v", err)
+	}
 	// Only log backend/server logs to file. Gin (frontend HTTP) logs go to stdout only.
 	logDir := internal.TrailarrRoot + "/logs"
 	logFile := logDir + "/trailarr.txt"

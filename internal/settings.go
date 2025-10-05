@@ -1,4 +1,3 @@
-// ...existing code...
 package internal
 
 import (
@@ -11,6 +10,24 @@ import (
 	"github.com/gin-gonic/gin"
 	"gopkg.in/yaml.v3"
 )
+
+// Global in-memory config
+var Config map[string]interface{}
+
+// LoadConfig reads config.yml into the global Config variable
+func LoadConfig() error {
+	data, err := os.ReadFile(ConfigPath)
+	if err != nil {
+		return err
+	}
+	var cfg map[string]interface{}
+	err = yaml.Unmarshal(data, &cfg)
+	if err != nil {
+		return err
+	}
+	Config = cfg
+	return nil
+}
 
 // CanonicalizeExtraTypeConfig holds mapping from TMDB extra types to Plex extra types
 type CanonicalizeExtraTypeConfig struct {
@@ -421,18 +438,12 @@ type ExtraTypesConfig struct {
 
 // GetExtraTypesConfig loads extra types config from config.yml
 func GetExtraTypesConfig() (ExtraTypesConfig, error) {
-	data, err := os.ReadFile(ConfigPath)
-	if CheckErrLog(WARN, "Settings", "os.ReadFile ConfigPath failed", err) != nil {
-		return ExtraTypesConfig{Trailers: true, Scenes: true, BehindTheScenes: true, Interviews: true, Featurettes: true, DeletedScenes: true, Other: true}, err
+	if Config == nil {
+		return ExtraTypesConfig{Trailers: true, Scenes: true, BehindTheScenes: true, Interviews: true, Featurettes: true, DeletedScenes: true, Other: true}, nil
 	}
-	var config map[string]interface{}
-	if err := yaml.Unmarshal(data, &config); CheckErrLog(WARN, "Settings", "yaml.Unmarshal failed", err) != nil {
-		return ExtraTypesConfig{Trailers: true, Scenes: true, BehindTheScenes: true, Interviews: true, Featurettes: true, DeletedScenes: true, Other: true}, err
-	}
-	sec, ok := config["extraTypes"].(map[string]interface{})
+	sec, ok := Config["extraTypes"].(map[string]interface{})
 	cfg := ExtraTypesConfig{}
 	if !ok {
-		// Default: all enabled
 		return ExtraTypesConfig{Trailers: true, Scenes: true, BehindTheScenes: true, Interviews: true, Featurettes: true, DeletedScenes: true, Other: true}, nil
 	}
 	if v, ok := sec["trailers"].(bool); ok {
@@ -488,7 +499,14 @@ func SaveExtraTypesConfig(cfg ExtraTypesConfig) error {
 		"deletedScenes":   cfg.DeletedScenes,
 		"other":           cfg.Other,
 	}
-	return writeConfigFile(config)
+	err = writeConfigFile(config)
+	if err == nil {
+		// Update in-memory config
+		if Config != nil {
+			Config["extraTypes"] = config["extraTypes"]
+		}
+	}
+	return err
 }
 
 // Handler to get extra types config
@@ -517,13 +535,10 @@ func SaveExtraTypesConfigHandler(c *gin.Context) {
 
 // GetAutoDownloadExtras reads the autoDownloadExtras flag from config.yml (general section)
 func GetAutoDownloadExtras() bool {
-	data, err := os.ReadFile(ConfigPath)
-	if err != nil {
+	if Config == nil {
 		return true // default enabled
 	}
-	var config map[string]interface{}
-	_ = yaml.Unmarshal(data, &config)
-	if general, ok := config["general"].(map[string]interface{}); ok {
+	if general, ok := Config["general"].(map[string]interface{}); ok {
 		if v, ok := general["autoDownloadExtras"].(bool); ok {
 			return v
 		}
@@ -533,17 +548,11 @@ func GetAutoDownloadExtras() bool {
 
 // GetSearchExtrasConfig loads search extras config from config.yml
 func GetSearchExtrasConfig() (SearchExtrasConfig, error) {
-	data, err := os.ReadFile(ConfigPath)
-	if CheckErrLog(WARN, "Settings", "os.ReadFile ConfigPath failed", err) != nil {
-		return SearchExtrasConfig{}, err
+	if Config == nil {
+		return SearchExtrasConfig{SearchMoviesExtras: true, SearchSeriesExtras: true, AutoDownloadExtras: true}, nil
 	}
-	var config map[string]interface{}
-	if err := yaml.Unmarshal(data, &config); CheckErrLog(WARN, "Settings", "yaml.Unmarshal failed", err) != nil {
-		return SearchExtrasConfig{}, err
-	}
-	sec, ok := config["searchExtras"].(map[string]interface{})
+	sec, ok := Config["searchExtras"].(map[string]interface{})
 	if !ok {
-		// Default: both enabled, autoDownload enabled
 		return SearchExtrasConfig{SearchMoviesExtras: true, SearchSeriesExtras: true, AutoDownloadExtras: true}, nil
 	}
 	cfg := SearchExtrasConfig{}
@@ -576,7 +585,14 @@ func SaveSearchExtrasConfig(cfg SearchExtrasConfig) error {
 		"searchSeriesExtras": cfg.SearchSeriesExtras,
 		"autoDownloadExtras": cfg.AutoDownloadExtras,
 	}
-	return writeConfigFile(config)
+	err = writeConfigFile(config)
+	if err == nil {
+		// Update in-memory config
+		if Config != nil {
+			Config["searchExtras"] = config["searchExtras"]
+		}
+	}
+	return err
 }
 
 // Handler to get search extras config
@@ -859,6 +875,12 @@ func SaveSettingsHandler(section string) gin.HandlerFunc {
 		}
 		config[section] = sectionData
 		err = writeConfigFile(config)
+		if err == nil {
+			// Update in-memory config
+			if Config != nil {
+				Config[section] = sectionData
+			}
+		}
 		if CheckErrLog(WARN, "Settings", "writeConfigFile failed", err) != nil {
 			respondError(c, http.StatusInternalServerError, err.Error())
 			return
@@ -932,6 +954,12 @@ func saveGeneralSettingsHandler(c *gin.Context) {
 	}
 	config["general"] = general
 	err = writeConfigFile(config)
+	if err == nil {
+		// Update in-memory config
+		if Config != nil {
+			Config["general"] = general
+		}
+	}
 	if CheckErrLog(WARN, "Settings", "writeConfigFile failed", err) != nil {
 		respondError(c, http.StatusInternalServerError, err.Error())
 		return
