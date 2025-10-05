@@ -8,7 +8,7 @@ import SettingsPage from './SettingsPage';
 import Tasks from './Tasks';
 import Wanted from './Wanted';
 
-export const routeMap = [
+export const RouteMap = [
   { pattern: /^\/$/, section: 'Movies' },
   { pattern: /^\/movies/, section: 'Movies' },
   { pattern: /^\/series/, section: 'Series' },

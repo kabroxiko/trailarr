@@ -19,4 +19,4 @@ Add new tasks below as needed:
 - [ ] Button text connect must be reset between pages
 - [x] Logs must be numbered
 - [x] rejected file must be match using youtube id
-- [ ] rename routeMap.jsx to RouteMap.jsx
+- [ ] rename RouteMap.jsx to RouteMap.jsx

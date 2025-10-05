@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import { Routes, Route } from 'react-router-dom';
-import { routeMap, appRoutes } from './components/routeMap';
+import { RouteMap, appRoutes } from './components/RouteMap';
 import './App.css';
 // Removed static import of api.js
 // Refactored to use dynamic imports
@@ -35,7 +35,7 @@ function App() {
   // Sync sidebar state with route changes
   useEffect(() => {
     const path = location.pathname;
-    for (const entry of routeMap) {
+    for (const entry of RouteMap) {
       if (entry.pattern.test(path)) {
         setSelectedSection(entry.section);
         if (entry.submenu) setSelectedSettingsSub(entry.submenu);
