@@ -39,7 +39,7 @@ type ExtraDownloadMetadata struct {
 }
 
 // NewExtraDownloadMetadata constructs an ExtraDownloadMetadata with status and all fields
-func NewExtraDownloadMetadata(info *downloadInfo, extraURL string, status string) *ExtraDownloadMetadata {
+func NewExtraDownloadMetadata(info *downloadInfo, youtubeId string, status string) *ExtraDownloadMetadata {
 	return &ExtraDownloadMetadata{
 		MediaType:  info.MediaType,
 		MediaId:    info.MediaId,
@@ -49,7 +49,7 @@ func NewExtraDownloadMetadata(info *downloadInfo, extraURL string, status string
 		YouTubeID:  info.YouTubeID,
 		FileName:   info.OutFile,
 		Status:     status,
-		URL:        extraURL,
+		URL:        youtubeId,
 	}
 }
 
@@ -59,7 +59,7 @@ type RejectedExtra struct {
 	MediaTitle string    `json:"media_title"`
 	ExtraType  string    `json:"extra_type"`
 	ExtraTitle string    `json:"extra_title"`
-	URL        string    `json:"url"`
+	YoutubeId  string    `json:"youtube_id"`
 	Reason     string    `json:"reason"`
 }
 
@@ -69,9 +69,9 @@ type RequestBody struct {
 	Args  []string          `json:"args"`
 }
 
-func DownloadYouTubeExtra(mediaType MediaType, mediaId int, extraType, extraTitle, extraURL string, forceDownload ...bool) (*ExtraDownloadMetadata, error) {
-	TrailarrLog(DEBUG, "YouTube", "DownloadYouTubeExtra called with mediaType=%s, mediaId=%d, extraType=%s, extraTitle=%s, extraURL=%s, forceDownload=%v",
-		mediaType, mediaId, extraType, extraTitle, extraURL, forceDownload)
+func DownloadYouTubeExtra(mediaType MediaType, mediaId int, extraType, extraTitle, youtubeId string, forceDownload ...bool) (*ExtraDownloadMetadata, error) {
+	TrailarrLog(DEBUG, "YouTube", "DownloadYouTubeExtra called with mediaType=%s, mediaId=%d, extraType=%s, extraTitle=%s, youtubeId=%s, forceDownload=%v",
+		mediaType, mediaId, extraType, extraTitle, youtubeId, forceDownload)
 	var downloadInfo *downloadInfo
 	var err error
 
@@ -101,15 +101,10 @@ func DownloadYouTubeExtra(mediaType MediaType, mediaId int, extraType, extraTitl
 			}
 		}
 	}
-	TrailarrLog(INFO, "YouTube", "Downloading YouTube extra: mediaType=%s, mediaTitle=%s, type=%s, title=%s, url=%s", mediaType, mediaTitle, extraType, extraTitle, extraURL)
+	TrailarrLog(INFO, "YouTube", "Downloading YouTube extra: mediaType=%s, mediaTitle=%s, type=%s, title=%s, youtubeId=%s",
+		mediaType, mediaTitle, extraType, extraTitle, youtubeId)
 
-	// Extract YouTube ID and prepare paths
-	youtubeID, err := ExtractYouTubeID(extraURL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to extract YouTube ID: %w", err)
-	}
-
-	downloadInfo, err = prepareDownloadInfo(mediaType, mediaId, extraType, extraTitle, youtubeID)
+	downloadInfo, err = prepareDownloadInfo(mediaType, mediaId, extraType, extraTitle, youtubeId)
 	if err != nil {
 		return nil, err
 	}
@@ -121,12 +116,12 @@ func DownloadYouTubeExtra(mediaType MediaType, mediaId int, extraType, extraTitl
 	}()
 
 	// Check if extra is rejected or already exists
-	if meta, err := checkExistingExtra(downloadInfo, extraURL); meta != nil || err != nil {
+	if meta, err := checkExistingExtra(downloadInfo, youtubeId); meta != nil || err != nil {
 		return meta, err
 	}
 
 	// Perform the download
-	return performDownload(downloadInfo, extraURL)
+	return performDownload(downloadInfo, youtubeId)
 }
 
 type downloadInfo struct {
@@ -249,30 +244,30 @@ func prepareDownloadInfo(mediaType MediaType, mediaId int, extraType, extraTitle
 	}, nil
 }
 
-func checkExistingExtra(info *downloadInfo, extraURL string) (*ExtraDownloadMetadata, error) {
+func checkExistingExtra(info *downloadInfo, youtubeId string) (*ExtraDownloadMetadata, error) {
 	// Check if extra is in rejected_extras.json
-	if meta := checkRejectedExtras(info, extraURL); meta != nil {
+	if meta := checkRejectedExtras(info, youtubeId); meta != nil {
 		return meta, nil
 	}
 
 	// Skip download if file already exists
 	if _, err := os.Stat(info.OutFile); err == nil {
 		TrailarrLog(INFO, "YouTube", "File already exists, skipping: %s", info.OutFile)
-		return NewExtraDownloadMetadata(info, extraURL, "exists"), nil
+		return NewExtraDownloadMetadata(info, youtubeId, "exists"), nil
 	}
 
 	return nil, nil
 }
 
-func checkRejectedExtras(info *downloadInfo, extraURL string) *ExtraDownloadMetadata {
+func checkRejectedExtras(info *downloadInfo, youtubeId string) *ExtraDownloadMetadata {
 	rejectedPath := filepath.Join(TrailarrRoot, "rejected_extras.json")
 	rejected := make([]map[string]string, 0)
 
 	if err := ReadJSONFile(rejectedPath, &rejected); err == nil {
 		for _, r := range rejected {
-			if r["url"] == extraURL {
+			if r["url"] == youtubeId {
 				TrailarrLog(INFO, "YouTube", "Extra is in rejected list, skipping: %s", info.ExtraTitle)
-				return NewExtraDownloadMetadata(info, extraURL, "rejected")
+				return NewExtraDownloadMetadata(info, youtubeId, "rejected")
 			}
 		}
 		cleanupRejectedExtras(rejected, rejectedPath)
@@ -288,7 +283,7 @@ func cleanupRejectedExtras(rejected []map[string]string, rejectedPath string) {
 	}
 }
 
-func performDownload(info *downloadInfo, extraURL string) (*ExtraDownloadMetadata, error) {
+func performDownload(info *downloadInfo, youtubeId string) (*ExtraDownloadMetadata, error) {
 
 	// Setup yt-dlp
 	ytdlp.MustInstall(context.Background(), nil)
@@ -300,11 +295,11 @@ func performDownload(info *downloadInfo, extraURL string) (*ExtraDownloadMetadat
 		FormatSort("res,fps,codec,br").
 		SetFlagConfig(&flags)
 
-	output, err := cmd.Run(context.Background(), extraURL)
+	output, err := cmd.Run(context.Background(), youtubeId)
 	if err != nil {
 		// Check if error is related to impersonation
 		if isImpersonationError(err) {
-			fmt.Printf("[DownloadYouTubeExtra] Impersonation failed, retrying without impersonation: %s\n", extraURL)
+			fmt.Printf("[DownloadYouTubeExtra] Impersonation failed, retrying without impersonation: %s\n", youtubeId)
 
 			// Retry without impersonation
 			flagsNoImpersonate := createYtdlpFlagsWithoutImpersonation(info)
@@ -313,12 +308,12 @@ func performDownload(info *downloadInfo, extraURL string) (*ExtraDownloadMetadat
 				FormatSort("res,fps,codec,br").
 				SetFlagConfig(&flagsNoImpersonate)
 
-			output, err = cmdRetry.Run(context.Background(), extraURL)
+			output, err = cmdRetry.Run(context.Background(), youtubeId)
 		}
 	}
 
 	if err != nil {
-		return nil, handleDownloadError(info, extraURL, err, output)
+		return nil, handleDownloadError(info, youtubeId, err, output)
 	}
 
 	// Move file to final location
@@ -327,7 +322,7 @@ func performDownload(info *downloadInfo, extraURL string) (*ExtraDownloadMetadat
 	}
 
 	// Create metadata
-	return createSuccessMetadata(info, extraURL)
+	return createSuccessMetadata(info, youtubeId)
 }
 
 func shouldUseImpersonation() bool {
@@ -463,7 +458,7 @@ func setupCookiesFile() *string {
 	}
 }
 
-func handleDownloadError(info *downloadInfo, extraURL string, err error, output *ytdlp.Result) error {
+func handleDownloadError(info *downloadInfo, youtubeId string, err error, output *ytdlp.Result) error {
 	errStr := err.Error()
 	stderr := ""
 	if output != nil {
@@ -481,20 +476,20 @@ func handleDownloadError(info *downloadInfo, extraURL string, err error, output 
 		}
 	}
 
-	TrailarrLog(ERROR, "YouTube", "Download failed for %s: %s", extraURL, reason)
-	addToRejectedExtras(info, extraURL, reason)
+	TrailarrLog(ERROR, "YouTube", "Download failed for %s: %s", youtubeId, reason)
+	addToRejectedExtras(info, youtubeId, reason)
 	return fmt.Errorf(reason+": %w", err)
 }
 
-func addToRejectedExtras(info *downloadInfo, extraURL, reason string) {
+func addToRejectedExtras(info *downloadInfo, youtubeId, reason string) {
 	rejectedPath := filepath.Join(TrailarrRoot, "rejected_extras.json")
 	var rejectedList []RejectedExtra
 
 	_ = ReadJSONFile(rejectedPath, &rejectedList)
 
 	// Check if already rejected
-	for _, r := range rejectedList {
-		if r.URL == extraURL {
+	for _, rejected := range rejectedList {
+		if rejected.YoutubeId == youtubeId {
 			return
 		}
 	}
@@ -505,21 +500,21 @@ func addToRejectedExtras(info *downloadInfo, extraURL, reason string) {
 		MediaTitle: info.MediaTitle,
 		ExtraType:  info.ExtraType,
 		ExtraTitle: info.ExtraTitle,
-		URL:        extraURL,
+		YoutubeId:  youtubeId,
 		Reason:     reason,
 	})
 
 	// Deduplicate by URL
 	tempList := make([]map[string]string, 0, len(rejectedList))
-	for _, r := range rejectedList {
-		tempList = append(tempList, map[string]string{"url": r.URL})
+	for _, rejected := range rejectedList {
+		tempList = append(tempList, map[string]string{"url": rejected.YoutubeId})
 	}
 	uniqueURLs := DeduplicateByKey(tempList, "url")
 	finalList := make([]RejectedExtra, 0, len(uniqueURLs))
 	for _, u := range uniqueURLs {
-		for _, r := range rejectedList {
-			if r.URL == u["url"] {
-				finalList = append(finalList, r)
+		for _, rejected := range rejectedList {
+			if rejected.YoutubeId == u["url"] {
+				finalList = append(finalList, rejected)
 				break
 			}
 		}
@@ -587,8 +582,8 @@ func copyFileAcrossDevices(tempFile, outFile string) error {
 	return nil
 }
 
-func createSuccessMetadata(info *downloadInfo, extraURL string) (*ExtraDownloadMetadata, error) {
-	meta := NewExtraDownloadMetadata(info, extraURL, "downloaded")
+func createSuccessMetadata(info *downloadInfo, youtubeId string) (*ExtraDownloadMetadata, error) {
+	meta := NewExtraDownloadMetadata(info, youtubeId, "downloaded")
 
 	metaFile := info.OutFile + ".json"
 	metaBytes, _ := json.MarshalIndent(meta, "", "  ")

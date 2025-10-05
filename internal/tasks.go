@@ -271,7 +271,7 @@ func filterAndDownloadTypeFilteredExtras(cfg ExtraTypesConfig, mediaType MediaTy
 		if !isExtraTypeEnabled(cfg, typ) {
 			continue
 		}
-		if extra.Status == "missing" && extra.URL != "" {
+		if extra.Status == "missing" && extra.YoutubeId != "" {
 			err := handleTypeFilteredExtraDownload(mediaType, item["id"].(int), extra)
 			CheckErrLog(WARN, "Tasks", "[DownloadMissingExtrasWithTypeFilter] Failed to download", err)
 		}
@@ -279,7 +279,7 @@ func filterAndDownloadTypeFilteredExtras(cfg ExtraTypesConfig, mediaType MediaTy
 }
 
 func handleTypeFilteredExtraDownload(mediaType MediaType, mediaId int, extra Extra) error {
-	_, err := DownloadYouTubeExtra(mediaType, mediaId, extra.Type, extra.Title, extra.URL)
+	_, err := DownloadYouTubeExtra(mediaType, mediaId, extra.Type, extra.Title, extra.YoutubeId)
 	return err
 }
 

@@ -4,6 +4,7 @@ import axios from 'axios';
 import Container from './Container.jsx';
 import SaveLane from './SaveLane.jsx';
 import SectionHeader from './SectionHeader.jsx';
+
 const ExtrasTypeMappingConfig = React.lazy(() => import('./ExtrasTypeMappingConfig.jsx'));
 
 const EXTRA_TYPES = [
@@ -35,9 +36,9 @@ const YTDLP_FLAGS = [
 ];
 
 export default function ExtrasSettings({ darkMode }) {
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   useEffect(() => {
     const setColors = () => {
-      const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       document.documentElement.style.setProperty('--settings-bg', isDark ? '#222' : '#fff');
       document.documentElement.style.setProperty('--settings-text', isDark ? '#eee' : '#222');
       document.documentElement.style.setProperty('--save-lane-bg', isDark ? '#333' : '#e5e7eb');
@@ -161,10 +162,10 @@ export default function ExtrasSettings({ darkMode }) {
             styles={{
               control: (base, state) => ({
                 ...base,
-                background: darkMode ? '#23232a' : '#fff',
+                background: isDark ? '#23232a' : '#fff',
                 borderColor: state.isFocused ? '#a855f7' : '#444',
                 boxShadow: state.isFocused ? '0 0 0 2px #a855f7' : 'none',
-                color: darkMode ? '#fff' : '#222',
+                color: isDark ? '#fff' : '#222',
                 borderRadius: 8,
                 minHeight: 32,
                 fontSize: 13,
@@ -181,42 +182,46 @@ export default function ExtrasSettings({ darkMode }) {
               }),
               multiValue: base => ({
                 ...base,
-                background: darkMode ? '#333' : '#e5e7eb',
-                color: darkMode ? '#fff' : '#222',
+                background: isDark ? '#333' : '#e5e7eb',
+                color: isDark ? '#fff' : '#222',
                 borderRadius: 6,
                 fontSize: 13,
                 height: 24,
                 margin: '2px 2px',
+                display: 'flex',
+                alignItems: 'center',
               }),
               multiValueLabel: base => ({
                 ...base,
-                color: darkMode ? '#fff' : '#222',
+                color: isDark ? '#fff' : '#222',
                 fontWeight: 500,
                 fontSize: 13,
                 padding: '0 6px',
               }),
               multiValueRemove: base => ({
                 ...base,
-                color: darkMode ? '#a855f7' : '#6d28d9',
+                color: isDark ? '#a855f7' : '#6d28d9',
                 fontSize: 13,
                 height: 24,
-                ':hover': { background: darkMode ? '#a855f7' : '#6d28d9', color: '#fff' },
+                ':hover': { background: isDark ? '#a855f7' : '#6d28d9', color: '#fff' },
               }),
               menu: base => ({
                 ...base,
-                background: darkMode ? '#23232a' : '#fff',
-                color: darkMode ? '#fff' : '#222',
+                background: isDark ? '#23232a' : '#fff',
+                color: isDark ? '#fff' : '#222',
                 borderRadius: 8,
                 fontSize: 13,
               }),
               option: (base, state) => ({
                 ...base,
-                background: state.isSelected ? (darkMode ? '#a855f7' : '#6d28d9') : (state.isFocused ? (darkMode ? '#333' : '#eee') : (darkMode ? '#23232a' : '#fff')),
-                color: state.isSelected ? '#fff' : (darkMode ? '#fff' : '#222'),
+                background: state.isSelected ? (isDark ? '#a855f7' : '#6d28d9') : (state.isFocused ? (isDark ? '#333' : '#eee') : (isDark ? '#23232a' : '#fff')),
+                color: state.isSelected ? '#fff' : (isDark ? '#fff' : '#222'),
                 fontWeight: state.isSelected ? 600 : 400,
                 fontSize: 13,
                 height: 32,
-                lineHeight: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                lineHeight: 'normal',
               }),
             }}
             placeholder="Select extra types..."
@@ -228,6 +233,7 @@ export default function ExtrasSettings({ darkMode }) {
         {/* Mapping config UI integration */}
         <Suspense fallback={<div>Loading mapping config...</div>}>
           <ExtrasTypeMappingConfig
+            isDark={isDark}
             mapping={mapping}
             onMappingChange={handleMappingChange}
             tmdbTypes={tmdbTypes}
@@ -246,7 +252,7 @@ export default function ExtrasSettings({ darkMode }) {
             })}
           />
         </Suspense>
-        <hr style={{ margin: '2em 0', borderColor: darkMode ? '#444' : '#eee' }} />
+        <hr style={{ margin: '2em 0', borderColor: isDark ? '#444' : '#eee' }} />
         <SectionHeader>yt-dlp Download Flags</SectionHeader>
         <form onSubmit={e => { e.preventDefault(); handleYtSave(); }}>
           {YTDLP_FLAGS.map(({ key, label, type }) => (
@@ -258,7 +264,7 @@ export default function ExtrasSettings({ darkMode }) {
                     id={key}
                     checked={!!ytFlags[key]}
                     onChange={() => handleYtFlagChange(key, !ytFlags[key])}
-                    style={{ marginRight: 12, accentColor: darkMode ? '#2563eb' : '#6d28d9' }}
+                    style={{ marginRight: 12, accentColor: isDark ? '#2563eb' : '#6d28d9' }}
                   />
                   <label htmlFor={key} style={{ fontSize: 16 }}>{label}</label>
                 </>
@@ -278,10 +284,10 @@ export default function ExtrasSettings({ darkMode }) {
                       padding: '0.15em 0.5em',
                       fontSize: 13,
                       border: '1px solid',
-                      borderColor: darkMode ? '#444' : '#ccc',
+                      borderColor: isDark ? '#444' : '#ccc',
                       borderRadius: 4,
-                      background: darkMode ? '#23232a' : '#fff',
-                      color: darkMode ? '#e5e7eb' : '#222',
+                      background: isDark ? '#23232a' : '#fff',
+                      color: isDark ? '#e5e7eb' : '#222',
                     }}
                   />
                 </>

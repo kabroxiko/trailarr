@@ -7,7 +7,6 @@ import { faPlay, faDownload } from '@fortawesome/free-solid-svg-icons';
 export default function ExtraCard({
   extra,
   idx,
-  type,
   typeExtras,
   darkMode,
   media,
@@ -26,15 +25,7 @@ export default function ExtraCard({
   if (displayTitle.length > maxLen) {
     displayTitle = displayTitle.slice(0, maxLen - 3) + '...';
   }
-  let youtubeID = '';
-  if (extra.URL) {
-    if (extra.URL.includes('youtube.com/watch?v=')) {
-      youtubeID = extra.URL.split('v=')[1]?.split('&')[0] || '';
-    } else if (extra.URL.includes('youtu.be/')) {
-      youtubeID = extra.URL.split('youtu.be/')[1]?.split(/[?&]/)[0] || '';
-    }
-  }
-  let posterUrl = `https://img.youtube.com/vi/${youtubeID}/hqdefault.jpg`;
+  let posterUrl = `https://img.youtube.com/vi/${extra.YoutubeId}/hqdefault.jpg`;
   let titleFontSize = 16;
   if (displayTitle.length > 22) titleFontSize = 14;
   if (displayTitle.length > 32) titleFontSize = 12;
@@ -45,7 +36,6 @@ export default function ExtraCard({
   const handleDownloadClick = async () => {
     if (downloaded) return;
     try {
-      const getExtraUrl = extra => typeof extra.URL === 'string' ? extra.URL : extra.URL?.url ?? '';
       const res = await fetch(`/api/extras/download`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -54,7 +44,7 @@ export default function ExtraCard({
           mediaId: media.id,
           extraType: extra.Type,
           extraTitle: extra.Title,
-          url: getExtraUrl(extra)
+          youtubeId: extra.YoutubeId
         })
       });
       if (res.ok) {
@@ -103,19 +93,13 @@ export default function ExtraCard({
     }}>
       <div style={{ width: '100%', background: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{position: 'relative', width: '100%'}}>
-          {extra.URL && (extra.URL.includes('youtube.com/watch?v=') || extra.URL.includes('youtu.be/')) && (
+          {extra.YoutubeId && (
             <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 2 }}>
               <IconButton
                 icon={<FontAwesomeIcon icon={faPlay} color="#fff" size="lg" style={{ filter: 'drop-shadow(0 2px 8px #000)' }} />}
                 title="Play"
                 onClick={() => {
-                  let youtubeID = '';
-                  if (extra.URL.includes('youtube.com/watch?v=')) {
-                    youtubeID = extra.URL.split('v=')[1]?.split('&')[0] || '';
-                  } else if (extra.URL.includes('youtu.be/')) {
-                    youtubeID = extra.URL.split('youtu.be/')[1]?.split(/[?&]/)[0] || '';
-                  }
-                  if (youtubeID) setYoutubeModal({ open: true, videoId: youtubeID });
+                  if (extra.YoutubeId) setYoutubeModal({ open: true, videoId: extra.YoutubeId });
                 }}
               />
             </div>
@@ -125,7 +109,7 @@ export default function ExtraCard({
           ) : (
             <div style={{ color: '#fff', fontSize: 18, textAlign: 'center', padding: 12 }}>No Image</div>
           )}
-          {extra.URL && (extra.URL.includes('youtube.com/watch?v=') || extra.URL.includes('youtu.be/')) && !downloaded && (
+          {extra.YoutubeId && !downloaded && (
             <div style={{ position: 'absolute', top: 8, right: downloaded ? 36 : 8, zIndex: 2 }}>
               <IconButton
                 icon={<FontAwesomeIcon icon={faDownload} color={rejected ? '#aaa' : '#fff'} size="lg" />}

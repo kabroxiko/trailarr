@@ -156,7 +156,7 @@ func filterAndDownloadExtras(mediaType MediaType, mediaId int, extras []Extra, c
 }
 
 func shouldDownloadExtra(extra Extra, config ExtraTypesConfig) bool {
-	if extra.Status != "missing" || extra.URL == "" {
+	if extra.Status != "missing" || extra.YoutubeId == "" {
 		return false
 	}
 	typeName := extra.Type
@@ -165,7 +165,7 @@ func shouldDownloadExtra(extra Extra, config ExtraTypesConfig) bool {
 }
 
 func handleExtraDownload(mediaType MediaType, mediaId int, extra Extra) error {
-	_, err := DownloadYouTubeExtra(mediaType, mediaId, extra.Type, extra.Title, extra.URL)
+	_, err := DownloadYouTubeExtra(mediaType, mediaId, extra.Type, extra.Title, extra.YoutubeId)
 	return err
 }
 
@@ -723,28 +723,28 @@ func sharedExtrasHandler(mediaType MediaType) gin.HandlerFunc {
 		MarkDownloadedExtras(extras, mediaPath, "type", "title")
 		rejectedExtras := GetRejectedExtrasForMedia(mediaType, id)
 		TrailarrLog(DEBUG, "sharedExtrasHandler", "Rejected extras: %+v", rejectedExtras)
-		urlInResults := make(map[string]struct{})
+		youtubeIdInResults := make(map[string]struct{})
 		for _, extra := range extras {
-			urlInResults[extra.URL] = struct{}{}
+			youtubeIdInResults[extra.YoutubeId] = struct{}{}
 		}
 		// Set status to "rejected" for any extra whose URL matches a rejected extra
-		rejectedURLs := make(map[string]RejectedExtra)
-		for _, rej := range rejectedExtras {
-			rejectedURLs[rej.URL] = rej
+		rejectedYoutubeIds := make(map[string]RejectedExtra)
+		for _, rejected := range rejectedExtras {
+			rejectedYoutubeIds[rejected.YoutubeId] = rejected
 		}
 		for i, extra := range extras {
-			if _, exists := rejectedURLs[extra.URL]; exists {
+			if _, exists := rejectedYoutubeIds[extra.YoutubeId]; exists {
 				extras[i].Status = "rejected"
 			}
 		}
 		// Also append any rejected extras not already present in extras
-		for _, rej := range rejectedExtras {
-			if _, exists := urlInResults[rej.URL]; !exists {
+		for _, rejected := range rejectedExtras {
+			if _, exists := youtubeIdInResults[rejected.YoutubeId]; !exists {
 				extras = append(extras, Extra{
-					Type:   rej.ExtraType,
-					Title:  rej.ExtraTitle,
-					URL:    rej.URL,
-					Status: "rejected",
+					Type:      rejected.ExtraType,
+					Title:     rejected.ExtraTitle,
+					YoutubeId: rejected.YoutubeId,
+					Status:    "rejected",
 				})
 			}
 		}

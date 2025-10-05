@@ -13,11 +13,11 @@ import (
 )
 
 type Extra struct {
-	ID     string
-	Type   string
-	Title  string
-	URL    string
-	Status string
+	ID        string
+	Type      string
+	Title     string
+	YoutubeId string
+	Status    string
 }
 
 // GetRejectedExtrasForMedia returns rejected extras for a given media type and id
@@ -142,27 +142,6 @@ func canonicalizeExtraType(extraType, name string) string {
 	return extraType
 }
 
-// ExtractYouTubeID parses a YouTube URL and returns the video ID or an error
-func ExtractYouTubeID(url string) (string, error) {
-	if strings.Contains(url, "youtube.com/watch?v=") {
-		parts := strings.Split(url, "v=")
-		if len(parts) < 2 {
-			CheckErrLog(WARN, "Extras", "Could not extract YouTube video ID from URL", fmt.Errorf("url: %s", url))
-			return "", fmt.Errorf("could not extract YouTube video ID from URL: %s", url)
-		}
-		return strings.Split(parts[1], "&")[0], nil
-	} else if strings.Contains(url, "youtu.be/") {
-		parts := strings.Split(url, "/")
-		if len(parts) < 2 {
-			CheckErrLog(WARN, "Extras", "Could not extract YouTube video ID from URL", fmt.Errorf("url: %s", url))
-			return "", fmt.Errorf("could not extract YouTube video ID from URL: %s", url)
-		}
-		return parts[len(parts)-1], nil
-	}
-	CheckErrLog(WARN, "Extras", "Not a valid YouTube URL", fmt.Errorf("url: %s", url))
-	return "", fmt.Errorf("not a valid YouTube URL: %s", url)
-}
-
 // Placeholder for extras search and download logic
 func SearchExtras(mediaType MediaType, id int) ([]Extra, error) {
 	tmdbKey, err := GetTMDBKey()
@@ -252,17 +231,17 @@ func downloadExtraHandler(c *gin.Context) {
 		MediaId    int       `json:"mediaId"`
 		ExtraType  string    `json:"extraType"`
 		ExtraTitle string    `json:"extraTitle"`
-		URL        string    `json:"url"`
+		YoutubeId  string    `json:"youtubeId"`
 	}
 	if err := c.BindJSON(&req); CheckErrLog(WARN, "Extras", "[downloadExtraHandler] Invalid request", err) != nil {
 		respondError(c, http.StatusBadRequest, ErrInvalidRequest)
 		return
 	}
-	TrailarrLog(INFO, "Extras", "[downloadExtraHandler] Download request: mediaType=%s, mediaId=%d, extraType=%s, extraTitle=%s, url=%s",
-		req.MediaType, req.MediaId, req.ExtraType, req.ExtraTitle, req.URL)
+	TrailarrLog(INFO, "Extras", "[downloadExtraHandler] Download request: mediaType=%s, mediaId=%d, extraType=%s, extraTitle=%s, youtubeId=%s",
+		req.MediaType, req.MediaId, req.ExtraType, req.ExtraTitle, req.YoutubeId)
 
 	// Convert MediaId (int) to string for DownloadYouTubeExtra
-	meta, err := DownloadYouTubeExtra(req.MediaType, req.MediaId, req.ExtraType, req.ExtraTitle, req.URL, true)
+	meta, err := DownloadYouTubeExtra(req.MediaType, req.MediaId, req.ExtraType, req.ExtraTitle, req.YoutubeId, true)
 	TrailarrLog(INFO, "Extras", "[downloadExtraHandler] DownloadYouTubeExtra returned: meta=%v, err=%v", meta, err)
 	if CheckErrLog(WARN, "Extras", "[downloadExtraHandler] Download error", err) != nil {
 		respondError(c, http.StatusInternalServerError, err.Error())
