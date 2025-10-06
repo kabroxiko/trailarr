@@ -754,8 +754,36 @@ func handleTypeFilteredExtraDownload(mediaType MediaType, mediaId int, extra Ext
 	_, err := DownloadYouTubeExtra(mediaType, mediaId, extra.Type, extra.Title, extra.YoutubeId)
 	if err != nil {
 		TrailarrLog(WARN, "Tasks", "DownloadYouTubeExtra failed: %v", err)
+		return err
 	}
-	return err
+	// Add to history if download succeeded
+	AppendHistoryEvent(HistoryEvent{
+		Action:     "download",
+		Title:      getMediaTitleFromCache(mediaType, mediaId),
+		MediaType:  mediaType,
+		MediaId:    mediaId,
+		ExtraType:  extra.Type,
+		ExtraTitle: extra.Title,
+		Date:       time.Now(),
+	})
+	return nil
+}
+
+// Helper to get media title from cache
+func getMediaTitleFromCache(mediaType MediaType, mediaId int) string {
+	cacheFile, _ := resolveCachePath(mediaType)
+	if cacheFile != "" {
+		items, _ := loadCache(cacheFile)
+		for _, m := range items {
+			idInt, ok := parseMediaID(m["id"])
+			if ok && idInt == mediaId {
+				if t, ok := m["title"].(string); ok {
+					return t
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // Helper: check if extra type is enabled in config

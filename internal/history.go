@@ -12,6 +12,7 @@ type HistoryEvent struct {
 	Action     string    `json:"action"`
 	Title      string    `json:"title"`
 	MediaType  MediaType `json:"mediaType"`
+	MediaId    int       `json:"mediaId"`
 	ExtraType  string    `json:"extraType"`
 	ExtraTitle string    `json:"extraTitle"`
 	Date       time.Time `json:"date"`

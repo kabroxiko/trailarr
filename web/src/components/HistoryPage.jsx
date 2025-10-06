@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import Container from './Container';
 import { FaDownload, FaTrash } from 'react-icons/fa';
 
@@ -30,6 +31,19 @@ const HistoryPage = () => {
   const pageSize = 10;
   const totalPages = Math.ceil(history.length / pageSize);
   const paginatedHistory = history.slice((page - 1) * pageSize, page * pageSize);
+
+  // Helper to get link for a history item
+  function getMediaLink(item) {
+    // Only use mediaId for links
+    if (item.mediaId) {
+      if (item.mediaType === 'movie') {
+        return `/movies/${item.mediaId}`;
+      } else if (item.mediaType === 'tv') {
+        return `/series/${item.mediaId}`;
+      }
+    }
+    return null;
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -112,9 +126,20 @@ const HistoryPage = () => {
               return (
                 <tr key={key} style={trStyles(idx)}>
                   <td style={{ ...tdStyles, textAlign: 'center' }}>{icon}</td>
-                  <td style={{ ...tdStyles, textAlign: 'center', textTransform: 'capitalize', color: 'var(--history-table-media-type, #7c3aed)', fontWeight: 500 }}>{item.mediaType}</td>
-                  <td style={{ ...tdStyles, fontWeight: 500 }}>{item.title}</td>
-                  <td style={{ ...tdStyles, color: 'var(--history-table-extra-type, #6d28d9)', fontWeight: 500 }}>{item.extraType}</td>
+                  <td style={{ ...tdStyles, textAlign: 'center', textTransform: 'capitalize', color: 'var(--history-table-media-type, #7c3aed)', fontWeight: 'normal' }}>{item.mediaType}</td>
+                  <td style={{ ...tdStyles, fontWeight: 500 }}>
+                    {getMediaLink(item) ? (
+                      <Link
+                        to={getMediaLink(item)}
+                        style={{ color: '#6d28d9', textDecoration: 'none', fontWeight: 100 }}
+                      >
+                        {item.title}
+                      </Link>
+                    ) : (
+                      item.title
+                    )}
+                  </td>
+                  <td style={{ ...tdStyles, color: 'var(--history-table-extra-type, #6d28d9)', fontWeight: 'normal' }}>{item.extraType}</td>
                   <td style={{ ...tdStyles, color: 'var(--history-table-extra-title, #444)' }}>{item.extraTitle}</td>
                   <td style={{ ...tdStyles, color: 'var(--history-table-date, #888)', fontSize: 15 }}>{formatDate(item.date)}</td>
                 </tr>
@@ -143,8 +168,8 @@ const HistoryPage = () => {
       document.documentElement.style.setProperty('--history-table-row-bg1', isDark ? '#232326' : '#f3f3f3');
       document.documentElement.style.setProperty('--history-table-row-bg2', isDark ? '#18181b' : '#fff');
       document.documentElement.style.setProperty('--history-table-cell-text', isDark ? '#e5e7eb' : '#222');
-      document.documentElement.style.setProperty('--history-table-media-type', isDark ? '#a5b4fc' : '#7c3aed');
-      document.documentElement.style.setProperty('--history-table-extra-type', isDark ? '#c4b5fd' : '#6d28d9');
+      document.documentElement.style.setProperty('--history-table-media-type', isDark ? '#fff' : '#000');
+      document.documentElement.style.setProperty('--history-table-extra-type', isDark ? '#fff' : '#000');
       document.documentElement.style.setProperty('--history-table-extra-title', isDark ? '#d1d5db' : '#444');
       document.documentElement.style.setProperty('--history-table-date', isDark ? '#a1a1aa' : '#888');
       document.documentElement.style.setProperty('--history-icon-color', isDark ? '#fff' : '#111');

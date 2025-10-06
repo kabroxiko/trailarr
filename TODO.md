@@ -27,3 +27,4 @@ Add new tasks below as needed:
 - [ ] history title must be clickable
 - [ ] show progress
 - [ ] fix queue history
+- [ ] rejecte extra on over must show reason
