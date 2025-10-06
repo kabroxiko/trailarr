@@ -241,6 +241,17 @@ func sortTaskQueuesByQueuedDesc(queues []map[string]interface{}) {
 }
 
 func TaskHandler() gin.HandlerFunc {
+	type forceTask struct {
+		id       string
+		started  *bool
+		syncFunc func()
+		respond  string
+	}
+	tasks := map[string]forceTask{
+		"radarr": {"radarr", &radarrTaskStarted, SyncRadarr, "Sync Radarr forced"},
+		"sonarr": {"sonarr", &sonarrTaskStarted, SyncSonarr, "Sync Sonarr forced"},
+		"extras": {"extras", nil, StartExtrasDownloadTask, "Sync Extras forced"},
+	}
 	return func(c *gin.Context) {
 		var req struct {
 			TaskId string `json:"taskId"`
@@ -251,97 +262,44 @@ func TaskHandler() gin.HandlerFunc {
 		}
 		println("[FORCE] Requested force execution for:", req.TaskId)
 		times, _ := LoadTaskTimes()
-		switch req.TaskId {
-		case "radarr":
-			TrailarrLog(DEBUG, "Tasks", "[FORCE] Starting Radarr job at %s", time.Now().Format(time.RFC3339Nano))
-			radarrTaskStarted = true
-			broadcastTaskStatus(map[string]interface{}{
-				"schedules": []map[string]interface{}{
-					{
-						"taskId":        times["radarr"].TaskId,
-						"name":          times["radarr"].Name,
-						"interval":      times["radarr"].Interval,
-						"lastExecution": times["radarr"].LastExecution,
-						"lastDuration":  times["radarr"].LastDuration,
-						"nextExecution": calcNext(times["radarr"].LastExecution, times["radarr"].Interval),
-						"status":        "running",
-					},
-				},
-			})
-			start := time.Now()
-			SyncRadarr()
-			duration := time.Since(start)
-			radarrTaskStarted = false
-			broadcastTaskStatus(getCurrentTaskStatus())
-			TrailarrLog(DEBUG, "Tasks", "[FORCE] Radarr job finished at %s, duration=%s", time.Now().Format(time.RFC3339Nano), duration.String())
-			t := times["radarr"]
-			t.LastDuration = duration.Seconds()
-			t.LastExecution = start
-			times["radarr"] = t
-			saveTaskTimes(times)
-			TrailarrLog(DEBUG, "Tasks", "[FORCE] Updated times.Radarr: %+v", times["radarr"])
-			respondJSON(c, http.StatusOK, gin.H{"status": "Sync Radarr forced"})
-		case "sonarr":
-			TrailarrLog(DEBUG, "Tasks", "[FORCE] Starting Sonarr job at %s", time.Now().Format(time.RFC3339Nano))
-			sonarrTaskStarted = true
-			broadcastTaskStatus(map[string]interface{}{
-				"schedules": []map[string]interface{}{
-					{
-						"taskId":        times["sonarr"].TaskId,
-						"name":          times["sonarr"].Name,
-						"interval":      times["sonarr"].Interval,
-						"lastExecution": times["sonarr"].LastExecution,
-						"lastDuration":  times["sonarr"].LastDuration,
-						"nextExecution": calcNext(times["sonarr"].LastExecution, times["sonarr"].Interval),
-						"status":        "running",
-					},
-				},
-			})
-			start := time.Now()
-			SyncSonarr()
-			duration := time.Since(start)
-			sonarrTaskStarted = false
-			broadcastTaskStatus(getCurrentTaskStatus())
-			TrailarrLog(DEBUG, "Tasks", "[FORCE] Sonarr job finished at %s, duration=%s", time.Now().Format(time.RFC3339Nano), duration.String())
-			t := times["sonarr"]
-			t.LastDuration = duration.Seconds()
-			t.LastExecution = start
-			times["sonarr"] = t
-			saveTaskTimes(times)
-			TrailarrLog(DEBUG, "Tasks", "[FORCE] Updated times.Sonarr: %+v", times["sonarr"])
-			respondJSON(c, http.StatusOK, gin.H{"status": "Sync Sonarr forced"})
-		case "extras":
-			TrailarrLog(DEBUG, "Tasks", "[FORCE] Starting Extras job at %s", time.Now().Format(time.RFC3339Nano))
-			broadcastTaskStatus(map[string]interface{}{
-				"schedules": []map[string]interface{}{
-					{
-						"taskId":        times["extras"].TaskId,
-						"name":          times["extras"].Name,
-						"interval":      times["extras"].Interval,
-						"lastExecution": times["extras"].LastExecution,
-						"lastDuration":  times["extras"].LastDuration,
-						"nextExecution": calcNext(times["extras"].LastExecution, times["extras"].Interval),
-						"status":        "running",
-					},
-				},
-			})
-			start := time.Now()
-			StartExtrasDownloadTask()
-			duration := time.Since(start)
-			// Do not reset extrasTaskStarted here; let the goroutine handle it
-			broadcastTaskStatus(getCurrentTaskStatus())
-			TrailarrLog(DEBUG, "Tasks", "[FORCE] Extras job finished at %s, duration=%s", time.Now().Format(time.RFC3339Nano), duration.String())
-			t := times["extras"]
-			t.LastDuration = duration.Seconds()
-			t.LastExecution = start
-			times["extras"] = t
-			saveTaskTimes(times)
-			TrailarrLog(DEBUG, "Tasks", "[FORCE] Updated times.Extras: %+v", times["extras"])
-			respondJSON(c, http.StatusOK, gin.H{"status": "Sync Extras forced"})
-		default:
+		t, ok := tasks[req.TaskId]
+		if !ok {
 			TrailarrLog(DEBUG, "Tasks", "[FORCE] Unknown job requested: %s", req.TaskId)
 			respondError(c, http.StatusBadRequest, "unknown task")
+			return
 		}
+		TrailarrLog(DEBUG, "Tasks", "[FORCE] Starting %s job at %s", t.id, time.Now().Format(time.RFC3339Nano))
+		if t.started != nil {
+			*t.started = true
+		}
+		broadcastTaskStatus(map[string]interface{}{
+			"schedules": []map[string]interface{}{
+				{
+					"taskId":        times[t.id].TaskId,
+					"name":          times[t.id].Name,
+					"interval":      times[t.id].Interval,
+					"lastExecution": times[t.id].LastExecution,
+					"lastDuration":  times[t.id].LastDuration,
+					"nextExecution": calcNext(times[t.id].LastExecution, times[t.id].Interval),
+					"status":        "running",
+				},
+			},
+		})
+		start := time.Now()
+		t.syncFunc()
+		duration := time.Since(start)
+		if t.started != nil {
+			*t.started = false
+		}
+		broadcastTaskStatus(getCurrentTaskStatus())
+		TrailarrLog(DEBUG, "Tasks", "[FORCE] %s job finished at %s, duration=%s", t.id, time.Now().Format(time.RFC3339Nano), duration.String())
+		taskTimes := times[t.id]
+		taskTimes.LastDuration = duration.Seconds()
+		taskTimes.LastExecution = start
+		times[t.id] = taskTimes
+		saveTaskTimes(times)
+		TrailarrLog(DEBUG, "Tasks", "[FORCE] Updated times.%s: %+v", t.id, times[t.id])
+		respondJSON(c, http.StatusOK, gin.H{"status": t.respond})
 	}
 }
 
