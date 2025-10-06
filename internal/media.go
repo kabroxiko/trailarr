@@ -12,6 +12,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type MediaType string
+
+const (
+	MediaTypeMovie MediaType = "movie"
+	MediaTypeTV    MediaType = "tv"
+)
+
+var GlobalSyncQueue []SyncQueueItem
+
 // Generic function to sync media images for Radarr/Sonarr
 func SyncMediaImages(provider, apiPath, cacheFile string, filter func(map[string]interface{}) bool, posterDir string, posterSuffixes []string) error {
 	err := SyncMediaCacheJson(provider, apiPath, cacheFile, filter)
@@ -31,29 +40,6 @@ func SyncMediaImages(provider, apiPath, cacheFile string, filter func(map[string
 		true, // debug
 	)
 	return nil
-}
-
-// Generic handler for Radarr/Sonarr sync status using tasks definitions
-func GetSyncStatusHandler(section string, status *SyncStatus) gin.HandlerFunc {
-       return func(c *gin.Context) {
-	       taskMeta, ok := tasks[section]
-	       if !ok {
-		       respondError(c, http.StatusBadRequest, "unknown task section")
-		       return
-	       }
-	       interval := Timings[section]
-	       respondJSON(c, http.StatusOK, gin.H{
-		       "scheduled": gin.H{
-			       "name":          taskMeta.Name,
-			       "interval":      fmt.Sprintf("%d minutes", interval),
-			       "lastExecution": LastExecution(status),
-			       "lastDuration":  LastDuration(status).String(),
-			       "nextExecution": NextExecution(status),
-			       "lastError":     LastError(status),
-		       },
-		       "queue": Queue(status),
-	       })
-       }
 }
 
 // Generic handler for listing media (movies/series)
@@ -76,69 +62,7 @@ func GetMediaHandler(section, cacheFile, key string) gin.HandlerFunc {
 	}
 }
 
-var GlobalSyncQueue []SyncQueueItem
-
-const (
-	MoviesWantedFile = TrailarrRoot + "/movies_wanted.json"
-	SeriesWantedFile = TrailarrRoot + "/series_wanted.json"
-	queueFile        = TrailarrRoot + "/queue.json"
-)
-
-// DownloadMissingExtras downloads missing extras for a given media type ("movie" or "tv")
-func DownloadMissingExtras(mediaType MediaType, cacheFile string) error {
-	TrailarrLog(INFO, "DownloadMissingExtras", "DownloadMissingExtras: mediaType=%s, cacheFile=%s", mediaType, cacheFile)
-	items, err := loadCache(cacheFile)
-	if CheckErrLog(WARN, "DownloadMissingExtras", "Failed to load cache", err) != nil {
-		return err
-	}
-	type downloadItem struct {
-		idInt     int
-		mediaPath string
-		extras    []Extra
-	}
-	config, _ := GetExtraTypesConfig()
-	filtered := Filter(items, func(m map[string]interface{}) bool {
-		idInt, ok := parseMediaID(m["id"])
-		if !ok {
-			TrailarrLog(WARN, "DownloadMissingExtras", "Missing or invalid id in item: %v", m)
-			return false
-		}
-		_, err := SearchExtras(mediaType, idInt)
-		if err != nil {
-			TrailarrLog(WARN, "DownloadMissingExtras", "SearchExtras error: %v", err)
-			return false
-		}
-		mediaPath, err := FindMediaPathByID(cacheFile, idInt)
-		if err != nil || mediaPath == "" {
-			TrailarrLog(WARN, "DownloadMissingExtras", "FindMediaPathByID error or empty: %v, mediaPath=%s", err, mediaPath)
-			return false
-		}
-		return true
-	})
-	mapped := Map(filtered, func(media map[string]interface{}) downloadItem {
-		idInt, _ := parseMediaID(media["id"])
-		extras, _ := SearchExtras(mediaType, idInt)
-		mediaPath, _ := FindMediaPathByID(cacheFile, idInt)
-		MarkDownloadedExtras(extras, mediaPath, "type", "title")
-		// Defensive: mark rejected extras before any download
-		rejectedExtras := GetRejectedExtrasForMedia(mediaType, idInt)
-		rejectedYoutubeIds := make(map[string]struct{})
-		for _, r := range rejectedExtras {
-			rejectedYoutubeIds[r.YoutubeId] = struct{}{}
-		}
-		for i := range extras {
-			if _, exists := rejectedYoutubeIds[extras[i].YoutubeId]; exists {
-				extras[i].Status = "rejected"
-			}
-		}
-		return downloadItem{idInt, mediaPath, extras}
-	})
-	for _, di := range mapped {
-		filterAndDownloadExtras(mediaType, di.idInt, di.extras, config)
-	}
-	return nil
-}
-
+// parseMediaID parses an id from interface{} to int
 func parseMediaID(id interface{}) (int, bool) {
 	var idInt int
 	switch v := id.(type) {
@@ -155,58 +79,6 @@ func parseMediaID(id interface{}) (int, bool) {
 		return 0, false
 	}
 	return idInt, true
-}
-
-func filterAndDownloadExtras(mediaType MediaType, mediaId int, extras []Extra, config ExtraTypesConfig) {
-	// Mark extras as rejected if their YouTube ID matches any in rejected_extras.json
-	rejectedExtras := GetRejectedExtrasForMedia(mediaType, mediaId)
-	rejectedYoutubeIds := make(map[string]struct{})
-	for _, r := range rejectedExtras {
-		rejectedYoutubeIds[r.YoutubeId] = struct{}{}
-	}
-	for i := range extras {
-		if _, exists := rejectedYoutubeIds[extras[i].YoutubeId]; exists {
-			extras[i].Status = "rejected"
-		}
-	}
-	filtered := Filter(extras, func(extra Extra) bool {
-		return shouldDownloadExtra(extra, config)
-	})
-	for _, extra := range filtered {
-		err := handleExtraDownload(mediaType, mediaId, extra)
-		CheckErrLog(WARN, "DownloadMissingExtras", "Failed to download", err)
-	}
-}
-
-func shouldDownloadExtra(extra Extra, config ExtraTypesConfig) bool {
-	if extra.Status != "missing" || extra.YoutubeId == "" {
-		return false
-	}
-	if extra.Status == "rejected" {
-		return false
-	}
-	typeName := extra.Type
-	canonical := canonicalizeExtraType(typeName, "")
-	return isExtraTypeEnabled(config, canonical)
-}
-
-func handleExtraDownload(mediaType MediaType, mediaId int, extra Extra) error {
-	if extra.Status == "rejected" {
-		TrailarrLog(INFO, "DownloadMissingExtras", "Skipping rejected extra: mediaType=%v, mediaId=%v, type=%s, title=%s, youtubeId=%s", mediaType, mediaId, extra.Type, extra.Title, extra.YoutubeId)
-		return nil
-	}
-	_, err := DownloadYouTubeExtra(mediaType, mediaId, extra.Type, extra.Title, extra.YoutubeId)
-	return err
-}
-
-// DownloadMissingMoviesExtras downloads missing extras for all movies
-func DownloadMissingMoviesExtras() error {
-	return DownloadMissingExtras("movie", MoviesWantedFile)
-}
-
-// DownloadMissingSeriesExtras downloads missing extras for all series
-func DownloadMissingSeriesExtras() error {
-	return DownloadMissingExtras("tv", SeriesWantedFile)
 }
 
 // Parametric force sync for Radarr/Sonarr
@@ -266,8 +138,8 @@ func saveQueue() {
 	}
 	defer f.Close()
 	// Convert zero time fields to nil for JSON output
-       type queueItemOut struct {
-	       TaskId   string         `json:"TaskId"`
+	type queueItemOut struct {
+		TaskId   string         `json:"TaskId"`
 		Queued   time.Time      `json:"Queued"`
 		Started  *time.Time     `json:"Started"`
 		Ended    *time.Time     `json:"Ended"`
@@ -289,7 +161,7 @@ func saveQueue() {
 				durationPtr = &item.Duration
 			}
 			out = append(out, queueItemOut{
-				   TaskId: item.TaskId,
+				TaskId:   item.TaskId,
 				Queued:   item.Queued,
 				Started:  startedPtr,
 				Ended:    endedPtr,
@@ -322,10 +194,10 @@ func SyncMedia(
 	if len(GlobalSyncQueue) >= 10 {
 		GlobalSyncQueue = GlobalSyncQueue[len(GlobalSyncQueue)-9:]
 	}
-       item := SyncQueueItem{
-	       TaskId: section,
-		Queued:   time.Now(),
-		Status:   "queued",
+	item := SyncQueueItem{
+		TaskId: section,
+		Queued: time.Now(),
+		Status: "queued",
 	}
 	GlobalSyncQueue = append(GlobalSyncQueue, item)
 	saveQueue()
@@ -452,50 +324,6 @@ func FindMediaPathByID(cacheFile string, mediaId int) (string, error) {
 		}
 	}
 	return "", nil
-}
-
-// Scans a media path and returns a map of existing extras (type|title)
-func ScanExistingExtras(mediaPath string) map[string]bool {
-	existing := map[string]bool{}
-	if mediaPath == "" {
-		return existing
-	}
-	entries, err := os.ReadDir(mediaPath)
-	if CheckErrLog(WARN, "ScanExistingExtras", "ReadDir failed", err) != nil {
-		return existing
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		subdir := mediaPath + "/" + entry.Name()
-		files, _ := os.ReadDir(subdir)
-		for _, f := range files {
-			if !f.IsDir() && strings.HasSuffix(f.Name(), ".mkv") {
-				title := strings.TrimSuffix(f.Name(), ".mkv")
-				key := entry.Name() + "|" + title
-				existing[key] = true
-			}
-		}
-	}
-	return existing
-}
-
-// Checks which extras are downloaded in the given media path and marks them in the extras list
-// extras: slice of Extra (from TMDB), mediaPath: path to the movie/series folder
-// typeKey: the key in the extra map for the type (usually "type"), titleKey: the key for the title (usually "title")
-func MarkDownloadedExtras(extras []Extra, mediaPath string, typeKey, titleKey string) {
-	existing := ScanExistingExtras(mediaPath)
-	for i := range extras {
-		typeStr := canonicalizeExtraType(extras[i].Type, extras[i].Title)
-		extras[i].Type = typeStr
-		title := SanitizeFilename(extras[i].Title)
-		key := typeStr + "|" + title
-		extras[i].Status = "missing"
-		if existing[key] {
-			extras[i].Status = "downloaded"
-		}
-	}
 }
 
 // Common settings struct for both Radarr and Sonarr

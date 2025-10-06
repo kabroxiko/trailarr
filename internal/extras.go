@@ -311,3 +311,153 @@ func isVideoFile(name string) bool {
 		strings.HasSuffix(name, ".mkv") ||
 		strings.HasSuffix(name, ".avi")
 }
+
+// shouldDownloadExtra determines if an extra should be downloaded
+func shouldDownloadExtra(extra Extra, config ExtraTypesConfig) bool {
+	if extra.Status != "missing" || extra.YoutubeId == "" {
+		return false
+	}
+	if extra.Status == "rejected" {
+		return false
+	}
+	typeName := extra.Type
+	canonical := canonicalizeExtraType(typeName, "")
+	return isExtraTypeEnabled(config, canonical)
+}
+
+// handleExtraDownload downloads an extra unless it's rejected
+func handleExtraDownload(mediaType MediaType, mediaId int, extra Extra) error {
+	if extra.Status == "rejected" {
+		TrailarrLog(INFO, "DownloadMissingExtras", "Skipping rejected extra: mediaType=%v, mediaId=%v, type=%s, title=%s, youtubeId=%s", mediaType, mediaId, extra.Type, extra.Title, extra.YoutubeId)
+		return nil
+	}
+	_, err := DownloadYouTubeExtra(mediaType, mediaId, extra.Type, extra.Title, extra.YoutubeId)
+	return err
+}
+
+// Scans a media path and returns a map of existing extras (type|title)
+func ScanExistingExtras(mediaPath string) map[string]bool {
+	existing := map[string]bool{}
+	if mediaPath == "" {
+		return existing
+	}
+	entries, err := os.ReadDir(mediaPath)
+	if CheckErrLog(WARN, "ScanExistingExtras", "ReadDir failed", err) != nil {
+		return existing
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		subdir := mediaPath + "/" + entry.Name()
+		files, _ := os.ReadDir(subdir)
+		for _, f := range files {
+			if !f.IsDir() && strings.HasSuffix(f.Name(), ".mkv") {
+				title := strings.TrimSuffix(f.Name(), ".mkv")
+				key := entry.Name() + "|" + title
+				existing[key] = true
+			}
+		}
+	}
+	return existing
+}
+
+// Checks which extras are downloaded in the given media path and marks them in the extras list
+// extras: slice of Extra (from TMDB), mediaPath: path to the movie/series folder
+// typeKey: the key in the extra map for the type (usually "type"), titleKey: the key for the title (usually "title")
+func MarkDownloadedExtras(extras []Extra, mediaPath string, typeKey, titleKey string) {
+	existing := ScanExistingExtras(mediaPath)
+	for i := range extras {
+		typeStr := canonicalizeExtraType(extras[i].Type, extras[i].Title)
+		extras[i].Type = typeStr
+		title := SanitizeFilename(extras[i].Title)
+		key := typeStr + "|" + title
+		extras[i].Status = "missing"
+		if existing[key] {
+			extras[i].Status = "downloaded"
+		}
+	}
+}
+
+// DownloadMissingExtras downloads missing extras for a given media type ("movie" or "tv")
+func DownloadMissingExtras(mediaType MediaType, cacheFile string) error {
+	TrailarrLog(INFO, "DownloadMissingExtras", "DownloadMissingExtras: mediaType=%s, cacheFile=%s", mediaType, cacheFile)
+	items, err := loadCache(cacheFile)
+	if CheckErrLog(WARN, "DownloadMissingExtras", "Failed to load cache", err) != nil {
+		return err
+	}
+	type downloadItem struct {
+		idInt     int
+		mediaPath string
+		extras    []Extra
+	}
+	config, _ := GetExtraTypesConfig()
+	filtered := Filter(items, func(m map[string]interface{}) bool {
+		idInt, ok := parseMediaID(m["id"])
+		if !ok {
+			TrailarrLog(WARN, "DownloadMissingExtras", "Missing or invalid id in item: %v", m)
+			return false
+		}
+		_, err := SearchExtras(mediaType, idInt)
+		if err != nil {
+			TrailarrLog(WARN, "DownloadMissingExtras", "SearchExtras error: %v", err)
+			return false
+		}
+		mediaPath, err := FindMediaPathByID(cacheFile, idInt)
+		if err != nil || mediaPath == "" {
+			TrailarrLog(WARN, "DownloadMissingExtras", "FindMediaPathByID error or empty: %v, mediaPath=%s", err, mediaPath)
+			return false
+		}
+		return true
+	})
+	mapped := Map(filtered, func(media map[string]interface{}) downloadItem {
+		idInt, _ := parseMediaID(media["id"])
+		extras, _ := SearchExtras(mediaType, idInt)
+		mediaPath, _ := FindMediaPathByID(cacheFile, idInt)
+		MarkDownloadedExtras(extras, mediaPath, "type", "title")
+		// Defensive: mark rejected extras before any download
+		rejectedExtras := GetRejectedExtrasForMedia(mediaType, idInt)
+		rejectedYoutubeIds := make(map[string]struct{})
+		for _, r := range rejectedExtras {
+			rejectedYoutubeIds[r.YoutubeId] = struct{}{}
+		}
+		for i := range extras {
+			if _, exists := rejectedYoutubeIds[extras[i].YoutubeId]; exists {
+				extras[i].Status = "rejected"
+			}
+		}
+		return downloadItem{idInt, mediaPath, extras}
+	})
+	for _, di := range mapped {
+		filterAndDownloadExtras(mediaType, di.idInt, di.extras, config)
+	}
+	return nil
+}
+
+const (
+	MoviesWantedFile = TrailarrRoot + "/movies_wanted.json"
+	SeriesWantedFile = TrailarrRoot + "/series_wanted.json"
+	queueFile        = TrailarrRoot + "/queue.json"
+)
+
+// filterAndDownloadExtras filters extras and downloads them if enabled
+func filterAndDownloadExtras(mediaType MediaType, mediaId int, extras []Extra, config ExtraTypesConfig) {
+	// Mark extras as rejected if their YouTube ID matches any in rejected_extras.json
+	rejectedExtras := GetRejectedExtrasForMedia(mediaType, mediaId)
+	rejectedYoutubeIds := make(map[string]struct{})
+	for _, r := range rejectedExtras {
+		rejectedYoutubeIds[r.YoutubeId] = struct{}{}
+	}
+	for i := range extras {
+		if _, exists := rejectedYoutubeIds[extras[i].YoutubeId]; exists {
+			extras[i].Status = "rejected"
+		}
+	}
+	filtered := Filter(extras, func(extra Extra) bool {
+		return shouldDownloadExtra(extra, config)
+	})
+	for _, extra := range filtered {
+		err := handleExtraDownload(mediaType, mediaId, extra)
+		CheckErrLog(WARN, "DownloadMissingExtras", "Failed to download", err)
+	}
+}

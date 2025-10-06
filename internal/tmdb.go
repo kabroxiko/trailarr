@@ -8,6 +8,25 @@ import (
 	"net/url"
 )
 
+// Common TMDB extra types (singular)
+var TMDBExtraTypes = []string{
+	"Trailer",
+	"Teaser",
+	"Clip",
+	"Featurette",
+	"Behind the Scene",
+	"Bloopers",
+	"Opening Credit",
+	"Recap",
+	"Interview",
+	"Scene",
+	"Promo",
+	"Short",
+	"Music Video",
+	"Commercial",
+	"Other",
+}
+
 func GetTMDBKey() (string, error) {
 	if Config == nil {
 		TrailarrLog(WARN, "TMDB", "Config not loaded")

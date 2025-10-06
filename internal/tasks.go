@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -724,5 +725,23 @@ func getCurrentTaskStatus() map[string]interface{} {
 	}
 	return map[string]interface{}{
 		"schedules": buildSchedules(times, radarrStatus, sonarrStatus, extrasStatus),
+	}
+}
+
+// Generic handler for Radarr/Sonarr sync status
+func GetSyncStatusHandler(section string, status *SyncStatus, displayName string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		interval := Timings[section]
+		respondJSON(c, http.StatusOK, gin.H{
+			"scheduled": gin.H{
+				"name":          "Sync with " + displayName,
+				"interval":      fmt.Sprintf("%d minutes", interval),
+				"lastExecution": LastExecution(status),
+				"lastDuration":  LastDuration(status).String(),
+				"nextExecution": NextExecution(status),
+				"lastError":     LastError(status),
+			},
+			"queue": Queue(status),
+		})
 	}
 }
