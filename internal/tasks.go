@@ -311,19 +311,26 @@ func StartBackgroundTasks() {
 		TrailarrLog(WARN, "Tasks", "Could not load last task times: %v", err)
 	}
 	TrailarrLog(DEBUG, "Tasks", "Loaded times.Extras: %+v", times["extras"])
-	// Get intervals from config (declare once)
-	radarrInterval := time.Duration(Timings["radarr"]) * time.Minute
-	sonarrInterval := time.Duration(Timings["sonarr"]) * time.Minute
-	extrasInterval := time.Duration(Timings["extras"]) * time.Minute
 
-	// Initialization is handled in LoadTaskTimes; no need to duplicate here
+	type bgTask struct {
+		id        string
+		started   *bool
+		syncFunc  func()
+		interval  time.Duration
+		lastExec  time.Time
+		logPrefix string
+	}
+	taskList := []bgTask{
+		{"radarr", &radarrTaskStarted, SyncRadarr, time.Duration(Timings["radarr"]) * time.Minute, times["radarr"].LastExecution, "Radarr"},
+		{"sonarr", &sonarrTaskStarted, SyncSonarr, time.Duration(Timings["sonarr"]) * time.Minute, times["sonarr"].LastExecution, "Sonarr"},
+		{"extras", nil, StartExtrasDownloadTask, time.Duration(Timings["extras"]) * time.Minute, times["extras"].LastExecution, "Extras"},
+	}
 
 	TrailarrLog(DEBUG, "Tasks", "StartBackgroundTasks: initializing scheduler and storage")
 	store := storage.NewMemoryStorage()
 	sched := scheduler.New(store)
 
-	// Generic persistent scheduling function
-	scheduleNext := func(lastRun string, interval time.Duration, taskId string, runJob func(), updateTime func()) {
+	scheduleNext := func(lastRun string, interval time.Duration, taskId string, runJob func()) {
 		var recur func(string)
 		recur = func(lastRun string) {
 			now := time.Now()
@@ -335,7 +342,6 @@ func StartBackgroundTasks() {
 					if now.After(nextRun) {
 						TrailarrLog(INFO, "Tasks", "Missed %s job, running immediately.", taskId)
 						runJob()
-						updateTime()
 						TrailarrLog(INFO, "Tasks", "%s job executed at: %s", taskId, now.Format(time.RFC3339))
 						nextRun = now.Add(interval)
 					}
@@ -348,7 +354,6 @@ func StartBackgroundTasks() {
 			TrailarrLog(INFO, "Tasks", "Next %s execution: %s", taskId, nextRun.Local().Format("Mon Jan 2 15:04:05 2006 MST"))
 			sched.RunAt(nextRun, task.Function(func(params ...task.Param) {
 				runJob()
-				updateTime()
 				TrailarrLog(INFO, "Tasks", "%s job executed at: %s", taskId, time.Now().Format(time.RFC3339))
 				recur(time.Now().Format(time.RFC3339))
 			}))
@@ -356,10 +361,6 @@ func StartBackgroundTasks() {
 		recur(lastRun)
 	}
 
-	// Get intervals from config
-	// intervals already declared above
-
-	// Helper to check if a task should run immediately
 	shouldRunNowTime := func(lastExecution time.Time, interval time.Duration) bool {
 		if lastExecution.IsZero() {
 			return true
@@ -367,105 +368,47 @@ func StartBackgroundTasks() {
 		return lastExecution.Add(interval).Before(time.Now()) || lastExecution.Add(interval).Equal(time.Now())
 	}
 
-	// Radarr
-	if shouldRunNowTime(times["radarr"].LastExecution, radarrInterval) {
-		radarrTaskStarted = true
-		broadcastTaskStatus(getCurrentTaskStatus())
-		start := time.Now()
-		SyncRadarr()
-		duration := time.Since(start)
-		radarrTaskStarted = false
-		broadcastTaskStatus(getCurrentTaskStatus())
-		t := times["radarr"]
-		t.LastDuration = duration.Seconds()
-		t.LastExecution = start
-		times["radarr"] = t
-		saveTaskTimes(times)
-	}
-	scheduleNext(times["radarr"].LastExecution.Format(time.RFC3339), radarrInterval, "Radarr",
-		func() {
-			radarrTaskStarted = true
+	for i := range taskList {
+		t := &taskList[i]
+		if shouldRunNowTime(t.lastExec, t.interval) {
+			if t.started != nil {
+				*t.started = true
+			}
 			broadcastTaskStatus(getCurrentTaskStatus())
 			start := time.Now()
-			SyncRadarr()
+			t.syncFunc()
 			duration := time.Since(start)
-			radarrTaskStarted = false
+			if t.started != nil {
+				*t.started = false
+			}
 			broadcastTaskStatus(getCurrentTaskStatus())
-			t := times["radarr"]
-			t.LastDuration = duration.Seconds()
-			t.LastExecution = start
-			times["radarr"] = t
+			taskTimes := times[t.id]
+			taskTimes.LastDuration = duration.Seconds()
+			taskTimes.LastExecution = start
+			times[t.id] = taskTimes
 			saveTaskTimes(times)
-		},
-		func() {},
-	)
-
-	// Sonarr
-	if shouldRunNowTime(times["sonarr"].LastExecution, sonarrInterval) {
-		sonarrTaskStarted = true
-		broadcastTaskStatus(getCurrentTaskStatus())
-		start := time.Now()
-		SyncSonarr()
-		duration := time.Since(start)
-		sonarrTaskStarted = false
-		broadcastTaskStatus(getCurrentTaskStatus())
-		t := times["sonarr"]
-		t.LastDuration = duration.Seconds()
-		t.LastExecution = start
-		times["sonarr"] = t
-		saveTaskTimes(times)
-	}
-	scheduleNext(times["sonarr"].LastExecution.Format(time.RFC3339), sonarrInterval, "Sonarr",
-		func() {
-			sonarrTaskStarted = true
+		}
+		TrailarrLog(DEBUG, "Tasks", "StartBackgroundTasks: scheduling %s task with interval=%v, lastExecution=%v", t.logPrefix, t.interval, t.lastExec)
+		scheduleNext(t.lastExec.Format(time.RFC3339), t.interval, t.logPrefix, func() {
+			if t.started != nil {
+				*t.started = true
+			}
 			broadcastTaskStatus(getCurrentTaskStatus())
 			start := time.Now()
-			SyncSonarr()
+			t.syncFunc()
 			duration := time.Since(start)
-			sonarrTaskStarted = false
+			if t.started != nil {
+				*t.started = false
+			}
 			broadcastTaskStatus(getCurrentTaskStatus())
-			t := times["sonarr"]
-			t.LastDuration = duration.Seconds()
-			t.LastExecution = start
-			times["sonarr"] = t
+			taskTimes := times[t.id]
+			taskTimes.LastDuration = duration.Seconds()
+			taskTimes.LastExecution = start
+			times[t.id] = taskTimes
 			saveTaskTimes(times)
-		},
-		func() {},
-	)
-
-	// Extras
-	if shouldRunNowTime(times["extras"].LastExecution, extrasInterval) {
-		TrailarrLog(DEBUG, "Tasks", "[DEBUG] StartBackgroundTasks: calling StartExtrasDownloadTask (no extrasTaskStarted assignment)")
-		broadcastTaskStatus(getCurrentTaskStatus())
-		start := time.Now()
-		StartExtrasDownloadTask()
-		duration := time.Since(start)
-		broadcastTaskStatus(getCurrentTaskStatus())
-		t := times["extras"]
-		t.LastDuration = duration.Seconds()
-		t.LastExecution = start
-		times["extras"] = t
-		saveTaskTimes(times)
+		})
 	}
-	TrailarrLog(DEBUG, "Tasks", "StartBackgroundTasks: scheduling Extras task with interval=%v, lastExecution=%v", extrasInterval, times["extras"].LastExecution)
-	scheduleNext(times["extras"].LastExecution.Format(time.RFC3339), extrasInterval, "Extras",
-		func() {
-			TrailarrLog(DEBUG, "Tasks", "StartBackgroundTasks: running scheduled Extras task (no extrasTaskStarted assignment)")
-			broadcastTaskStatus(getCurrentTaskStatus())
-			start := time.Now()
-			StartExtrasDownloadTask()
-			duration := time.Since(start)
-			broadcastTaskStatus(getCurrentTaskStatus())
-			t := times["extras"]
-			t.LastDuration = duration.Seconds()
-			t.LastExecution = start
-			times["extras"] = t
-			saveTaskTimes(times)
-		},
-		func() {},
-	)
 
-	// Start the scheduler
 	TrailarrLog(DEBUG, "Tasks", "StartBackgroundTasks: starting scheduler goroutine")
 	go func() {
 		TrailarrLog(DEBUG, "Tasks", "Scheduler goroutine: calling sched.Start()")
@@ -477,7 +420,6 @@ func StartBackgroundTasks() {
 	}()
 
 	TrailarrLog(INFO, "Tasks", "Scheduler started. Jobs will persist last execution times in %s", taskTimesFile)
-
 }
 
 func StartExtrasDownloadTask() {
