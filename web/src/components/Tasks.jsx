@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { FaArrowsRotate } from 'react-icons/fa6';
+import './Tasks.css';
 
 const getStyles = (darkMode) => ({
   table: {
@@ -40,10 +41,59 @@ const getStyles = (darkMode) => ({
 });
 
 export default function Tasks() {
-  const [status, setStatus] = useState(null);
+  // Fetch status from API for polling fallback and force execute
+  async function fetchStatus() {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/tasks/status');
+      const data = await res.json();
+      setStatus(data);
+    } catch (e) {
+      setStatus(null);
+    }
+    setLoading(false);
+  }
   const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState(null);
+  // Converts a time value in milliseconds to human-readable text, showing only the largest non-zero unit
+  // durationToText: ms to human text, with rounding option
+  // roundType: 'ceil' (default), 'cut', 'round'
+  function durationToText(ms, suffix = '', roundType = 'ceil') {
+    if (typeof ms !== 'number' || isNaN(ms) || ms < 0) return `0 seconds${suffix}`;
+    let totalSeconds;
+    if (roundType === 'cut') {
+      totalSeconds = Math.floor(ms / 1000);
+    } else if (roundType === 'round') {
+      totalSeconds = Math.round(ms / 1000);
+    } else {
+      totalSeconds = Math.ceil(ms / 1000);
+    }
+    if (totalSeconds >= 86400) {
+      let days;
+      if (roundType === 'cut') days = Math.floor(totalSeconds / 86400);
+      else if (roundType === 'round') days = Math.round(totalSeconds / 86400);
+      else days = Math.ceil(totalSeconds / 86400);
+      return `${days} day${days > 1 ? 's' : ''}${suffix}`;
+    }
+    if (totalSeconds >= 3600) {
+      let hours;
+      if (roundType === 'cut') hours = Math.floor(totalSeconds / 3600);
+      else if (roundType === 'round') hours = Math.round(totalSeconds / 3600);
+      else hours = Math.ceil(totalSeconds / 3600);
+      return `${hours} hour${hours > 1 ? 's' : ''}${suffix}`;
+    }
+    if (totalSeconds >= 60) {
+      let minutes;
+      if (roundType === 'cut') minutes = Math.floor(totalSeconds / 60);
+      else if (roundType === 'round') minutes = Math.round(totalSeconds / 60);
+      else minutes = Math.ceil(totalSeconds / 60);
+      return `${minutes} minute${minutes > 1 ? 's' : ''}${suffix}`;
+    }
+    return `${totalSeconds} second${totalSeconds !== 1 ? 's' : ''}${suffix}`;
+  }
   const [spinning, setSpinning] = useState({});
-  const [rotation, setRotation] = useState({});
+  const [iconRotation, setIconRotation] = useState({});
+  const rotationIntervals = useRef({});
   const [darkMode, setDarkMode] = useState(false);
 
   useEffect(() => {
@@ -56,98 +106,174 @@ export default function Tasks() {
   }, []);
 
   useEffect(() => {
-    async function fetchStatus() {
-      setLoading(true);
-      try {
-        const res = await fetch('/api/tasks/status');
-        const data = await res.json();
-        console.log('Task API response:', data); // Debug log
-        setStatus(data);
-      } catch (e) {
-        console.error('Error fetching task status:', e); // Debug log
-        setStatus(null);
-      }
-      setLoading(false);
+    let ws;
+    let pollingInterval;
+    let wsConnected = false;
+    function startPolling() {
+      fetchStatus();
+      pollingInterval = setInterval(fetchStatus, 2000);
     }
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 10000);
-    return () => clearInterval(interval);
+    function stopPolling() {
+      if (pollingInterval) clearInterval(pollingInterval);
+    }
+    // Try to connect to WebSocket
+    try {
+      ws = new window.WebSocket((window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws/tasks');
+      ws.onopen = () => {
+        wsConnected = true;
+        stopPolling();
+      };
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          setStatus(data);
+          setLoading(false);
+        } catch (e) {}
+      };
+      ws.onerror = () => {
+        wsConnected = false;
+        startPolling();
+      };
+      ws.onclose = () => {
+        wsConnected = false;
+        startPolling();
+      };
+    } catch (e) {
+      startPolling();
+    }
+    // Fallback to polling if WebSocket fails
+    if (!wsConnected) startPolling();
+    return () => {
+      stopPolling();
+      if (ws) ws.close();
+    };
   }, []);
 
-  async function forceExecute(name) {
-    setSpinning(s => ({ ...s, [name]: true }));
-    setRotation(r => ({ ...r, [name]: (r[name] || 0) + 1080 }));
+  // Icon rotation effect for running tasks
+  useEffect(() => {
+    if (!status || !status.schedules) return;
+    // Only keep spinning state for tasks that are actually running
+    const running = {};
+    status.schedules.forEach(sch => {
+      const key = sch.taskId;
+      if (sch.status === 'running') {
+        running[key] = true;
+        if (!rotationIntervals.current[key]) {
+          rotationIntervals.current[key] = setInterval(() => {
+            setIconRotation(rot => ({
+              ...rot,
+              [key]: (rot[key] || 0) + 18
+            }));
+          }, 50);
+        }
+      } else {
+        if (rotationIntervals.current[key]) {
+          clearInterval(rotationIntervals.current[key]);
+          rotationIntervals.current[key] = null;
+          // Do NOT reset rotation to 0 here; keep last value for smoothness
+        }
+      }
+    });
+    setSpinning(running);
+    // Cleanup intervals on unmount only
+    return () => {
+      Object.values(rotationIntervals.current).forEach(interval => interval && clearInterval(interval));
+      rotationIntervals.current = {};
+      setIconRotation({}); // Reset all rotations on unmount
+    };
+  }, [status]);
+
+  async function forceExecute(taskId) {
+    setSpinning(s => ({ ...s, [taskId]: true }));
     try {
       await fetch(`/api/tasks/force`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ taskId }),
       });
+      // Immediately update status after force execute
+      fetchStatus();
     } catch (e) {}
-    setTimeout(() => setSpinning(s => ({ ...s, [name]: false })), 1500);
+    setTimeout(() => setSpinning(s => ({ ...s, [taskId]: false })), 1500);
   }
 
-  function formatNextExecution(nextExecution) {
-    if (!nextExecution) return '-';
-    const now = new Date();
-    const next = new Date(nextExecution);
-    const diff = Math.max(0, next - now);
-    const seconds = Math.floor(diff / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''}`;
-    if (minutes > 0) return `${minutes} minute${minutes > 1 ? 's' : ''}`;
-    return `${seconds} second${seconds !== 1 ? 's' : ''}`;
+  // Helper to format interval values for scheduled tasks
+  // Unified formatter for intervals and time differences
+  function formatTimeDiff({from, to, suffix = '', roundType = 'ceil'}) {
+    if (!from || !to) return '-';
+    let diff = Math.max(0, to - from);
+    return durationToText(diff, suffix, roundType);
   }
 
-  function formatLastExecution(lastExecution) {
-    if (!lastExecution) return '-';
-    const now = new Date();
-    const last = new Date(lastExecution);
-    const diff = Math.max(0, now - last);
-    const seconds = Math.floor(diff / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
-    if (minutes > 0) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
-    return `${seconds} second${seconds !== 1 ? 's' : ''} ago`;
+  // For interval values (minutes, hours, days)
+  function formatInterval(interval) {
+    if (interval == null || interval === '') return '-';
+    if (typeof interval === 'number') {
+      return durationToText(interval * 60 * 1000);
+    }
+    if (typeof interval !== 'string') interval = String(interval);
+    // Parse patterns like '2h30m', '1d2h', '90m', '1h', '1d', etc.
+    const regex = /(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?/;
+    const match = interval.match(regex);
+    if (!match) return interval;
+    const days = parseInt(match[1] || '0', 10);
+    const hours = parseInt(match[2] || '0', 10);
+    const minutes = parseInt(match[3] || '0', 10);
+    if (days > 0 || hours > 0 || minutes > 0) {
+      return durationToText((days * 86400 + hours * 3600 + minutes * 60) * 1000);
+    }
+    // fallback: try to parse as a number of minutes
+    const min = parseInt(interval, 10);
+    if (!isNaN(min)) {
+      return durationToText(min * 60 * 1000);
+    }
+    return interval;
   }
 
   function formatDuration(duration) {
     if (!duration || duration === '-') return '-';
     // Accepts either ms (number) or string like '1m23.456s' or '267.00858ms'
     if (typeof duration === 'number') {
-      let totalSeconds = Math.floor(duration / 1000);
-      const hours = Math.floor(totalSeconds / 3600);
-      totalSeconds %= 3600;
-      const minutes = Math.floor(totalSeconds / 60);
-      const seconds = totalSeconds % 60;
-      return `${hours.toString().padStart(2, '0')}:${minutes
-        .toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+      if (duration < 1000) {
+        return `${duration.toFixed(2)} ms`;
+      }
+      return durationToText(duration);
     }
     // Handle ms string like '267.00858ms'
     if (duration.endsWith('ms')) {
       const ms = parseFloat(duration.replace('ms', ''));
-      const totalSeconds = Math.floor(ms / 1000);
-      const hours = Math.floor(totalSeconds / 3600);
-      const minutes = Math.floor((totalSeconds % 3600) / 60);
-      const seconds = totalSeconds % 60;
-      return `${hours.toString().padStart(2, '0')}:${minutes
-        .toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+      if (ms < 1000) {
+        return `${ms.toFixed(2)} ms`;
+      }
+      return durationToText(ms);
     }
     // Parse string like '1h2m3.456s', '2m3.456s', or '3.456s'
     const match = duration.match(/(?:(\d+)h)?(?:(\d+)m)?([\d.]+)s/);
     if (!match) return duration;
     const hours = parseInt(match[1] || '0', 10);
     const minutes = parseInt(match[2] || '0', 10);
-    const seconds = Math.floor(parseFloat(match[3] || '0'));
-    return `${hours.toString().padStart(2, '0')}:${minutes
-      .toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    const secondsFloat = parseFloat(match[3] || '0');
+    if (secondsFloat < 1 && hours === 0 && minutes === 0) {
+      return `${(secondsFloat * 1000).toFixed(2)} ms`;
+    }
+    return durationToText((hours * 3600 + minutes * 60 + Math.floor(secondsFloat)) * 1000);
   }
 
   const styles = getStyles(darkMode);
 
-  if (loading) return <div style={styles.container}>Loading...</div>;
+  // Debounced loading indicator
+  const [showLoading, setShowLoading] = useState(false);
+  useEffect(() => {
+    let timer;
+    if (loading) {
+      timer = setTimeout(() => setShowLoading(true), 500);
+    } else {
+      setShowLoading(false);
+    }
+    return () => timer && clearTimeout(timer);
+  }, [loading]);
+
+  if (showLoading) return <div style={styles.container}>Loading...</div>;
   if (!status) return <div style={styles.container}>Error loading task status.</div>;
 
   const schedules = status.schedules || [];
@@ -160,24 +286,33 @@ export default function Tasks() {
         <thead>
           <tr>
             <th style={styles.th}>Name</th>
-            <th style={styles.th}>Interval</th>
-            <th style={styles.th}>Last Execution</th>
-            <th style={styles.th}>Last Duration</th>
-            <th style={styles.th}>Next Execution</th>
-            <th style={styles.th}></th>
+            <th style={{...styles.th, textAlign: 'center'}}>Status</th>
+            <th style={{...styles.th, textAlign: 'center'}}>Interval</th>
+            <th style={{...styles.th, textAlign: 'center'}}>Last Execution</th>
+            <th style={{...styles.th, textAlign: 'center'}}>Last Duration</th>
+            <th style={{...styles.th, textAlign: 'center'}}>Next Execution</th>
+            <th style={{...styles.th, textAlign: 'center'}}></th>
           </tr>
         </thead>
         <tbody>
           {schedules.length === 0 ? (
-            <tr><td colSpan={6} style={styles.td}>No scheduled tasks</td></tr>
+            <tr><td colSpan={7} style={styles.td}>No scheduled tasks</td></tr>
           ) : schedules.map((scheduled, idx) => (
             <tr key={idx}>
               <td style={styles.td}>{scheduled.name}</td>
-              <td style={styles.td}>{scheduled.interval}</td>
-              <td style={styles.td}>{scheduled.lastExecution ? formatLastExecution(scheduled.lastExecution) : '-'}</td>
-              <td style={styles.td}>{scheduled.lastDuration ? formatDuration(scheduled.lastDuration) : '-'}</td>
-              <td style={styles.td}>{scheduled.nextExecution ? formatNextExecution(scheduled.nextExecution) : '-'}</td>
-              <td style={styles.td}>
+              <td style={{...styles.td, textAlign: 'center'}}>{(() => {
+                const status = scheduled.status;
+                if (!status) return <span>-</span>;
+                if (status === 'running') return <span style={{color: darkMode ? '#66aaff' : '#007bff'}}>Running</span>;
+                if (status === 'success') return <span style={{color: darkMode ? '#4fdc7b' : '#28a745'}}>Success</span>;
+                if (status === 'failed') return <span style={{color: darkMode ? '#ff6b6b' : '#dc3545'}}>Failed</span>;
+                return <span>{status}</span>;
+              })()}</td>
+              <td style={{...styles.td, textAlign: 'center'}}>{formatInterval(scheduled.interval)}</td>
+              <td style={{...styles.td, textAlign: 'center'}}>{scheduled.lastExecution ? formatTimeDiff({from: new Date(scheduled.lastExecution), to: new Date(), suffix: ' ago', roundType: 'cut'}) : '-'}</td>
+              <td style={{...styles.td, textAlign: 'center'}}>{scheduled.lastDuration ? formatDuration(scheduled.lastDuration) : '-'}</td>
+              <td style={{...styles.td, textAlign: 'center'}}>{scheduled.nextExecution ? formatTimeDiff({from: new Date(), to: new Date(scheduled.nextExecution)}) : '-'}</td>
+              <td style={{...styles.td, textAlign: 'center'}}>
                 <span
                   style={{
                     display: 'inline-block',
@@ -186,16 +321,16 @@ export default function Tasks() {
                   }}
                 >
                   <FaArrowsRotate
-                    onClick={() => forceExecute(scheduled.name)}
+                    onClick={() => forceExecute(scheduled.taskId)}
                     style={{
                       cursor: 'pointer',
-                      color: spinning[scheduled.name]
+                      color: (spinning[scheduled.taskId] || scheduled.status === 'running')
                         ? (darkMode ? '#66aaff' : '#007bff')
                         : (darkMode ? '#aaa' : '#888'),
-                      transition: spinning[scheduled.name]
-                        ? 'transform 5s cubic-bezier(0.4, 0.2, 0.2, 1)'
+                      transform: (spinning[scheduled.taskId] || scheduled.status === 'running')
+                        ? `rotate(${iconRotation[scheduled.taskId] || 0}deg)`
                         : 'none',
-                      transform: `rotate(${rotation[scheduled.name] || 0}deg)`,
+                      transition: 'transform 0.1s linear',
                     }}
                     size={20}
                     title="Force Execute"
@@ -210,12 +345,12 @@ export default function Tasks() {
       <table style={styles.table}>
         <thead>
           <tr>
-            <th style={styles.th}></th>
+            <th style={{...styles.th, textAlign: 'center'}}></th>
             <th style={styles.th}>Name</th>
-            <th style={styles.th}>Queued</th>
-            <th style={styles.th}>Started</th>
-            <th style={styles.th}>Ended</th>
-            <th style={styles.th}>Duration</th>
+            <th style={{...styles.th, textAlign: 'center'}}>Queued</th>
+            <th style={{...styles.th, textAlign: 'center'}}>Started</th>
+            <th style={{...styles.th, textAlign: 'center'}}>Ended</th>
+            <th style={{...styles.th, textAlign: 'center'}}>Duration</th>
           </tr>
         </thead>
         <tbody>

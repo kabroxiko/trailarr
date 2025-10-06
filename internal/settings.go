@@ -543,6 +543,7 @@ func GetAutoDownloadExtras() bool {
 			return v
 		}
 	}
+	TrailarrLog(DEBUG, "Settings", "GetAutoDownloadExtras: defaulting to true")
 	return true
 }
 
@@ -624,6 +625,7 @@ func EnsureSyncTimingsConfig() (map[string]int, error) {
 	defaultTimings := map[string]int{
 		"radarr": 15,
 		"sonarr": 15,
+		"extras": 360,
 	}
 	// Check if config file exists
 	if _, err := os.Stat(ConfigPath); os.IsNotExist(err) {
@@ -652,7 +654,7 @@ func EnsureSyncTimingsConfig() (map[string]int, error) {
 		return defaultTimings, err
 	}
 	timings, ok := cfg["syncTimings"].(map[string]interface{})
-	if !ok || len(timings) == 0 {
+	if !ok {
 		// Add syncTimings without touching other config
 		cfg["syncTimings"] = defaultTimings
 		out, err := yaml.Marshal(cfg)
@@ -660,6 +662,15 @@ func EnsureSyncTimingsConfig() (map[string]int, error) {
 			_ = os.WriteFile(ConfigPath, out, 0644)
 		}
 		return defaultTimings, nil
+	}
+	// Ensure 'extras' interval is present
+	if _, hasExtras := timings["extras"]; !hasExtras {
+		timings["extras"] = 360
+		cfg["syncTimings"] = timings
+		out, err := yaml.Marshal(cfg)
+		if err == nil {
+			_ = os.WriteFile(ConfigPath, out, 0644)
+		}
 	}
 	// Convert loaded timings to map[string]int (robust for all numeric types)
 	result := map[string]int{}

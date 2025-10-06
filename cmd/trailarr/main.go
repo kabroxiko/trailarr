@@ -39,9 +39,15 @@ func main() {
 	}
 	internal.Timings = timings
 	internal.TrailarrLog(internal.INFO, "Startup", "Sync timings: %v", timings)
+
+	// Load task_times.json into memory at startup
+	if _, err := internal.LoadTaskTimes(); err != nil {
+		internal.TrailarrLog(internal.WARN, "Startup", "Could not load task_times.json: %v", err)
+	}
+	internal.TrailarrLog(internal.DEBUG, "Startup", "Loaded GlobalTaskTimes: %+v", internal.GlobalTaskTimes)
 	r := gin.Default()
 	internal.RegisterRoutes(r)
-	internal.StartBackgroundTasks()
+	go internal.StartBackgroundTasks()
 	r.Run(":8080")
 }
 

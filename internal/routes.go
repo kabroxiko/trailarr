@@ -10,6 +10,26 @@ import (
 )
 
 func RegisterRoutes(r *gin.Engine) {
+	// --- WebSocket for real-time task status ---
+	r.GET("/ws/tasks", func(c *gin.Context) {
+		// Upgrade connection to WebSocket
+		wsUpgrader := getWebSocketUpgrader()
+		conn, err := wsUpgrader.Upgrade(c.Writer, c.Request, nil)
+		if err != nil {
+			TrailarrLog(WARN, "WS", "WebSocket upgrade failed: %v", err)
+			return
+		}
+		addTaskStatusClient(conn)
+		// Keep connection open until closed by client
+		for {
+			_, _, err := conn.ReadMessage()
+			if err != nil {
+				break
+			}
+		}
+		removeTaskStatusClient(conn)
+		conn.Close()
+	})
 	r.GET("/api/logs/list", func(c *gin.Context) {
 		logDir := TrailarrRoot + "/logs"
 		entries, err := filepath.Glob(logDir + "/*.txt")

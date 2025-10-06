@@ -11,7 +11,7 @@ import (
 func GetTMDBKey() (string, error) {
 	if Config == nil {
 		TrailarrLog(WARN, "TMDB", "Config not loaded")
-		return "", fmt.Errorf("Config not loaded")
+		return "", fmt.Errorf("config not loaded")
 	}
 	general, ok := Config["general"].(map[string]interface{})
 	if !ok {

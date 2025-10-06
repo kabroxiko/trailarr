@@ -19,7 +19,10 @@ Add new tasks below as needed:
 - [ ] Button text connect must be reset between pages
 - [x] Logs must be numbered
 - [x] rejected file must be match using youtube id
-- [ ] rename RouteMap.jsx to RouteMap.jsx
+- [x] rename RouteMap.jsx to RouteMap.jsx
+- [ ] yt-dlp Download Flags is not being save
+- [ ] enable autodownload require restart
+- [ ] force tasks icon must keep rolling while task is running
 - [ ] history must show tasks downloads
 - [ ] history title must be clickable
 - [ ] show progress
