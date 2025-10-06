@@ -115,6 +115,17 @@ func DownloadMissingExtras(mediaType MediaType, cacheFile string) error {
 		extras, _ := SearchExtras(mediaType, idInt)
 		mediaPath, _ := FindMediaPathByID(cacheFile, idInt)
 		MarkDownloadedExtras(extras, mediaPath, "type", "title")
+		// Defensive: mark rejected extras before any download
+		rejectedExtras := GetRejectedExtrasForMedia(mediaType, idInt)
+		rejectedYoutubeIds := make(map[string]struct{})
+		for _, r := range rejectedExtras {
+			rejectedYoutubeIds[r.YoutubeId] = struct{}{}
+		}
+		for i := range extras {
+			if _, exists := rejectedYoutubeIds[extras[i].YoutubeId]; exists {
+				extras[i].Status = "rejected"
+			}
+		}
 		return downloadItem{idInt, mediaPath, extras}
 	})
 	for _, di := range mapped {
@@ -142,6 +153,17 @@ func parseMediaID(id interface{}) (int, bool) {
 }
 
 func filterAndDownloadExtras(mediaType MediaType, mediaId int, extras []Extra, config ExtraTypesConfig) {
+	// Mark extras as rejected if their YouTube ID matches any in rejected_extras.json
+	rejectedExtras := GetRejectedExtrasForMedia(mediaType, mediaId)
+	rejectedYoutubeIds := make(map[string]struct{})
+	for _, r := range rejectedExtras {
+		rejectedYoutubeIds[r.YoutubeId] = struct{}{}
+	}
+	for i := range extras {
+		if _, exists := rejectedYoutubeIds[extras[i].YoutubeId]; exists {
+			extras[i].Status = "rejected"
+		}
+	}
 	filtered := Filter(extras, func(extra Extra) bool {
 		return shouldDownloadExtra(extra, config)
 	})
@@ -155,12 +177,19 @@ func shouldDownloadExtra(extra Extra, config ExtraTypesConfig) bool {
 	if extra.Status != "missing" || extra.YoutubeId == "" {
 		return false
 	}
+	if extra.Status == "rejected" {
+		return false
+	}
 	typeName := extra.Type
 	canonical := canonicalizeExtraType(typeName, "")
 	return isExtraTypeEnabled(config, canonical)
 }
 
 func handleExtraDownload(mediaType MediaType, mediaId int, extra Extra) error {
+	if extra.Status == "rejected" {
+		TrailarrLog(INFO, "DownloadMissingExtras", "Skipping rejected extra: mediaType=%v, mediaId=%v, type=%s, title=%s, youtubeId=%s", mediaType, mediaId, extra.Type, extra.Title, extra.YoutubeId)
+		return nil
+	}
 	_, err := DownloadYouTubeExtra(mediaType, mediaId, extra.Type, extra.Title, extra.YoutubeId)
 	return err
 }

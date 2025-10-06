@@ -727,6 +727,17 @@ func downloadMissingExtrasWithTypeFilter(ctx context.Context, cfg ExtraTypesConf
 		}
 		TrailarrLog(DEBUG, "Tasks", "Media path for mediaId=%v: %s", mediaId, mediaPath)
 		MarkDownloadedExtras(extras, mediaPath, "type", "title")
+		// Defensive: mark rejected extras before any download
+		rejectedExtras := GetRejectedExtrasForMedia(mediaType, mediaId)
+		rejectedYoutubeIds := make(map[string]struct{})
+		for _, r := range rejectedExtras {
+			rejectedYoutubeIds[r.YoutubeId] = struct{}{}
+		}
+		for i := range extras {
+			if _, exists := rejectedYoutubeIds[extras[i].YoutubeId]; exists {
+				extras[i].Status = "rejected"
+			}
+		}
 		// For each extra, download sequentially
 		for _, extra := range extras {
 			if ctx != nil && ctx.Err() != nil {
@@ -735,6 +746,10 @@ func downloadMissingExtrasWithTypeFilter(ctx context.Context, cfg ExtraTypesConf
 			}
 			typ := canonicalizeExtraType(extra.Type, extra.Type)
 			if !isExtraTypeEnabled(cfg, typ) {
+				continue
+			}
+			if extra.Status == "rejected" {
+				TrailarrLog(DEBUG, "Tasks", "[SEQ] Skipping rejected extra: mediaType=%v, mediaId=%v, type=%s, title=%s, youtubeId=%s", mediaType, mediaId, extra.Type, extra.Title, extra.YoutubeId)
 				continue
 			}
 			if extra.Status == "missing" && extra.YoutubeId != "" {
