@@ -20,3 +20,7 @@ Add new tasks below as needed:
 - [x] Logs must be numbered
 - [x] rejected file must be match using youtube id
 - [ ] rename RouteMap.jsx to RouteMap.jsx
+- [ ] history must show tasks downloads
+- [ ] history title must be clickable
+- [ ] show progress
+- [ ] fix queue history
