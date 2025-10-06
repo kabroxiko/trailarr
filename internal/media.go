@@ -206,7 +206,7 @@ func DownloadMissingSeriesExtras() error {
 
 // Parametric force sync for Radarr/Sonarr
 type SyncQueueItem struct {
-	TaskName string
+	TaskId   string
 	Queued   time.Time
 	Started  time.Time
 	Ended    time.Time
@@ -261,8 +261,8 @@ func saveQueue() {
 	}
 	defer f.Close()
 	// Convert zero time fields to nil for JSON output
-	type queueItemOut struct {
-		TaskName string         `json:"TaskName"`
+       type queueItemOut struct {
+	       TaskId   string         `json:"TaskId"`
 		Queued   time.Time      `json:"Queued"`
 		Started  *time.Time     `json:"Started"`
 		Ended    *time.Time     `json:"Ended"`
@@ -284,7 +284,7 @@ func saveQueue() {
 				durationPtr = &item.Duration
 			}
 			out = append(out, queueItemOut{
-				TaskName: item.TaskName,
+				   TaskId: item.TaskId,
 				Queued:   item.Queued,
 				Started:  startedPtr,
 				Ended:    endedPtr,
@@ -317,8 +317,8 @@ func SyncMedia(
 	if len(GlobalSyncQueue) >= 10 {
 		GlobalSyncQueue = GlobalSyncQueue[len(GlobalSyncQueue)-9:]
 	}
-	item := SyncQueueItem{
-		TaskName: section,
+       item := SyncQueueItem{
+	       TaskId: section,
 		Queued:   time.Now(),
 		Status:   "queued",
 	}
@@ -328,7 +328,7 @@ func SyncMedia(
 	// Find the last index for the current section (radarr or sonarr)
 	idx := -1
 	for i := len(GlobalSyncQueue) - 1; i >= 0; i-- {
-		if GlobalSyncQueue[i].TaskName == section {
+		if GlobalSyncQueue[i].TaskId == section {
 			idx = i
 			break
 		}

@@ -2,17 +2,37 @@ package internal
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"time"
 
 	scheduler "github.com/algorythma/go-scheduler"
 	"github.com/algorythma/go-scheduler/storage"
 	"github.com/algorythma/go-scheduler/task"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 )
+
+var taskStatusClientsMu sync.Mutex
+var taskStatusClients = make(map[*websocket.Conn]struct{})
+
+// Broadcasts the full status of all tasks, ignoring partial input
+func broadcastTaskStatus(_ map[string]interface{}) {
+	// Always send the current status of all tasks
+	status := getCurrentTaskStatus()
+	taskStatusClientsMu.Lock()
+	numClients := len(taskStatusClients)
+	taskStatusClientsMu.Unlock()
+	TrailarrLog(DEBUG, "Tasks", "[BROADCAST] Sending to %d clients: %v", numClients, status)
+	// Optionally, send to all clients for debug
+	for conn := range taskStatusClients {
+		sendTaskStatus(conn, status)
+	}
+}
 
 var GlobalTaskTimes TaskTimes
 
@@ -37,49 +57,68 @@ type Task struct {
 	// NextExecution is not persisted; calculated dynamically
 }
 
-type TaskTimes struct {
-	Radarr Task `json:"radarr"`
-	Sonarr Task `json:"sonarr"`
-	Extras Task `json:"extras"`
+// TaskTimes is now a map of tasks
+type TaskTimes map[string]Task
+
+// Static map of tasks with id, name, and interval
+type TaskMeta struct {
+	TaskId   string
+	Name     string
+	Interval int
+}
+
+var tasks = map[string]TaskMeta{
+	"radarr": {
+		TaskId:   "radarr",
+		Name:     "Sync with Radarr",
+		Interval: 0, // will be set from config
+	},
+	"sonarr": {
+		TaskId:   "sonarr",
+		Name:     "Sync with Sonarr",
+		Interval: 0, // will be set from config
+	},
+	"extras": {
+		TaskId:   "extras",
+		Name:     "Search for Missing Extras",
+		Interval: 0, // will be set from config
+	},
 }
 
 func LoadTaskTimes() (TaskTimes, error) {
 	var arr []Task
 	path := filepath.Join(TrailarrRoot, taskTimesFile)
 	err := ReadJSONFile(path, &arr)
-	var times TaskTimes
+	times := make(map[string]Task)
 	if err != nil {
 		// If file does not exist, initialize with empty times and create file
 		if os.IsNotExist(err) {
-			times = TaskTimes{
-				Radarr: Task{TaskId: "radarr"},
-				Sonarr: Task{TaskId: "sonarr"},
-				Extras: Task{TaskId: "extras"},
-			}
+			times["radarr"] = Task{TaskId: "radarr", Name: tasks["radarr"].Name, Interval: Timings["radarr"]}
+			times["sonarr"] = Task{TaskId: "sonarr", Name: tasks["sonarr"].Name, Interval: Timings["sonarr"]}
+			times["extras"] = Task{TaskId: "extras", Name: tasks["extras"].Name, Interval: Timings["extras"]}
 			_ = saveTaskTimes(times)
 			GlobalTaskTimes = times
 			return times, nil
 		}
 		return times, err
 	}
-	// Map array entries to struct fields by TaskId
+	// Map array entries to map by TaskId
 	for _, t := range arr {
-		switch t.TaskId {
-		case "radarr":
-			times.Radarr = t
-		case "sonarr":
-			times.Sonarr = t
-		case "extras":
-			times.Extras = t
-		}
+		// Always set Name from static map
+		t.Name = tasks[t.TaskId].Name
+		t.Interval = Timings[t.TaskId]
+		times[t.TaskId] = t
 	}
 	GlobalTaskTimes = times
 	return times, nil
 }
 
-func saveTaskTimes(times TaskTimes) error {
+func saveTaskTimes(times map[string]Task) error {
 	GlobalTaskTimes = times
-	arr := []Task{times.Radarr, times.Sonarr, times.Extras}
+	arr := make([]Task, 0, len(times))
+	for _, t := range times {
+		arr = append(arr, t)
+	}
 	return WriteJSONFile(filepath.Join(TrailarrRoot, taskTimesFile), arr)
 }
 
@@ -103,56 +142,54 @@ func GetAllTasksStatus() gin.HandlerFunc {
 			extrasStatus = "idle"
 		}
 		times := GlobalTaskTimes
-		calcNext := func(lastExecution time.Time, interval int) time.Time {
-			if lastExecution.IsZero() {
-				return time.Now().Add(time.Duration(interval) * time.Minute)
-			}
-			return lastExecution.Add(time.Duration(interval) * time.Minute)
-		}
-		// Compute status for each scheduled task
-		// Set TaskId and Name for each schedule (runtime only)
-		radarrTaskId := "radarr"
-		radarrName := TaskSyncWithRadarr
-		sonarrTaskId := "sonarr"
-		sonarrName := TaskSyncWithSonarr
-		extrasTaskId := "extras"
-		extrasName := "Search for Missing Extras"
-
-		schedules := []map[string]interface{}{
-			{
-				"taskId":        radarrTaskId,
-				"name":          radarrName,
-				"interval":      times.Radarr.Interval,
-				"lastExecution": getTimeOrEmpty(times.Radarr.LastExecution),
-				"lastDuration":  times.Radarr.LastDuration,
-				"nextExecution": calcNext(times.Radarr.LastExecution, times.Radarr.Interval),
-				"status":        radarrStatus,
-			},
-			{
-				"taskId":        sonarrTaskId,
-				"name":          sonarrName,
-				"interval":      times.Sonarr.Interval,
-				"lastExecution": getTimeOrEmpty(times.Sonarr.LastExecution),
-				"lastDuration":  times.Sonarr.LastDuration,
-				"nextExecution": calcNext(times.Sonarr.LastExecution, times.Sonarr.Interval),
-				"status":        sonarrStatus,
-			},
-			{
-				"taskId":        extrasTaskId,
-				"name":          extrasName,
-				"interval":      times.Extras.Interval,
-				"lastExecution": getTimeOrEmpty(times.Extras.LastExecution),
-				"lastDuration":  times.Extras.LastDuration,
-				"nextExecution": calcNext(times.Extras.LastExecution, times.Extras.Interval),
-				"status":        extrasStatus,
-			},
-		}
+		schedules := buildSchedules(times, radarrStatus, sonarrStatus, extrasStatus)
 		queues := buildTaskQueues()
 		sortTaskQueuesByQueuedDesc(queues)
 		respondJSON(c, http.StatusOK, gin.H{
 			"schedules": schedules,
 			"queues":    queues,
 		})
+	}
+}
+
+// Helper to calculate next execution time
+func calcNext(lastExecution time.Time, interval int) time.Time {
+	if lastExecution.IsZero() {
+		return time.Now().Add(time.Duration(interval) * time.Minute)
+	}
+	return lastExecution.Add(time.Duration(interval) * time.Minute)
+}
+
+// Helper to build schedules array
+func buildSchedules(times map[string]Task, radarrStatus, sonarrStatus, extrasStatus string) []map[string]interface{} {
+	return []map[string]interface{}{
+		{
+			"taskId":        times["radarr"].TaskId,
+			"name":          times["radarr"].Name,
+			"interval":      times["radarr"].Interval,
+			"lastExecution": times["radarr"].LastExecution,
+			"lastDuration":  times["radarr"].LastDuration,
+			"nextExecution": calcNext(times["radarr"].LastExecution, times["radarr"].Interval),
+			"status":        radarrStatus,
+		},
+		{
+			"taskId":        times["sonarr"].TaskId,
+			"name":          times["sonarr"].Name,
+			"interval":      times["sonarr"].Interval,
+			"lastExecution": times["sonarr"].LastExecution,
+			"lastDuration":  times["sonarr"].LastDuration,
+			"nextExecution": calcNext(times["sonarr"].LastExecution, times["sonarr"].Interval),
+			"status":        sonarrStatus,
+		},
+		{
+			"taskId":        times["extras"].TaskId,
+			"name":          times["extras"].Name,
+			"interval":      times["extras"].Interval,
+			"lastExecution": times["extras"].LastExecution,
+			"lastDuration":  times["extras"].LastDuration,
+			"nextExecution": calcNext(times["extras"].LastExecution, times["extras"].Interval),
+			"status":        extrasStatus,
+		},
 	}
 }
 
@@ -167,24 +204,13 @@ func buildTaskQueues() []map[string]interface{} {
 // NewQueueStatusMap constructs a status map for a SyncQueueItem
 func NewQueueStatusMap(item SyncQueueItem) map[string]interface{} {
 	return map[string]interface{}{
-		"type":     getQueueType(item.TaskName),
+		"TaskId":   item.TaskId,
 		"Queued":   item.Queued,
 		"Started":  getTimeOrEmpty(item.Started),
 		"Ended":    getTimeOrEmpty(item.Ended),
 		"Duration": getDurationOrEmpty(item.Duration),
 		"Status":   item.Status,
 		"Error":    item.Error,
-	}
-}
-
-func getQueueType(taskName string) string {
-	switch taskName {
-	case "radarr":
-		return TaskSyncWithRadarr
-	case "sonarr":
-		return TaskSyncWithSonarr
-	default:
-		return taskName
 	}
 }
 
@@ -226,45 +252,19 @@ func TaskHandler() gin.HandlerFunc {
 		println("[FORCE] Requested force execution for:", req.TaskId)
 		times, _ := LoadTaskTimes()
 		switch req.TaskId {
-		case TaskSyncWithRadarr, "radarr":
+		case "radarr":
 			TrailarrLog(DEBUG, "Tasks", "[FORCE] Starting Radarr job at %s", time.Now().Format(time.RFC3339Nano))
 			radarrTaskStarted = true
-			// Only broadcast Radarr as running
-			calcNext := func(lastExecution time.Time, interval int) time.Time {
-				if lastExecution.IsZero() {
-					return time.Now().Add(time.Duration(interval) * time.Minute)
-				}
-				return lastExecution.Add(time.Duration(interval) * time.Minute)
-			}
-			// extrasName variable removed; name is now hardcoded in broadcast
 			broadcastTaskStatus(map[string]interface{}{
 				"schedules": []map[string]interface{}{
 					{
-						"taskId":        "radarr",
-						"name":          "Sync with Radarr",
-						"interval":      times.Radarr.Interval,
-						"lastExecution": getTimeOrEmpty(times.Radarr.LastExecution),
-						"lastDuration":  times.Radarr.LastDuration,
-						"nextExecution": calcNext(times.Radarr.LastExecution, times.Radarr.Interval),
+						"taskId":        times["radarr"].TaskId,
+						"name":          times["radarr"].Name,
+						"interval":      times["radarr"].Interval,
+						"lastExecution": times["radarr"].LastExecution,
+						"lastDuration":  times["radarr"].LastDuration,
+						"nextExecution": calcNext(times["radarr"].LastExecution, times["radarr"].Interval),
 						"status":        "running",
-					},
-					{
-						"taskId":        "sonarr",
-						"name":          "Sync with Sonarr",
-						"interval":      times.Sonarr.Interval,
-						"lastExecution": getTimeOrEmpty(times.Sonarr.LastExecution),
-						"lastDuration":  times.Sonarr.LastDuration,
-						"nextExecution": calcNext(times.Sonarr.LastExecution, times.Sonarr.Interval),
-						"status":        "idle",
-					},
-					{
-						"taskId":        "extras",
-						"name":          "Search for Missing Extras",
-						"interval":      times.Extras.Interval,
-						"lastExecution": getTimeOrEmpty(times.Extras.LastExecution),
-						"lastDuration":  times.Extras.LastDuration,
-						"nextExecution": calcNext(times.Extras.LastExecution, times.Extras.Interval),
-						"status":        "idle",
 					},
 				},
 			})
@@ -274,48 +274,26 @@ func TaskHandler() gin.HandlerFunc {
 			radarrTaskStarted = false
 			broadcastTaskStatus(getCurrentTaskStatus())
 			TrailarrLog(DEBUG, "Tasks", "[FORCE] Radarr job finished at %s, duration=%s", time.Now().Format(time.RFC3339Nano), duration.String())
-			times.Radarr.LastDuration = duration.Seconds()
-			times.Radarr.LastExecution = start
+			t := times["radarr"]
+			t.LastDuration = duration.Seconds()
+			t.LastExecution = start
+			times["radarr"] = t
 			saveTaskTimes(times)
-			TrailarrLog(DEBUG, "Tasks", "[FORCE] Updated times.Radarr: %+v", times.Radarr)
+			TrailarrLog(DEBUG, "Tasks", "[FORCE] Updated times.Radarr: %+v", times["radarr"])
 			respondJSON(c, http.StatusOK, gin.H{"status": "Sync Radarr forced"})
-		case TaskSyncWithSonarr, "sonarr":
+		case "sonarr":
 			TrailarrLog(DEBUG, "Tasks", "[FORCE] Starting Sonarr job at %s", time.Now().Format(time.RFC3339Nano))
 			sonarrTaskStarted = true
-			calcNext := func(lastExecution time.Time, interval int) time.Time {
-				if lastExecution.IsZero() {
-					return time.Now().Add(time.Duration(interval) * time.Minute)
-				}
-				return lastExecution.Add(time.Duration(interval) * time.Minute)
-			}
 			broadcastTaskStatus(map[string]interface{}{
 				"schedules": []map[string]interface{}{
 					{
-						"taskId":        "radarr",
-						"name":          TaskSyncWithRadarr,
-						"interval":      times.Radarr.Interval,
-						"lastExecution": getTimeOrEmpty(times.Radarr.LastExecution),
-						"lastDuration":  times.Radarr.LastDuration,
-						"nextExecution": calcNext(times.Radarr.LastExecution, times.Radarr.Interval),
-						"status":        "idle",
-					},
-					{
-						"taskId":        "sonarr",
-						"name":          TaskSyncWithSonarr,
-						"interval":      times.Sonarr.Interval,
-						"lastExecution": getTimeOrEmpty(times.Sonarr.LastExecution),
-						"lastDuration":  times.Sonarr.LastDuration,
-						"nextExecution": calcNext(times.Sonarr.LastExecution, times.Sonarr.Interval),
+						"taskId":        times["sonarr"].TaskId,
+						"name":          times["sonarr"].Name,
+						"interval":      times["sonarr"].Interval,
+						"lastExecution": times["sonarr"].LastExecution,
+						"lastDuration":  times["sonarr"].LastDuration,
+						"nextExecution": calcNext(times["sonarr"].LastExecution, times["sonarr"].Interval),
 						"status":        "running",
-					},
-					{
-						"taskId":        "extras",
-						"name":          "Search for Missing Extras",
-						"interval":      times.Extras.Interval,
-						"lastExecution": getTimeOrEmpty(times.Extras.LastExecution),
-						"lastDuration":  times.Extras.LastDuration,
-						"nextExecution": calcNext(times.Extras.LastExecution, times.Extras.Interval),
-						"status":        "idle",
 					},
 				},
 			})
@@ -325,47 +303,24 @@ func TaskHandler() gin.HandlerFunc {
 			sonarrTaskStarted = false
 			broadcastTaskStatus(getCurrentTaskStatus())
 			TrailarrLog(DEBUG, "Tasks", "[FORCE] Sonarr job finished at %s, duration=%s", time.Now().Format(time.RFC3339Nano), duration.String())
-			times.Sonarr.LastDuration = duration.Seconds()
-			times.Sonarr.LastExecution = start
+			t := times["sonarr"]
+			t.LastDuration = duration.Seconds()
+			t.LastExecution = start
+			times["sonarr"] = t
 			saveTaskTimes(times)
-			TrailarrLog(DEBUG, "Tasks", "[FORCE] Updated times.Sonarr: %+v", times.Sonarr)
+			TrailarrLog(DEBUG, "Tasks", "[FORCE] Updated times.Sonarr: %+v", times["sonarr"])
 			respondJSON(c, http.StatusOK, gin.H{"status": "Sync Sonarr forced"})
 		case "extras":
 			TrailarrLog(DEBUG, "Tasks", "[FORCE] Starting Extras job at %s", time.Now().Format(time.RFC3339Nano))
-			// Do not set extrasTaskStarted here; StartExtrasDownloadTask will set it if the task actually starts
-			calcNext := func(lastExecution time.Time, interval int) time.Time {
-				if lastExecution.IsZero() {
-					return time.Now().Add(time.Duration(interval) * time.Minute)
-				}
-				return lastExecution.Add(time.Duration(interval) * time.Minute)
-			}
 			broadcastTaskStatus(map[string]interface{}{
 				"schedules": []map[string]interface{}{
 					{
-						"taskId":        "radarr",
-						"name":          TaskSyncWithRadarr,
-						"interval":      times.Radarr.Interval,
-						"lastExecution": getTimeOrEmpty(times.Radarr.LastExecution),
-						"lastDuration":  times.Radarr.LastDuration,
-						"nextExecution": calcNext(times.Radarr.LastExecution, times.Radarr.Interval),
-						"status":        "idle",
-					},
-					{
-						"taskId":        "sonarr",
-						"name":          TaskSyncWithSonarr,
-						"interval":      times.Sonarr.Interval,
-						"lastExecution": getTimeOrEmpty(times.Sonarr.LastExecution),
-						"lastDuration":  times.Sonarr.LastDuration,
-						"nextExecution": calcNext(times.Sonarr.LastExecution, times.Sonarr.Interval),
-						"status":        "idle",
-					},
-					{
-						"taskId":        "extras",
-						"name":          "Search for Missing Extras",
-						"interval":      times.Extras.Interval,
-						"lastExecution": getTimeOrEmpty(times.Extras.LastExecution),
-						"lastDuration":  times.Extras.LastDuration,
-						"nextExecution": calcNext(times.Extras.LastExecution, times.Extras.Interval),
+						"taskId":        times["extras"].TaskId,
+						"name":          times["extras"].Name,
+						"interval":      times["extras"].Interval,
+						"lastExecution": times["extras"].LastExecution,
+						"lastDuration":  times["extras"].LastDuration,
+						"nextExecution": calcNext(times["extras"].LastExecution, times["extras"].Interval),
 						"status":        "running",
 					},
 				},
@@ -376,10 +331,12 @@ func TaskHandler() gin.HandlerFunc {
 			// Do not reset extrasTaskStarted here; let the goroutine handle it
 			broadcastTaskStatus(getCurrentTaskStatus())
 			TrailarrLog(DEBUG, "Tasks", "[FORCE] Extras job finished at %s, duration=%s", time.Now().Format(time.RFC3339Nano), duration.String())
-			times.Extras.LastDuration = duration.Seconds()
-			times.Extras.LastExecution = start
+			t := times["extras"]
+			t.LastDuration = duration.Seconds()
+			t.LastExecution = start
+			times["extras"] = t
 			saveTaskTimes(times)
-			TrailarrLog(DEBUG, "Tasks", "[FORCE] Updated times.Extras: %+v", times.Extras)
+			TrailarrLog(DEBUG, "Tasks", "[FORCE] Updated times.Extras: %+v", times["extras"])
 			respondJSON(c, http.StatusOK, gin.H{"status": "Sync Extras forced"})
 		default:
 			TrailarrLog(DEBUG, "Tasks", "[FORCE] Unknown job requested: %s", req.TaskId)
@@ -395,35 +352,13 @@ func StartBackgroundTasks() {
 	if err != nil {
 		TrailarrLog(WARN, "Tasks", "Could not load last task times: %v", err)
 	}
-	TrailarrLog(DEBUG, "Tasks", "Loaded times.Extras: %+v", times.Extras)
+	TrailarrLog(DEBUG, "Tasks", "Loaded times.Extras: %+v", times["extras"])
 	// Get intervals from config (declare once)
 	radarrInterval := time.Duration(Timings["radarr"]) * time.Minute
 	sonarrInterval := time.Duration(Timings["sonarr"]) * time.Minute
 	extrasInterval := time.Duration(Timings["extras"]) * time.Minute
 
-	// If times.Radarr or times.Sonarr or times.Extras is not set, save as now plus interval
-	if times.Radarr.TaskId == "" {
-		times.Radarr.TaskId = "radarr"
-		times.Radarr.Name = "Sync with Radarr"
-		times.Radarr.Interval = int(radarrInterval.Minutes())
-		saveTaskTimes(times)
-		TrailarrLog(DEBUG, "Tasks", "Initialized times.Radarr: %+v", times.Radarr)
-	}
-	if times.Sonarr.TaskId == "" {
-		times.Sonarr.TaskId = "sonarr"
-		times.Sonarr.Name = "Sync with Sonarr"
-		times.Sonarr.Interval = int(sonarrInterval.Minutes())
-		saveTaskTimes(times)
-		TrailarrLog(DEBUG, "Tasks", "Initialized times.Sonarr: %+v", times.Sonarr)
-	}
-	if times.Extras.TaskId == "" {
-		times.Extras.TaskId = "extras"
-		times.Extras.Name = "Search for Missing Extras"
-		times.Extras.Interval = int(extrasInterval.Minutes())
-		saveTaskTimes(times)
-		TrailarrLog(DEBUG, "Tasks", "Initialized times.Extras: %+v", times.Extras)
-	}
-	TrailarrLog(DEBUG, "Tasks", "Saving times.Extras: %+v", times.Extras)
+	// Initialization is handled in LoadTaskTimes; no need to duplicate here
 
 	TrailarrLog(DEBUG, "Tasks", "StartBackgroundTasks: initializing scheduler and storage")
 	store := storage.NewMemoryStorage()
@@ -475,7 +410,7 @@ func StartBackgroundTasks() {
 	}
 
 	// Radarr
-	if shouldRunNowTime(times.Radarr.LastExecution, radarrInterval) {
+	if shouldRunNowTime(times["radarr"].LastExecution, radarrInterval) {
 		radarrTaskStarted = true
 		broadcastTaskStatus(getCurrentTaskStatus())
 		start := time.Now()
@@ -483,11 +418,13 @@ func StartBackgroundTasks() {
 		duration := time.Since(start)
 		radarrTaskStarted = false
 		broadcastTaskStatus(getCurrentTaskStatus())
-		times.Radarr.LastDuration = duration.Seconds()
-		times.Radarr.LastExecution = start
+		t := times["radarr"]
+		t.LastDuration = duration.Seconds()
+		t.LastExecution = start
+		times["radarr"] = t
 		saveTaskTimes(times)
 	}
-	scheduleNext(times.Radarr.LastExecution.Format(time.RFC3339), radarrInterval, "Radarr",
+	scheduleNext(times["radarr"].LastExecution.Format(time.RFC3339), radarrInterval, "Radarr",
 		func() {
 			radarrTaskStarted = true
 			broadcastTaskStatus(getCurrentTaskStatus())
@@ -496,15 +433,17 @@ func StartBackgroundTasks() {
 			duration := time.Since(start)
 			radarrTaskStarted = false
 			broadcastTaskStatus(getCurrentTaskStatus())
-			times.Radarr.LastDuration = duration.Seconds()
-			times.Radarr.LastExecution = start
+			t := times["radarr"]
+			t.LastDuration = duration.Seconds()
+			t.LastExecution = start
+			times["radarr"] = t
 			saveTaskTimes(times)
 		},
 		func() {},
 	)
 
 	// Sonarr
-	if shouldRunNowTime(times.Sonarr.LastExecution, sonarrInterval) {
+	if shouldRunNowTime(times["sonarr"].LastExecution, sonarrInterval) {
 		sonarrTaskStarted = true
 		broadcastTaskStatus(getCurrentTaskStatus())
 		start := time.Now()
@@ -512,11 +451,13 @@ func StartBackgroundTasks() {
 		duration := time.Since(start)
 		sonarrTaskStarted = false
 		broadcastTaskStatus(getCurrentTaskStatus())
-		times.Sonarr.LastDuration = duration.Seconds()
-		times.Sonarr.LastExecution = start
+		t := times["sonarr"]
+		t.LastDuration = duration.Seconds()
+		t.LastExecution = start
+		times["sonarr"] = t
 		saveTaskTimes(times)
 	}
-	scheduleNext(times.Sonarr.LastExecution.Format(time.RFC3339), sonarrInterval, "Sonarr",
+	scheduleNext(times["sonarr"].LastExecution.Format(time.RFC3339), sonarrInterval, "Sonarr",
 		func() {
 			sonarrTaskStarted = true
 			broadcastTaskStatus(getCurrentTaskStatus())
@@ -525,27 +466,31 @@ func StartBackgroundTasks() {
 			duration := time.Since(start)
 			sonarrTaskStarted = false
 			broadcastTaskStatus(getCurrentTaskStatus())
-			times.Sonarr.LastDuration = duration.Seconds()
-			times.Sonarr.LastExecution = start
+			t := times["sonarr"]
+			t.LastDuration = duration.Seconds()
+			t.LastExecution = start
+			times["sonarr"] = t
 			saveTaskTimes(times)
 		},
 		func() {},
 	)
 
 	// Extras
-	if shouldRunNowTime(times.Extras.LastExecution, extrasInterval) {
+	if shouldRunNowTime(times["extras"].LastExecution, extrasInterval) {
 		TrailarrLog(DEBUG, "Tasks", "[DEBUG] StartBackgroundTasks: calling StartExtrasDownloadTask (no extrasTaskStarted assignment)")
 		broadcastTaskStatus(getCurrentTaskStatus())
 		start := time.Now()
 		StartExtrasDownloadTask()
 		duration := time.Since(start)
 		broadcastTaskStatus(getCurrentTaskStatus())
-		times.Extras.LastDuration = duration.Seconds()
-		times.Extras.LastExecution = start
+		t := times["extras"]
+		t.LastDuration = duration.Seconds()
+		t.LastExecution = start
+		times["extras"] = t
 		saveTaskTimes(times)
 	}
-	TrailarrLog(DEBUG, "Tasks", "StartBackgroundTasks: scheduling Extras task with interval=%v, lastExecution=%v", extrasInterval, times.Extras.LastExecution)
-	scheduleNext(times.Extras.LastExecution.Format(time.RFC3339), extrasInterval, "Extras",
+	TrailarrLog(DEBUG, "Tasks", "StartBackgroundTasks: scheduling Extras task with interval=%v, lastExecution=%v", extrasInterval, times["extras"].LastExecution)
+	scheduleNext(times["extras"].LastExecution.Format(time.RFC3339), extrasInterval, "Extras",
 		func() {
 			TrailarrLog(DEBUG, "Tasks", "StartBackgroundTasks: running scheduled Extras task (no extrasTaskStarted assignment)")
 			broadcastTaskStatus(getCurrentTaskStatus())
@@ -553,8 +498,10 @@ func StartBackgroundTasks() {
 			StartExtrasDownloadTask()
 			duration := time.Since(start)
 			broadcastTaskStatus(getCurrentTaskStatus())
-			times.Extras.LastDuration = duration.Seconds()
-			times.Extras.LastExecution = start
+			t := times["extras"]
+			t.LastDuration = duration.Seconds()
+			t.LastExecution = start
+			times["extras"] = t
 			saveTaskTimes(times)
 		},
 		func() {},
@@ -820,5 +767,62 @@ func isExtraTypeEnabled(cfg ExtraTypesConfig, typ string) bool {
 		return cfg.Other
 	default:
 		return false
+	}
+}
+
+func getWebSocketUpgrader() *websocket.Upgrader {
+	return &websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool { return true },
+	}
+}
+
+func addTaskStatusClient(conn *websocket.Conn) {
+	taskStatusClientsMu.Lock()
+	taskStatusClients[conn] = struct{}{}
+	taskStatusClientsMu.Unlock()
+	// Send initial status
+	go sendCurrentTaskStatus(conn)
+}
+
+func removeTaskStatusClient(conn *websocket.Conn) {
+	taskStatusClientsMu.Lock()
+	delete(taskStatusClients, conn)
+	taskStatusClientsMu.Unlock()
+}
+
+func sendCurrentTaskStatus(conn *websocket.Conn) {
+	status := getCurrentTaskStatus()
+	sendTaskStatus(conn, status)
+}
+
+func sendTaskStatus(conn *websocket.Conn, status interface{}) {
+	data, err := json.Marshal(status)
+	if err != nil {
+		return
+	}
+	conn.WriteMessage(websocket.TextMessage, data)
+}
+
+// Returns a map with all tasks' current status for broadcasting
+func getCurrentTaskStatus() map[string]interface{} {
+	times := GlobalTaskTimes
+	var radarrStatus, sonarrStatus, extrasStatus string
+	if radarrTaskStarted {
+		radarrStatus = "running"
+	} else {
+		radarrStatus = "idle"
+	}
+	if sonarrTaskStarted {
+		sonarrStatus = "running"
+	} else {
+		sonarrStatus = "idle"
+	}
+	if extrasTaskStarted {
+		extrasStatus = "running"
+	} else {
+		extrasStatus = "idle"
+	}
+	return map[string]interface{}{
+		"schedules": buildSchedules(times, radarrStatus, sonarrStatus, extrasStatus),
 	}
 }

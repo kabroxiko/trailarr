@@ -23,8 +23,9 @@ Add new tasks below as needed:
 - [ ] yt-dlp Download Flags is not being save
 - [ ] enable autodownload require restart
 - [ ] force tasks icon must keep rolling while task is running
-- [ ] history must show tasks downloads
-- [ ] history title must be clickable
+- [x] history must show tasks downloads
+- [x] history title must be clickable
 - [ ] show progress
 - [ ] fix queue history
 - [ ] rejecte extra on over must show reason
+- [ ] remove youtube doppler effect

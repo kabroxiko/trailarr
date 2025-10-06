@@ -91,8 +91,8 @@ export default function Tasks() {
     }
     return `${totalSeconds} second${totalSeconds !== 1 ? 's' : ''}${suffix}`;
   }
-  const [spinning, setSpinning] = useState({});
   const [iconRotation, setIconRotation] = useState({});
+  const [iconPrevRotation, setIconPrevRotation] = useState({});
   const rotationIntervals = useRef({});
   const [darkMode, setDarkMode] = useState(false);
 
@@ -152,39 +152,36 @@ export default function Tasks() {
   // Icon rotation effect for running tasks
   useEffect(() => {
     if (!status || !status.schedules) return;
-    // Only keep spinning state for tasks that are actually running
-    const running = {};
     status.schedules.forEach(sch => {
       const key = sch.taskId;
       if (sch.status === 'running') {
-        running[key] = true;
         if (!rotationIntervals.current[key]) {
           rotationIntervals.current[key] = setInterval(() => {
-            setIconRotation(rot => ({
-              ...rot,
-              [key]: (rot[key] || 0) + 18
-            }));
+            setIconRotation(rot => {
+              const prev = rot[key] || 0;
+              const next = prev + 18;
+              setIconPrevRotation(prevRot => ({ ...prevRot, [key]: prev }));
+              return { ...rot, [key]: next };
+            });
           }, 50);
         }
       } else {
         if (rotationIntervals.current[key]) {
           clearInterval(rotationIntervals.current[key]);
           rotationIntervals.current[key] = null;
-          // Do NOT reset rotation to 0 here; keep last value for smoothness
         }
+        setIconRotation(rot => ({ ...rot, [key]: 0 }));
       }
     });
-    setSpinning(running);
     // Cleanup intervals on unmount only
     return () => {
       Object.values(rotationIntervals.current).forEach(interval => interval && clearInterval(interval));
       rotationIntervals.current = {};
-      setIconRotation({}); // Reset all rotations on unmount
+      setIconRotation({});
     };
   }, [status]);
 
   async function forceExecute(taskId) {
-    setSpinning(s => ({ ...s, [taskId]: true }));
     try {
       await fetch(`/api/tasks/force`, {
         method: 'POST',
@@ -194,7 +191,6 @@ export default function Tasks() {
       // Immediately update status after force execute
       fetchStatus();
     } catch (e) {}
-    setTimeout(() => setSpinning(s => ({ ...s, [taskId]: false })), 1500);
   }
 
   // Helper to format interval values for scheduled tasks
@@ -322,15 +318,12 @@ export default function Tasks() {
                 >
                   <FaArrowsRotate
                     onClick={() => forceExecute(scheduled.taskId)}
+                    className={scheduled.status === 'running' ? 'spin-icon' : ''}
                     style={{
                       cursor: 'pointer',
-                      color: (spinning[scheduled.taskId] || scheduled.status === 'running')
+                      color: (scheduled.status === 'running')
                         ? (darkMode ? '#66aaff' : '#007bff')
                         : (darkMode ? '#aaa' : '#888'),
-                      transform: (spinning[scheduled.taskId] || scheduled.status === 'running')
-                        ? `rotate(${iconRotation[scheduled.taskId] || 0}deg)`
-                        : 'none',
-                      transition: 'transform 0.1s linear',
                     }}
                     size={20}
                     title="Force Execute"

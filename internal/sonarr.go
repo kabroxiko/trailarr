@@ -20,7 +20,7 @@ func SyncSonarr() {
 	)
 	syncSonarrStatus.Queue = nil
 	for _, item := range GlobalSyncQueue {
-		if item.TaskName == "sonarr" {
+		if item.TaskId == "sonarr" {
 			syncSonarrStatus.Queue = append(syncSonarrStatus.Queue, item)
 		}
 	}

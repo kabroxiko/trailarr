@@ -22,7 +22,7 @@ func SyncRadarr() {
 	)
 	syncRadarrStatus.Queue = nil
 	for _, item := range GlobalSyncQueue {
-		if item.TaskName == "radarr" {
+		if item.TaskId == "radarr" {
 			syncRadarrStatus.Queue = append(syncRadarrStatus.Queue, item)
 		}
 	}
