@@ -323,7 +323,7 @@ func StartBackgroundTasks() {
 	taskList := []bgTask{
 		{"radarr", &radarrTaskStarted, SyncRadarr, time.Duration(Timings["radarr"]) * time.Minute, times["radarr"].LastExecution, "Radarr"},
 		{"sonarr", &sonarrTaskStarted, SyncSonarr, time.Duration(Timings["sonarr"]) * time.Minute, times["sonarr"].LastExecution, "Sonarr"},
-		{"extras", nil, StartExtrasDownloadTask, time.Duration(Timings["extras"]) * time.Minute, times["extras"].LastExecution, "Extras"},
+		{"extras", &extrasTaskStarted, StartExtrasDownloadTask, time.Duration(Timings["extras"]) * time.Minute, times["extras"].LastExecution, "Extras"},
 	}
 
 	TrailarrLog(DEBUG, "Tasks", "StartBackgroundTasks: initializing scheduler and storage")

@@ -33,22 +33,27 @@ func SyncMediaImages(provider, apiPath, cacheFile string, filter func(map[string
 	return nil
 }
 
-// Generic handler for Radarr/Sonarr sync status
-func GetSyncStatusHandler(section string, status *SyncStatus, displayName string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		interval := Timings[section]
-		respondJSON(c, http.StatusOK, gin.H{
-			"scheduled": gin.H{
-				"name":          "Sync with " + displayName,
-				"interval":      fmt.Sprintf("%d minutes", interval),
-				"lastExecution": LastExecution(status),
-				"lastDuration":  LastDuration(status).String(),
-				"nextExecution": NextExecution(status),
-				"lastError":     LastError(status),
-			},
-			"queue": Queue(status),
-		})
-	}
+// Generic handler for Radarr/Sonarr sync status using tasks definitions
+func GetSyncStatusHandler(section string, status *SyncStatus) gin.HandlerFunc {
+       return func(c *gin.Context) {
+	       taskMeta, ok := tasks[section]
+	       if !ok {
+		       respondError(c, http.StatusBadRequest, "unknown task section")
+		       return
+	       }
+	       interval := Timings[section]
+	       respondJSON(c, http.StatusOK, gin.H{
+		       "scheduled": gin.H{
+			       "name":          taskMeta.Name,
+			       "interval":      fmt.Sprintf("%d minutes", interval),
+			       "lastExecution": LastExecution(status),
+			       "lastDuration":  LastDuration(status).String(),
+			       "nextExecution": NextExecution(status),
+			       "lastError":     LastError(status),
+		       },
+		       "queue": Queue(status),
+	       })
+       }
 }
 
 // Generic handler for listing media (movies/series)
