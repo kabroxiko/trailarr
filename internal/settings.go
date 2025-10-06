@@ -533,20 +533,6 @@ func SaveExtraTypesConfigHandler(c *gin.Context) {
 	respondJSON(c, http.StatusOK, gin.H{"status": "saved"})
 }
 
-// GetAutoDownloadExtras reads the autoDownloadExtras flag from config.yml (general section)
-func GetAutoDownloadExtras() bool {
-	if Config == nil {
-		return true // default enabled
-	}
-	if general, ok := Config["general"].(map[string]interface{}); ok {
-		if v, ok := general["autoDownloadExtras"].(bool); ok {
-			return v
-		}
-	}
-	TrailarrLog(DEBUG, "Settings", "GetAutoDownloadExtras: defaulting to true")
-	return true
-}
-
 // GetSearchExtrasConfig loads search extras config from config.yml
 func GetSearchExtrasConfig() (SearchExtrasConfig, error) {
 	if Config == nil {

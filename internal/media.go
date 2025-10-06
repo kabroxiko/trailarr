@@ -81,10 +81,6 @@ const (
 
 // DownloadMissingExtras downloads missing extras for a given media type ("movie" or "tv")
 func DownloadMissingExtras(mediaType MediaType, cacheFile string) error {
-	if !GetAutoDownloadExtras() {
-		TrailarrLog(INFO, "DownloadMissingExtras", "Auto download of extras is disabled by general settings.")
-		return nil
-	}
 	TrailarrLog(INFO, "DownloadMissingExtras", "DownloadMissingExtras: mediaType=%s, cacheFile=%s", mediaType, cacheFile)
 	items, err := loadCache(cacheFile)
 	if CheckErrLog(WARN, "DownloadMissingExtras", "Failed to load cache", err) != nil {

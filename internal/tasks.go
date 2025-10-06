@@ -17,7 +17,7 @@ import (
 var GlobalTaskTimes TaskTimes
 
 var extrasTaskCancel context.CancelFunc
-var extrasTaskStarted bool
+var extrasTaskStarted bool // DEBUG: track all changes and reads
 var radarrTaskStarted bool
 var sonarrTaskStarted bool
 
@@ -102,9 +102,6 @@ func GetAllTasksStatus() gin.HandlerFunc {
 		} else {
 			extrasStatus = "idle"
 		}
-		TrailarrLog(DEBUG, "Tasks", "Radarr status: %s", radarrStatus)
-		TrailarrLog(DEBUG, "Tasks", "Sonarr status: %s", sonarrStatus)
-		TrailarrLog(DEBUG, "Tasks", "Extras status: %s", extrasStatus)
 		times := GlobalTaskTimes
 		calcNext := func(lastExecution time.Time, interval int) time.Time {
 			if lastExecution.IsZero() {
@@ -152,7 +149,6 @@ func GetAllTasksStatus() gin.HandlerFunc {
 		}
 		queues := buildTaskQueues()
 		sortTaskQueuesByQueuedDesc(queues)
-		TrailarrLog(DEBUG, "Tasks", "API status response: schedules=%v queues=%v", schedules, queues)
 		respondJSON(c, http.StatusOK, gin.H{
 			"schedules": schedules,
 			"queues":    queues,
@@ -336,7 +332,7 @@ func TaskHandler() gin.HandlerFunc {
 			respondJSON(c, http.StatusOK, gin.H{"status": "Sync Sonarr forced"})
 		case "extras":
 			TrailarrLog(DEBUG, "Tasks", "[FORCE] Starting Extras job at %s", time.Now().Format(time.RFC3339Nano))
-			extrasTaskStarted = true
+			// Do not set extrasTaskStarted here; StartExtrasDownloadTask will set it if the task actually starts
 			calcNext := func(lastExecution time.Time, interval int) time.Time {
 				if lastExecution.IsZero() {
 					return time.Now().Add(time.Duration(interval) * time.Minute)
@@ -377,7 +373,7 @@ func TaskHandler() gin.HandlerFunc {
 			start := time.Now()
 			StartExtrasDownloadTask()
 			duration := time.Since(start)
-			extrasTaskStarted = false
+			// Do not reset extrasTaskStarted here; let the goroutine handle it
 			broadcastTaskStatus(getCurrentTaskStatus())
 			TrailarrLog(DEBUG, "Tasks", "[FORCE] Extras job finished at %s, duration=%s", time.Now().Format(time.RFC3339Nano), duration.String())
 			times.Extras.LastDuration = duration.Seconds()
@@ -394,6 +390,7 @@ func TaskHandler() gin.HandlerFunc {
 
 func StartBackgroundTasks() {
 	TrailarrLog(INFO, "Tasks", "StartBackgroundTasks called. PID=%d, time=%s", os.Getpid(), time.Now().Format(time.RFC3339Nano))
+	TrailarrLog(DEBUG, "Tasks", "StartBackgroundTasks: entering function")
 	times, err := LoadTaskTimes()
 	if err != nil {
 		TrailarrLog(WARN, "Tasks", "Could not load last task times: %v", err)
@@ -428,6 +425,7 @@ func StartBackgroundTasks() {
 	}
 	TrailarrLog(DEBUG, "Tasks", "Saving times.Extras: %+v", times.Extras)
 
+	TrailarrLog(DEBUG, "Tasks", "StartBackgroundTasks: initializing scheduler and storage")
 	store := storage.NewMemoryStorage()
 	sched := scheduler.New(store)
 
@@ -536,25 +534,24 @@ func StartBackgroundTasks() {
 
 	// Extras
 	if shouldRunNowTime(times.Extras.LastExecution, extrasInterval) {
-		extrasTaskStarted = true
+		TrailarrLog(DEBUG, "Tasks", "[DEBUG] StartBackgroundTasks: calling StartExtrasDownloadTask (no extrasTaskStarted assignment)")
 		broadcastTaskStatus(getCurrentTaskStatus())
 		start := time.Now()
 		StartExtrasDownloadTask()
 		duration := time.Since(start)
-		extrasTaskStarted = false
 		broadcastTaskStatus(getCurrentTaskStatus())
 		times.Extras.LastDuration = duration.Seconds()
 		times.Extras.LastExecution = start
 		saveTaskTimes(times)
 	}
+	TrailarrLog(DEBUG, "Tasks", "StartBackgroundTasks: scheduling Extras task with interval=%v, lastExecution=%v", extrasInterval, times.Extras.LastExecution)
 	scheduleNext(times.Extras.LastExecution.Format(time.RFC3339), extrasInterval, "Extras",
 		func() {
-			extrasTaskStarted = true
+			TrailarrLog(DEBUG, "Tasks", "StartBackgroundTasks: running scheduled Extras task (no extrasTaskStarted assignment)")
 			broadcastTaskStatus(getCurrentTaskStatus())
 			start := time.Now()
 			StartExtrasDownloadTask()
 			duration := time.Since(start)
-			extrasTaskStarted = false
 			broadcastTaskStatus(getCurrentTaskStatus())
 			times.Extras.LastDuration = duration.Seconds()
 			times.Extras.LastExecution = start
@@ -564,9 +561,13 @@ func StartBackgroundTasks() {
 	)
 
 	// Start the scheduler
+	TrailarrLog(DEBUG, "Tasks", "StartBackgroundTasks: starting scheduler goroutine")
 	go func() {
+		TrailarrLog(DEBUG, "Tasks", "Scheduler goroutine: calling sched.Start()")
 		if err := sched.Start(); err != nil {
 			TrailarrLog(WARN, "Tasks", "Scheduler failed to start: %v", err)
+		} else {
+			TrailarrLog(DEBUG, "Tasks", "Scheduler started successfully")
 		}
 	}()
 
@@ -576,29 +577,48 @@ func StartBackgroundTasks() {
 
 func StartExtrasDownloadTask() {
 	TrailarrLog(INFO, "Tasks", "StartExtrasDownloadTask called. PID=%d, time=%s, extrasTaskCancel=%v, extrasTaskStarted=%v", os.Getpid(), time.Now().Format(time.RFC3339Nano), extrasTaskCancel, extrasTaskStarted)
+	TrailarrLog(DEBUG, "Tasks", "StartExtrasDownloadTask: entering function")
+	TrailarrLog(DEBUG, "Tasks", "[DEBUG] StartExtrasDownloadTask: checking extrasTaskStarted=%v", extrasTaskStarted)
 	if extrasTaskCancel != nil || extrasTaskStarted {
 		TrailarrLog(WARN, "Tasks", "Attempted to start extras download task, but one is already running. extrasTaskCancel=%v, extrasTaskStarted=%v", extrasTaskCancel, extrasTaskStarted)
+		// Cleanup: reset flags so future tasks can start
+		if extrasTaskCancel != nil {
+			extrasTaskCancel()
+			extrasTaskCancel = nil
+		}
+		TrailarrLog(DEBUG, "Tasks", "[DEBUG] StartExtrasDownloadTask: setting extrasTaskStarted=false (cleanup)")
+		extrasTaskStarted = false
+		TrailarrLog(INFO, "Tasks", "Extras task flags reset after blocked start.")
 		return
 	}
+	TrailarrLog(DEBUG, "Tasks", "[DEBUG] StartExtrasDownloadTask: setting extrasTaskStarted=true")
 	extrasTaskStarted = true
 	TrailarrLog(INFO, "Tasks", "Starting extras download task... extrasTaskCancel=%v", extrasTaskCancel)
 	ctx, cancel := context.WithCancel(context.Background())
 	extrasTaskCancel = cancel
 	go func() {
-		defer func() { extrasTaskStarted = false }()
-		for {
-			if handleExtrasDownloadLoop(ctx) {
-				return
-			}
-		}
+		TrailarrLog(DEBUG, "Tasks", "ExtrasDownloadTask goroutine: started")
+		defer func() {
+			TrailarrLog(DEBUG, "Tasks", "ExtrasDownloadTask goroutine: exiting, setting extrasTaskStarted=false")
+			extrasTaskStarted = false
+			TrailarrLog(DEBUG, "Tasks", "[DEBUG] ExtrasDownloadTask goroutine: extrasTaskStarted now=%v", extrasTaskStarted)
+		}()
+		TrailarrLog(DEBUG, "Tasks", "ExtrasDownloadTask goroutine: calling handleExtrasDownloadLoop, extrasTaskStarted=%v", extrasTaskStarted)
+		handleExtrasDownloadLoop(ctx)
+		TrailarrLog(DEBUG, "Tasks", "ExtrasDownloadTask goroutine: finished handleExtrasDownloadLoop, exiting goroutine")
 	}()
 }
 
 func handleExtrasDownloadLoop(ctx context.Context) bool {
+	TrailarrLog(DEBUG, "Tasks", "handleExtrasDownloadLoop: entered")
 	cfg := mustLoadSearchExtrasConfig()
 	interval := getExtrasInterval()
-	processExtras(cfg)
-	return waitOrDone(ctx, time.Duration(interval)*time.Minute)
+	TrailarrLog(DEBUG, "Tasks", "handleExtrasDownloadLoop: loaded config=%+v, interval=%v", cfg, interval)
+	processExtras(ctx, cfg)
+	TrailarrLog(DEBUG, "Tasks", "handleExtrasDownloadLoop: processExtras complete, waiting or done")
+	result := waitOrDone(ctx, time.Duration(interval)*time.Minute)
+	TrailarrLog(DEBUG, "Tasks", "handleExtrasDownloadLoop: waitOrDone returned %v", result)
+	return result
 }
 
 func waitOrDone(ctx context.Context, d time.Duration) bool {
@@ -629,26 +649,33 @@ func getExtrasInterval() int {
 	return interval
 }
 
-func processExtras(cfg SearchExtrasConfig) {
+func processExtras(ctx context.Context, cfg SearchExtrasConfig) {
+	TrailarrLog(DEBUG, "Tasks", "processExtras: entering function with config: %+v", cfg)
 	extraTypesCfg, err := GetExtraTypesConfig()
 	CheckErrLog(WARN, "Tasks", "Could not load extra types config", err)
 	if cfg.SearchMoviesExtras {
 		TrailarrLog(INFO, "Tasks", "[TASK] Searching for missing movie extras...")
-		DownloadMissingMoviesExtrasWithTypeFilter(extraTypesCfg)
+		DownloadMissingMoviesExtrasWithTypeFilter(ctx, extraTypesCfg)
+	} else {
+		TrailarrLog(DEBUG, "Tasks", "processExtras: SearchMoviesExtras is disabled")
 	}
 	if cfg.SearchSeriesExtras {
 		TrailarrLog(INFO, "Tasks", "[TASK] Searching for missing series extras...")
-		DownloadMissingSeriesExtrasWithTypeFilter(extraTypesCfg)
+		DownloadMissingSeriesExtrasWithTypeFilter(ctx, extraTypesCfg)
+	} else {
+		TrailarrLog(DEBUG, "Tasks", "processExtras: SearchSeriesExtras is disabled")
 	}
 }
 
 func StopExtrasDownloadTask() {
+	TrailarrLog(DEBUG, "Tasks", "[DEBUG] StopExtrasDownloadTask: checking extrasTaskStarted=%v", extrasTaskStarted)
 	if extrasTaskCancel != nil || extrasTaskStarted {
 		TrailarrLog(INFO, "Tasks", "Stopping extras download task... extrasTaskCancel=%v, extrasTaskStarted=%v", extrasTaskCancel, extrasTaskStarted)
 		if extrasTaskCancel != nil {
 			extrasTaskCancel()
 			extrasTaskCancel = nil
 		}
+		TrailarrLog(DEBUG, "Tasks", "[DEBUG] StopExtrasDownloadTask: setting extrasTaskStarted=false")
 		extrasTaskStarted = false
 	} else {
 		TrailarrLog(INFO, "Tasks", "StopExtrasDownloadTask called but extrasTaskCancel is nil and extrasTaskStarted is false")
@@ -656,56 +683,70 @@ func StopExtrasDownloadTask() {
 }
 
 // Download missing movie extras, filtering by enabled types
-func DownloadMissingMoviesExtrasWithTypeFilter(cfg ExtraTypesConfig) {
+func DownloadMissingMoviesExtrasWithTypeFilter(ctx context.Context, cfg ExtraTypesConfig) {
 	// Example: get all movies, for each, get extras, filter by type, download only enabled types
-	downloadMissingExtrasWithTypeFilter(cfg, "movie", TrailarrRoot+"/movies_wanted.json")
+	downloadMissingExtrasWithTypeFilter(ctx, cfg, "movie", TrailarrRoot+"/movies_wanted.json")
 }
 
 // Download missing series extras, filtering by enabled types
-func DownloadMissingSeriesExtrasWithTypeFilter(cfg ExtraTypesConfig) {
-	downloadMissingExtrasWithTypeFilter(cfg, "tv", TrailarrRoot+"/series_wanted.json")
+func DownloadMissingSeriesExtrasWithTypeFilter(ctx context.Context, cfg ExtraTypesConfig) {
+	downloadMissingExtrasWithTypeFilter(ctx, cfg, "tv", TrailarrRoot+"/series_wanted.json")
 }
 
 // Shared logic for type-filtered extras download
-func downloadMissingExtrasWithTypeFilter(cfg ExtraTypesConfig, mediaType MediaType, cacheFile string) {
+func downloadMissingExtrasWithTypeFilter(ctx context.Context, cfg ExtraTypesConfig, mediaType MediaType, cacheFile string) {
+	TrailarrLog(DEBUG, "Tasks", "Starting downloadMissingExtrasWithTypeFilter: mediaType=%v, cacheFile=%s", mediaType, cacheFile)
 	items, err := loadCache(cacheFile)
 	if CheckErrLog(DEBUG, "Tasks", "Failed to load cache", err) != nil {
+		TrailarrLog(DEBUG, "Tasks", "No items loaded from cache: %s", cacheFile)
 		return
 	}
+	TrailarrLog(DEBUG, "Tasks", "Loaded %d items from cache", len(items))
+
 	for _, item := range items {
+		if ctx != nil && ctx.Err() != nil {
+			TrailarrLog(INFO, "Tasks", "Extras download cancelled before processing item.")
+			break
+		}
 		mediaId, ok := parseMediaID(item["id"])
 		if !ok {
+			TrailarrLog(DEBUG, "Tasks", "Skipping item with invalid mediaId: %+v", item)
 			continue
 		}
+		TrailarrLog(DEBUG, "Tasks", "Processing mediaId=%v", mediaId)
 		extras, err := SearchExtras(mediaType, mediaId)
 		if err != nil {
+			TrailarrLog(WARN, "Tasks", "SearchExtras failed for mediaId=%v: %v", mediaId, err)
 			continue
 		}
+		TrailarrLog(DEBUG, "Tasks", "Found %d extras for mediaId=%v", len(extras), mediaId)
 		mediaPath, err := FindMediaPathByID(cacheFile, mediaId)
 		if err != nil || mediaPath == "" {
+			TrailarrLog(WARN, "Tasks", "FindMediaPathByID failed for mediaId=%v: %v", mediaId, err)
 			continue
 		}
+		TrailarrLog(DEBUG, "Tasks", "Media path for mediaId=%v: %s", mediaId, mediaPath)
 		MarkDownloadedExtras(extras, mediaPath, "type", "title")
-		filterAndDownloadTypeFilteredExtras(cfg, mediaType, item, extras)
-	}
-}
-
-func filterAndDownloadTypeFilteredExtras(cfg ExtraTypesConfig, mediaType MediaType, item map[string]interface{}, extras []Extra) {
-	for _, extra := range extras {
-		typ := canonicalizeExtraType(extra.Type, extra.Type)
-		TrailarrLog(DEBUG, "Tasks", "Considering extra: type=%s, canonical=%s, enabled=%v, status=%s, youtubeId=%s", extra.Type, typ, isExtraTypeEnabled(cfg, typ), extra.Status, extra.YoutubeId)
-		if !isExtraTypeEnabled(cfg, typ) {
-			TrailarrLog(DEBUG, "Tasks", "Skipping extra: type %s not enabled in config", typ)
-			continue
+		// For each extra, download sequentially
+		for _, extra := range extras {
+			if ctx != nil && ctx.Err() != nil {
+				TrailarrLog(INFO, "Tasks", "Extras download cancelled before processing extra.")
+				break
+			}
+			typ := canonicalizeExtraType(extra.Type, extra.Type)
+			if !isExtraTypeEnabled(cfg, typ) {
+				continue
+			}
+			if extra.Status == "missing" && extra.YoutubeId != "" {
+				TrailarrLog(DEBUG, "Tasks", "[SEQ] Downloading extra: mediaType=%v, mediaId=%v, type=%s, title=%s, youtubeId=%s", mediaType, mediaId, extra.Type, extra.Title, extra.YoutubeId)
+				err := handleTypeFilteredExtraDownload(mediaType, mediaId, extra)
+				if err != nil {
+					TrailarrLog(WARN, "Tasks", "[SEQ] Download failed: %v", err)
+				}
+			}
 		}
-		if extra.Status == "missing" && extra.YoutubeId != "" {
-			TrailarrLog(DEBUG, "Tasks", "Attempting download for extra: type=%s, title=%s, youtubeId=%s", typ, extra.Title, extra.YoutubeId)
-			err := handleTypeFilteredExtraDownload(mediaType, item["id"].(int), extra)
-			CheckErrLog(WARN, "Tasks", "[DownloadMissingExtrasWithTypeFilter] Failed to download", err)
-		} else {
-			TrailarrLog(DEBUG, "Tasks", "Skipping extra: status=%s, youtubeId=%s", extra.Status, extra.YoutubeId)
-		}
 	}
+	TrailarrLog(DEBUG, "Tasks", "All downloads finished.")
 }
 
 func handleTypeFilteredExtraDownload(mediaType MediaType, mediaId int, extra Extra) error {

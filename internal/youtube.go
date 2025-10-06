@@ -75,16 +75,6 @@ func DownloadYouTubeExtra(mediaType MediaType, mediaId int, extraType, extraTitl
 	var downloadInfo *downloadInfo
 	var err error
 
-	force := false
-	if len(forceDownload) > 0 {
-		force = forceDownload[0]
-	}
-
-	if !force && !GetAutoDownloadExtras() {
-		TrailarrLog(INFO, "YouTube", "Auto download of extras is disabled by general settings. Skipping download for %s", extraTitle)
-		return nil, nil
-	}
-
 	// Lookup media title from cache for logging
 	var mediaTitle string
 	var cacheFile string
@@ -312,6 +302,13 @@ func performDownload(info *downloadInfo, youtubeId string) (*ExtraDownloadMetada
 		}
 	}
 
+	if output != nil && output.Stdout != "" {
+		for _, line := range strings.Split(output.Stdout, "\n") {
+			if strings.TrimSpace(line) != "" {
+				TrailarrLog(DEBUG, "YouTube", "yt-dlp stdout for %s: %s", youtubeId, line)
+			}
+		}
+	}
 	if err != nil {
 		return nil, handleDownloadError(info, youtubeId, err, output)
 	}
@@ -353,11 +350,14 @@ func createYtdlpFlagsWithoutImpersonation(info *downloadInfo) ytdlp.FlagConfig {
 	networkFlags := ytdlp.FlagsNetwork{
 		SocketTimeout: &cfg.Timeout,
 	}
+	// Force progress output for logging
+	quiet := false
+	noprogress := false
 	return ytdlp.FlagConfig{
 		Network: networkFlags,
 		VerbositySimulation: ytdlp.FlagsVerbositySimulation{
-			Quiet:      &cfg.Quiet,
-			NoProgress: &cfg.NoProgress,
+			Quiet:      &quiet,
+			NoProgress: &noprogress,
 		},
 		Subtitle: ytdlp.FlagsSubtitle{
 			WriteSubs:     &cfg.WriteSubs,
@@ -401,11 +401,14 @@ func createYtdlpFlags(info *downloadInfo) ytdlp.FlagConfig {
 		impersonate := getImpersonationTarget()
 		networkFlags.Impersonate = &impersonate
 	}
+	// Force progress output for logging
+	quiet := false
+	noprogress := false
 	return ytdlp.FlagConfig{
 		Network: networkFlags,
 		VerbositySimulation: ytdlp.FlagsVerbositySimulation{
-			Quiet:      &cfg.Quiet,
-			NoProgress: &cfg.NoProgress,
+			Quiet:      &quiet,
+			NoProgress: &noprogress,
 		},
 		Subtitle: ytdlp.FlagsSubtitle{
 			WriteSubs:     &cfg.WriteSubs,
@@ -460,20 +463,19 @@ func setupCookiesFile() *string {
 
 func handleDownloadError(info *downloadInfo, youtubeId string, err error, output *ytdlp.Result) error {
 	errStr := err.Error()
+	stdout := ""
 	stderr := ""
 	if output != nil {
+		stdout = output.Stdout
 		stderr = output.Stderr
 	}
 
 	reason := errStr
-	if strings.Contains(errStr, "Did not get any data blocks") ||
-		strings.Contains(errStr, "SABR") ||
-		strings.Contains(stderr, "Did not get any data blocks") ||
-		strings.Contains(stderr, "SABR") {
-		reason = errStr
-		if stderr != "" {
-			reason += " | stderr: " + stderr
-		}
+	if stdout != "" {
+		reason += " | stdout: " + stdout
+	}
+	if stderr != "" {
+		reason += " | stderr: " + stderr
 	}
 
 	TrailarrLog(ERROR, "YouTube", "Download failed for %s: %s", youtubeId, reason)
