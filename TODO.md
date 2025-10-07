@@ -22,10 +22,10 @@ Add new tasks below as needed:
 - [x] rename RouteMap.jsx to RouteMap.jsx
 - [ ] yt-dlp Download Flags is not being save
 - [ ] enable autodownload require restart
-- [ ] force tasks icon must keep rolling while task is running
+- [x] force tasks icon must keep rolling while task is running
 - [x] history must show tasks downloads
 - [x] history title must be clickable
 - [ ] show progress
 - [ ] fix queue history
 - [ ] rejecte extra on over must show reason
-- [ ] remove youtube doppler effect
+- [x] remove youtube doppler effect

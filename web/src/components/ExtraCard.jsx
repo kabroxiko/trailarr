@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import YoutubePlayer from './YoutubePlayer.jsx';
 import IconButton from './IconButton.jsx';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTrashCan, faCheckSquare } from '@fortawesome/free-regular-svg-icons';
@@ -142,16 +143,24 @@ export default function ExtraCard({
           ? '2px solid #22c55e'
           : '2px solid transparent',
     }}>
-      <div style={{ width: '100%', background: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div
+        style={{ width: '100%', background: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
+        <div
+          style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: extra.YoutubeId && !imgError ? 'pointer' : 'default' }}
+          onClick={() => {
+            if (extra.YoutubeId && !imgError) setYoutubeModal({ open: true, videoId: extra.YoutubeId });
+          }}
+        >
           {/** Play button overlay */}
           {extra.YoutubeId && !imgError && (
             <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 2 }}>
               <IconButton
                 icon={<FontAwesomeIcon icon={faPlay} color="#fff" size="lg" style={{ filter: 'drop-shadow(0 2px 8px #000)' }} />}
                 title="Play"
-                onClick={() => {
-                  if (extra.YoutubeId) setYoutubeModal({ open: true, videoId: extra.YoutubeId });
+                onClick={e => {
+                  e.stopPropagation();
+                  setYoutubeModal({ open: true, videoId: extra.YoutubeId });
                 }}
               />
             </div>
@@ -223,35 +232,28 @@ export default function ExtraCard({
       <div style={{ width: '100%', padding: '12px 10px 0 10px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <div style={{ fontWeight: 600, fontSize: titleFontSize, color: darkMode ? '#e5e7eb' : '#222', textAlign: 'center', marginBottom: 4, height: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', width: '100%' }}>{displayTitle}</div>
         <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 18, position: 'absolute', bottom: 12, left: 0 }}></div>
-        {youtubeModal.open && (
-          <div className="youtube-modal-backdrop" style={{
-            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.7)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        {(youtubeModal.open && youtubeModal.videoId) && (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.7)', zIndex: 99999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             <div style={{
               position: 'relative',
               background: '#18181b',
-              borderRadius: 12,
+              borderRadius: 16,
               boxShadow: '0 2px 24px #000',
               padding: 0,
-              width: '90vw',
-              maxWidth: 800,
-              aspectRatio: '16/9',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              overflow: 'hidden',
+              overflow: 'visible',
             }}>
-              <IconButton
-                icon={<span style={{ fontSize: 28, color: '#fff' }}>×</span>}
-                onClick={() => {
-                  // Unmount the iframe immediately by closing modal and clearing videoId
-                  setYoutubeModal({ open: false, videoId: '' });
-                }}
-                title="Close"
-                style={{ position: 'absolute', top: 8, right: 12, background: 'transparent', zIndex: 2 }}
-              />
-              {/* Only render YoutubeEmbed if modal is open and videoId is set */}
-              {youtubeModal.open && youtubeModal.videoId && <YoutubeEmbed videoId={youtubeModal.videoId} />}
+              <button
+                onClick={() => setYoutubeModal({ open: false, videoId: '' })}
+                style={{ position: 'absolute', top: 8, right: 12, zIndex: 2, fontSize: 28, color: '#fff', background: 'transparent', border: 'none', cursor: 'pointer' }}
+                aria-label="Close"
+              >×</button>
+              <YoutubePlayer videoId={youtubeModal.videoId} />
             </div>
           </div>
         )}

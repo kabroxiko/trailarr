@@ -32,12 +32,16 @@ function YoutubeEmbed({ videoId }) {
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     setLoading(true);
+    console.log('YoutubeEmbed mounted', videoId);
+    return () => {
+      console.log('YoutubeEmbed unmounted', videoId);
+    };
   }, [videoId]);
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       {loading && <Spinner />}
       <iframe
-        src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1`}
+        src={`https://www.youtube.com/embed/${videoId}`}
         title="YouTube video player"
         frameBorder="0"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
