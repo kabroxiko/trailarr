@@ -92,7 +92,6 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
 
   useEffect(() => {
     if (!media) return;
-    console.log('[MediaDetails] mediaType:', mediaType, 'id:', media.id);
     setSearchLoading(true);
     setError('');
     import('../api').then(({ getExtras }) => {
