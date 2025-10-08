@@ -1,6 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { FaArrowsRotate } from 'react-icons/fa6';
+import { FaArrowsRotate, FaClock } from 'react-icons/fa6';
 import './Tasks.css';
+
+// Inline style to remove focus outline from the force icon
+const iconNoOutline = {
+  outline: 'none',
+  boxShadow: 'none',
+};
 
 const getStyles = (darkMode) => ({
   table: {
@@ -41,6 +47,15 @@ const getStyles = (darkMode) => ({
 });
 
 export default function Tasks() {
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState(null);
+  const [queues, setQueues] = useState([]);
+  const [queueLoading, setQueueLoading] = useState(true);
+  const [iconRotation, setIconRotation] = useState({});
+  const [iconPrevRotation, setIconPrevRotation] = useState({});
+  const rotationIntervals = useRef({});
+  const [darkMode, setDarkMode] = useState(false);
+
   // Fetch status from API for polling fallback and force execute
   async function fetchStatus() {
     setLoading(true);
@@ -53,8 +68,19 @@ export default function Tasks() {
     }
     setLoading(false);
   }
-  const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState(null);
+  // Fetch queue from new endpoint
+  async function fetchQueue() {
+    setQueueLoading(true);
+    try {
+      const res = await fetch('/api/tasks/queue');
+      const data = await res.json();
+      setQueues(Array.isArray(data.queues) ? data.queues : []);
+    } catch (e) {
+      setQueues([]);
+    }
+    setQueueLoading(false);
+  }
+
   // Converts a time value in milliseconds to human-readable text, showing only the largest non-zero unit
   // durationToText: ms to human text, with rounding option
   // roundType: 'ceil' (default), 'cut', 'round'
@@ -91,10 +117,6 @@ export default function Tasks() {
     }
     return `${totalSeconds} second${totalSeconds !== 1 ? 's' : ''}${suffix}`;
   }
-  const [iconRotation, setIconRotation] = useState({});
-  const [iconPrevRotation, setIconPrevRotation] = useState({});
-  const rotationIntervals = useRef({});
-  const [darkMode, setDarkMode] = useState(false);
 
   useEffect(() => {
     // Detect dark mode
@@ -108,13 +130,17 @@ export default function Tasks() {
   useEffect(() => {
     let ws;
     let pollingInterval;
+    let queueInterval;
     let wsConnected = false;
     function startPolling() {
       fetchStatus();
-      pollingInterval = setInterval(fetchStatus, 2000);
+      pollingInterval = setInterval(fetchStatus, 500);
+      fetchQueue();
+      queueInterval = setInterval(fetchQueue, 1000);
     }
     function stopPolling() {
       if (pollingInterval) clearInterval(pollingInterval);
+      if (queueInterval) clearInterval(queueInterval);
     }
     // Try to connect to WebSocket
     try {
@@ -122,6 +148,8 @@ export default function Tasks() {
       ws.onopen = () => {
         wsConnected = true;
         stopPolling();
+        fetchQueue();
+        queueInterval = setInterval(fetchQueue, 1000);
       };
       ws.onmessage = (event) => {
         try {
@@ -273,7 +301,6 @@ export default function Tasks() {
   if (!status) return <div style={styles.container}>Error loading task status.</div>;
 
   const schedules = status.schedules || [];
-  const queues = status.queues || [];
 
   return (
     <div style={styles.container}>
@@ -297,6 +324,9 @@ export default function Tasks() {
             <tr key={idx}>
               <td style={styles.td}>{scheduled.name}</td>
               <td style={{...styles.td, textAlign: 'center'}}>{(() => {
+                if (scheduled.interval === 0) {
+                  return <span style={{color: darkMode ? '#888' : '#bbb', fontStyle: 'italic'}}>Disabled</span>;
+                }
                 const status = scheduled.status;
                 if (!status) return <span>-</span>;
                 if (status === 'running') return <span style={{color: darkMode ? '#66aaff' : '#007bff'}}>Running</span>;
@@ -304,10 +334,16 @@ export default function Tasks() {
                 if (status === 'failed') return <span style={{color: darkMode ? '#ff6b6b' : '#dc3545'}}>Failed</span>;
                 return <span>{status}</span>;
               })()}</td>
-              <td style={{...styles.td, textAlign: 'center'}}>{formatInterval(scheduled.interval)}</td>
+              <td style={{...styles.td, textAlign: 'center'}}>{scheduled.interval === 0
+                ? <span style={{color: darkMode ? '#888' : '#bbb', fontStyle: 'italic'}}>Disabled</span>
+                : formatInterval(scheduled.interval)
+              }</td>
               <td style={{...styles.td, textAlign: 'center'}}>{scheduled.lastExecution ? formatTimeDiff({from: new Date(scheduled.lastExecution), to: new Date(), suffix: ' ago', roundType: 'cut'}) : '-'}</td>
               <td style={{...styles.td, textAlign: 'center'}}>{scheduled.lastDuration ? formatDuration(scheduled.lastDuration) : '-'}</td>
-              <td style={{...styles.td, textAlign: 'center'}}>{scheduled.nextExecution ? formatTimeDiff({from: new Date(), to: new Date(scheduled.nextExecution)}) : '-'}</td>
+              <td style={{...styles.td, textAlign: 'center'}}>{scheduled.interval === 0
+                ? <span style={{color: darkMode ? '#888' : '#bbb', fontStyle: 'italic'}}>Disabled</span>
+                : (scheduled.nextExecution ? formatTimeDiff({from: new Date(), to: new Date(scheduled.nextExecution)}) : '-')
+              }</td>
               <td style={{...styles.td, textAlign: 'center'}}>
                 <span
                   style={{
@@ -317,16 +353,20 @@ export default function Tasks() {
                   }}
                 >
                   <FaArrowsRotate
-                    onClick={() => forceExecute(scheduled.taskId)}
+                    onClick={scheduled.status === 'running' ? undefined : () => forceExecute(scheduled.taskId)}
                     className={scheduled.status === 'running' ? 'spin-icon' : ''}
                     style={{
-                      cursor: 'pointer',
+                      cursor: scheduled.status === 'running' ? 'not-allowed' : 'pointer',
+                      opacity: scheduled.status === 'running' ? 0.5 : 1,
                       color: (scheduled.status === 'running')
                         ? (darkMode ? '#66aaff' : '#007bff')
                         : (darkMode ? '#aaa' : '#888'),
+                      ...iconNoOutline,
                     }}
                     size={20}
-                    title="Force Execute"
+                    title={scheduled.status === 'running' ? 'Task is running' : 'Force Execute'}
+                    tabIndex={scheduled.status === 'running' ? -1 : 0}
+                    aria-disabled={scheduled.status === 'running'}
                   />
                 </span>
               </td>
@@ -339,7 +379,7 @@ export default function Tasks() {
         <thead>
           <tr>
             <th style={{...styles.th, textAlign: 'center'}}></th>
-            <th style={styles.th}>Name</th>
+            <th style={styles.th}>Task Name</th>
             <th style={{...styles.th, textAlign: 'center'}}>Queued</th>
             <th style={{...styles.th, textAlign: 'center'}}>Started</th>
             <th style={{...styles.th, textAlign: 'center'}}>Ended</th>
@@ -347,38 +387,47 @@ export default function Tasks() {
           </tr>
         </thead>
         <tbody>
-          {queues.length === 0 ? (
-            <tr><td colSpan={6} style={styles.td}>No queue items</td></tr>
-          ) : queues.map((item, idx) => (
-            <tr key={idx}>
-              <td style={{...styles.td, textAlign: 'center'}}>
-                {(() => {
-                  if (!item.Status) return <span title="Unknown">-</span>;
-                  if (item.Status === 'success') return <span title="Success" style={{color: darkMode ? '#4fdc7b' : '#28a745'}}>&#x2714;</span>;
-                  if (item.Status === 'running') return <span title="Running" style={{color: darkMode ? '#66aaff' : '#007bff'}}>&#x25D4;</span>;
-                  if (item.Status === 'failed') return <span title="Failed" style={{color: darkMode ? '#ff6b6b' : '#dc3545'}}>&#x2716;</span>;
-                  return <span title={item.Status}>{item.Status}</span>;
-                })()}
-              </td>
-              <td style={styles.td}>{item.type}</td>
-              <td style={styles.td}>{item.Queued ? new Date(item.Queued).toLocaleString() : '—'}</td>
-              <td style={styles.td}>{item.Started ? new Date(item.Started).toLocaleString() : '—'}</td>
-              <td style={styles.td}>{item.Ended ? new Date(item.Ended).toLocaleString() : '—'}</td>
-              <td style={styles.td}>{(() => {
-                if (!item.Duration || item.Duration === '') return '—';
-                if (typeof item.Duration === 'number') {
-                  // If > 1s, show seconds, else show ms
-                  if (item.Duration >= 1e9) {
-                    return `${(item.Duration / 1e9).toFixed(2)} s`;
-                  } else {
-                    return `${Math.round(item.Duration / 1e6)} ms`;
+          {(!queueLoading && queues.length === 0) ? (
+            <tr><td colSpan={6} style={{...styles.td, textAlign: 'center'}}>No queue items</td></tr>
+          ) : queues.map((item, idx) => {
+            // Try to get the task name from schedules (by taskId)
+            let taskId = item.TaskId;
+            if (schedules && item.TaskId) {
+              const sch = schedules.find(s => s.taskId === item.TaskId);
+              if (sch && sch.name) taskId = sch.name;
+            }
+            return (
+              <tr key={idx}>
+                <td style={{...styles.td, textAlign: 'center'}}>
+                  {(() => {
+                    if (!item.Status) return <span title="Unknown">-</span>;
+                    if (item.Status === 'success') return <span title="Success" style={{color: darkMode ? '#4fdc7b' : '#28a745'}}>&#x2714;</span>;
+                    if (item.Status === 'running') return <span title="Running" style={{color: darkMode ? '#66aaff' : '#007bff'}}>&#x25D4;</span>;
+                    if (item.Status === 'failed') return <span title="Failed" style={{color: darkMode ? '#ff6b6b' : '#dc3545'}}>&#x2716;</span>;
+                    if (item.Status === 'queued') return <FaClock title="Queued" style={{color: darkMode ? '#ffb300' : '#e6b800', verticalAlign: 'middle'}} />;
+                    return <span title={item.Status}>{item.Status}</span>;
+                  })()}
+                </td>
+                <td style={styles.td}>{taskId || '-'}</td>
+                <td style={{...styles.td, textAlign: 'center'}}>{item.Queued ? new Date(item.Queued).toLocaleString() : '—'}</td>
+                <td style={{...styles.td, textAlign: 'center'}}>{item.Started ? new Date(item.Started).toLocaleString() : '—'}</td>
+                <td style={{...styles.td, textAlign: 'center'}}>{item.Ended ? new Date(item.Ended).toLocaleString() : '—'}</td>
+                <td style={styles.td}>{(() => {
+                  if (!item.Duration || item.Duration === '') return '—';
+                  if (typeof item.Duration === 'number') {
+                    // If > 1s, show seconds, else show ms
+                    if (item.Duration >= 1e9) {
+                      return `${(item.Duration / 1e9).toFixed(2)} s`;
+                    } else {
+                      return `${Math.round(item.Duration / 1e6)} ms`;
+                    }
                   }
-                }
-                // If string, fallback to previous logic
-                return item.Duration;
-              })()}</td>
-            </tr>
-          ))}
+                  // If string, fallback to previous logic
+                  return item.Duration;
+                })()}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

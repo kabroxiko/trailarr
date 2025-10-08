@@ -58,9 +58,8 @@ func GetTMDBId(mediaType MediaType, id int, tmdbKey string) (int, error) {
 }
 
 func GetMovieTMDBId(id int) (int, error) {
-	radarrCache := TrailarrRoot + "/movies.json"
 	var movies []map[string]interface{}
-	if err := ReadJSONFile(radarrCache, &movies); CheckErrLog(WARN, "TMDB", "failed to read or decode Radarr cache", err) != nil {
+	if err := ReadJSONFile(MoviesJSONPath, &movies); CheckErrLog(WARN, "TMDB", "failed to read or decode Radarr cache", err) != nil {
 		return 0, fmt.Errorf("failed to read or decode Radarr cache: %w", err)
 	}
 	for _, m := range movies {
@@ -76,9 +75,8 @@ func GetMovieTMDBId(id int) (int, error) {
 }
 
 func GetTVTMDBId(id int, tmdbKey string) (int, error) {
-	sonarrCache := TrailarrRoot + "/series.json"
 	var series []map[string]interface{}
-	if err := ReadJSONFile(sonarrCache, &series); CheckErrLog(WARN, "TMDB", "failed to read or decode Sonarr cache", err) != nil {
+	if err := ReadJSONFile(SeriesJSONPath, &series); CheckErrLog(WARN, "TMDB", "failed to read or decode Sonarr cache", err) != nil {
 		return 0, fmt.Errorf("failed to read or decode Sonarr cache: %w", err)
 	}
 	var title string

@@ -31,8 +31,7 @@ func RegisterRoutes(r *gin.Engine) {
 		conn.Close()
 	})
 	r.GET("/api/logs/list", func(c *gin.Context) {
-		logDir := TrailarrRoot + "/logs"
-		entries, err := filepath.Glob(logDir + "/*.txt")
+		entries, err := filepath.Glob(LogsDir + "/*.txt")
 		if err != nil {
 			respondError(c, http.StatusInternalServerError, err.Error())
 			return
@@ -54,7 +53,7 @@ func RegisterRoutes(r *gin.Engine) {
 				LastWrite: fi.ModTime().Format("02 Jan 2006 15:04"),
 			})
 		}
-		respondJSON(c, http.StatusOK, gin.H{"logs": logs, "logDir": logDir})
+		respondJSON(c, http.StatusOK, gin.H{"logs": logs, "logDir": LogsDir})
 	})
 	// ...existing code...
 	// Test TMDB API key endpoint
@@ -136,6 +135,7 @@ func RegisterRoutes(r *gin.Engine) {
 
 	// API endpoint for scheduled/queue status
 	r.GET("/api/tasks/status", GetAllTasksStatus())
+	r.GET("/api/tasks/queue", GetTaskQueueFileHandler())
 	r.POST("/api/tasks/force", TaskHandler())
 
 	// Serve React static files and SPA fallback
@@ -145,8 +145,7 @@ func RegisterRoutes(r *gin.Engine) {
 	// Serve log files for frontend log viewer
 	r.GET("/logs/:filename", func(c *gin.Context) {
 		filename := c.Param("filename")
-		logDir := TrailarrRoot + "/logs"
-		filePath := logDir + "/" + filename
+		filePath := LogsDir + "/" + filename
 		// Security: only allow .txt files and prevent path traversal
 		if len(filename) < 5 || filename[len(filename)-4:] != ".txt" || filename != filepath.Base(filename) {
 			respondError(c, http.StatusBadRequest, "Invalid log filename")
@@ -191,8 +190,8 @@ func RegisterRoutes(r *gin.Engine) {
 		fallbackPath string
 		extrasType   MediaType
 	}{
-		{"movies", TrailarrRoot + "/movies.json", TrailarrRoot + "/movies_wanted.json", "/Movies", MediaTypeMovie},
-		{"series", TrailarrRoot + "/series.json", TrailarrRoot + "/series_wanted.json", "/Series", MediaTypeTV},
+		{"movies", MoviesJSONPath, MoviesWantedFile, "/Movies", MediaTypeMovie},
+		{"series", SeriesJSONPath, SeriesWantedFile, "/Series", MediaTypeTV},
 	} {
 		r.GET("/api/"+media.section, GetMediaHandler(media.section, media.cacheFile, "id"))
 		var provider string

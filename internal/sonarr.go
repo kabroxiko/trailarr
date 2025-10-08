@@ -40,7 +40,7 @@ func SyncSonarrImages() error {
 	return SyncMediaImages(
 		"sonarr",
 		"/api/v3/series",
-		TrailarrRoot+"/series.json",
+		SeriesJSONPath,
 		func(m map[string]interface{}) bool {
 			stats, ok := m["statistics"].(map[string]interface{})
 			if !ok {

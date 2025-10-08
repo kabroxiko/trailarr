@@ -4,8 +4,6 @@ import (
 	"time"
 )
 
-// ...existing code...
-
 // Use shared SyncStatus from media.go
 var syncRadarrStatus = NewSyncStatus()
 
@@ -42,7 +40,7 @@ func SyncRadarrImages() error {
 	return SyncMediaImages(
 		"radarr",
 		"/api/v3/movie",
-		TrailarrRoot+"/movies.json",
+		MoviesJSONPath,
 		func(m map[string]interface{}) bool {
 			hasFile, ok := m["hasFile"].(bool)
 			return ok && hasFile

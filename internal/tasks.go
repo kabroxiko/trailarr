@@ -7,16 +7,33 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"sync"
 	"time"
 
-	scheduler "github.com/algorythma/go-scheduler"
-	"github.com/algorythma/go-scheduler/storage"
-	"github.com/algorythma/go-scheduler/task"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
+
+// Unified Task struct: combines metadata, state, and scheduling info
+type Task struct {
+	Meta      TaskMeta
+	State     TaskState
+	Interval  int
+	LogPrefix string
+}
+
+// Unified TaskSchedule struct for status/schedule reporting
+type TaskSchedule struct {
+	TaskID        TaskID    `json:"taskId"`
+	Name          string    `json:"name"`
+	Interval      int       `json:"interval"`
+	LastExecution time.Time `json:"lastExecution"`
+	LastDuration  float64   `json:"lastDuration"`
+	NextExecution time.Time `json:"nextExecution"`
+	Status        string    `json:"status"`
+}
 
 var taskStatusClientsMu sync.Mutex
 var taskStatusClients = make(map[*websocket.Conn]struct{})
@@ -26,129 +43,153 @@ func broadcastTaskStatus(_ map[string]interface{}) {
 	// Always send the current status of all tasks
 	status := getCurrentTaskStatus()
 	taskStatusClientsMu.Lock()
-	numClients := len(taskStatusClients)
-	taskStatusClientsMu.Unlock()
-	TrailarrLog(DEBUG, "Tasks", "[BROADCAST] Sending to %d clients: %v", numClients, status)
-	// Optionally, send to all clients for debug
 	for conn := range taskStatusClients {
 		sendTaskStatus(conn, status)
 	}
+	taskStatusClientsMu.Unlock()
 }
 
-var GlobalTaskTimes TaskTimes
-
-var extrasTaskCancel context.CancelFunc
-var extrasTaskStarted bool // DEBUG: track all changes and reads
-var radarrTaskStarted bool
-var sonarrTaskStarted bool
-
-const (
-	TaskSyncWithRadarr = "Sync with Radarr"
-	TaskSyncWithSonarr = "Sync with Sonarr"
-)
+var GlobalTaskStates TaskStates
 
 const taskTimesFile = "task_times.json"
 
-type Task struct {
-	TaskId        string    `json:"taskId"`
-	Name          string    `json:"-"`
-	Interval      int       `json:"interval"` // minutes
-	LastExecution time.Time `json:"lastExecution"`
-	LastDuration  float64   `json:"lastDuration"` // seconds
-	// NextExecution is not persisted; calculated dynamically
-}
+// TaskID is a string identifier for a scheduled task
+type TaskID string
 
-// TaskTimes is now a map of tasks
-type TaskTimes map[string]Task
-
-// Static map of tasks with id, name, and interval
+// TaskMeta holds static metadata for a task, including its function and order
 type TaskMeta struct {
-	TaskId   string
+	ID       TaskID
 	Name     string
-	Interval int
+	Function func()
+	Order    int
 }
 
-var tasks = map[string]TaskMeta{
-	"radarr": {
-		TaskId:   "radarr",
-		Name:     "Sync with Radarr",
-		Interval: 0, // will be set from config
-	},
-	"sonarr": {
-		TaskId:   "sonarr",
-		Name:     "Sync with Sonarr",
-		Interval: 0, // will be set from config
-	},
-	"extras": {
-		TaskId:   "extras",
-		Name:     "Search for Missing Extras",
-		Interval: 0, // will be set from config
-	},
+// TaskState holds the persistent state for a scheduled task
+type TaskState struct {
+	ID            TaskID    `json:"taskId"`
+	LastExecution time.Time `json:"lastExecution"`
+	LastDuration  float64   `json:"lastDuration"`
+	Status        string    `json:"status"`
 }
 
-func LoadTaskTimes() (TaskTimes, error) {
-	var arr []Task
+// TaskStates maps TaskID to TaskState
+type TaskStates map[TaskID]TaskState
+
+// tasksMeta holds all static task metadata, including the function
+var tasksMeta map[TaskID]TaskMeta
+
+func init() {
+	// On startup, update any 'running' tasks in queue.json to 'queued'
+	var fileQueue []SyncQueueItem
+	if err := ReadJSONFile(QueueFile, &fileQueue); err == nil {
+		changed := false
+		for i := range fileQueue {
+			if fileQueue[i].Status == "running" {
+				fileQueue[i].Status = "queued"
+				changed = true
+			}
+		}
+		if changed {
+			_ = WriteJSONFile(QueueFile, fileQueue)
+		}
+	}
+	tasksMeta = map[TaskID]TaskMeta{
+		"radarr": {ID: "radarr", Name: "Sync with Radarr", Function: SyncRadarr, Order: 1},
+		"sonarr": {ID: "sonarr", Name: "Sync with Sonarr", Function: SyncSonarr, Order: 2},
+		// For scheduling, use the actual extras sync logic, not StartExtrasDownloadTask
+		"extras": {ID: "extras", Name: "Search for Missing Extras", Function: func() { handleExtrasDownloadLoop(context.Background()) }, Order: 3},
+	}
+}
+
+// Helper to get all known TaskIDs
+func AllTaskIDs() []TaskID {
+	ids := make([]TaskID, 0, len(tasksMeta))
+	for id := range tasksMeta {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func LoadTaskStates() (TaskStates, error) {
+	var arr []TaskState
 	path := filepath.Join(TrailarrRoot, taskTimesFile)
 	err := ReadJSONFile(path, &arr)
-	times := make(map[string]Task)
+	states := make(TaskStates)
+	// If file is missing or corrupt, always create/reset with default values
 	if err != nil {
-		// If file does not exist, initialize with empty times and create file
-		if os.IsNotExist(err) {
-			times["radarr"] = Task{TaskId: "radarr", Name: tasks["radarr"].Name, Interval: Timings["radarr"]}
-			times["sonarr"] = Task{TaskId: "sonarr", Name: tasks["sonarr"].Name, Interval: Timings["sonarr"]}
-			times["extras"] = Task{TaskId: "extras", Name: tasks["extras"].Name, Interval: Timings["extras"]}
-			_ = saveTaskTimes(times)
-			GlobalTaskTimes = times
-			return times, nil
+		zeroTime := time.Time{}
+		for id := range tasksMeta {
+			interval := 0
+			if v, ok := Timings[string(id)]; ok {
+				interval = v
+			}
+			if interval == 0 {
+				states[id] = TaskState{ID: id, LastExecution: time.Now(), LastDuration: 0}
+			} else {
+				states[id] = TaskState{ID: id, LastExecution: zeroTime, LastDuration: 0}
+			}
 		}
-		return times, err
+		_ = saveTaskStates(states)
+		GlobalTaskStates = states
+		return states, nil
 	}
 	// Map array entries to map by TaskId
 	for _, t := range arr {
-		// Always set Name from static map
-		t.Name = tasks[t.TaskId].Name
-		t.Interval = Timings[t.TaskId]
-		times[t.TaskId] = t
+		if t.ID == "" {
+			continue // skip invalid entries
+		}
+		// Ignore persisted Status, always set to "idle" on load
+		t.Status = "idle"
+		states[t.ID] = t
 	}
-	GlobalTaskTimes = times
-	return times, nil
+	// Ensure all tasks exist
+	for id := range tasksMeta {
+		if _, ok := states[id]; !ok {
+			states[id] = TaskState{ID: id}
+		}
+	}
+	GlobalTaskStates = states
+	return states, nil
 }
 
-func saveTaskTimes(times map[string]Task) error {
-	GlobalTaskTimes = times
-	arr := make([]Task, 0, len(times))
-	for _, t := range times {
-		arr = append(arr, t)
+func saveTaskStates(states TaskStates) error {
+	GlobalTaskStates = states
+	arr := make([]struct {
+		ID            TaskID    `json:"taskId"`
+		LastExecution time.Time `json:"lastExecution"`
+		LastDuration  float64   `json:"lastDuration"`
+	}, 0, len(states))
+	for id, t := range states {
+		taskId := t.ID
+		if taskId == "" {
+			taskId = id
+		}
+		arr = append(arr, struct {
+			ID            TaskID    `json:"taskId"`
+			LastExecution time.Time `json:"lastExecution"`
+			LastDuration  float64   `json:"lastDuration"`
+		}{
+			ID:            taskId,
+			LastExecution: t.LastExecution,
+			LastDuration:  t.LastDuration,
+		})
 	}
-	return WriteJSONFile(filepath.Join(TrailarrRoot, taskTimesFile), arr)
+	path := filepath.Join(TrailarrRoot, taskTimesFile)
+	err := WriteJSONFile(path, arr)
+	if err != nil {
+		TrailarrLog(ERROR, "Tasks", "[saveTaskStates] Failed to write %s: %v", path, err)
+	} else {
+	}
+	return err
 }
 
 func GetAllTasksStatus() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Use running flags for Radarr/Sonarr
-		var radarrStatus, sonarrStatus, extrasStatus string
-		if radarrTaskStarted {
-			radarrStatus = "running"
-		} else {
-			radarrStatus = "idle"
-		}
-		if sonarrTaskStarted {
-			sonarrStatus = "running"
-		} else {
-			sonarrStatus = "idle"
-		}
-		if extrasTaskStarted {
-			extrasStatus = "running"
-		} else {
-			extrasStatus = "idle"
-		}
-		times := GlobalTaskTimes
-		schedules := buildSchedules(times, radarrStatus, sonarrStatus, extrasStatus)
-		queues := buildTaskQueues()
-		sortTaskQueuesByQueuedDesc(queues)
+		states := GlobalTaskStates
+		schedules := buildSchedules(states)
 		respondJSON(c, http.StatusOK, gin.H{
 			"schedules": schedules,
-			"queues":    queues,
 		})
 	}
 }
@@ -162,36 +203,35 @@ func calcNext(lastExecution time.Time, interval int) time.Time {
 }
 
 // Helper to build schedules array
-func buildSchedules(times map[string]Task, radarrStatus, sonarrStatus, extrasStatus string) []map[string]interface{} {
-	return []map[string]interface{}{
-		{
-			"taskId":        times["radarr"].TaskId,
-			"name":          times["radarr"].Name,
-			"interval":      times["radarr"].Interval,
-			"lastExecution": times["radarr"].LastExecution,
-			"lastDuration":  times["radarr"].LastDuration,
-			"nextExecution": calcNext(times["radarr"].LastExecution, times["radarr"].Interval),
-			"status":        radarrStatus,
-		},
-		{
-			"taskId":        times["sonarr"].TaskId,
-			"name":          times["sonarr"].Name,
-			"interval":      times["sonarr"].Interval,
-			"lastExecution": times["sonarr"].LastExecution,
-			"lastDuration":  times["sonarr"].LastDuration,
-			"nextExecution": calcNext(times["sonarr"].LastExecution, times["sonarr"].Interval),
-			"status":        sonarrStatus,
-		},
-		{
-			"taskId":        times["extras"].TaskId,
-			"name":          times["extras"].Name,
-			"interval":      times["extras"].Interval,
-			"lastExecution": times["extras"].LastExecution,
-			"lastDuration":  times["extras"].LastDuration,
-			"nextExecution": calcNext(times["extras"].LastExecution, times["extras"].Interval),
-			"status":        extrasStatus,
-		},
+func buildSchedules(states TaskStates) []TaskSchedule {
+	schedules := make([]TaskSchedule, 0, len(tasksMeta))
+	// Build a slice of (order, id) pairs for sorting
+	type orderedTask struct {
+		order int
+		id    TaskID
 	}
+	ordered := make([]orderedTask, 0, len(tasksMeta))
+	for id, meta := range tasksMeta {
+		ordered = append(ordered, orderedTask{order: meta.Order, id: id})
+	}
+	sort.Slice(ordered, func(i, j int) bool {
+		return ordered[i].order < ordered[j].order
+	})
+	for _, ot := range ordered {
+		meta := tasksMeta[ot.id]
+		state := states[ot.id]
+		interval := Timings[string(ot.id)]
+		schedules = append(schedules, TaskSchedule{
+			TaskID:        state.ID,
+			Name:          meta.Name,
+			Interval:      interval,
+			LastExecution: state.LastExecution,
+			LastDuration:  state.LastDuration,
+			NextExecution: calcNext(state.LastExecution, interval),
+			Status:        state.Status,
+		})
+	}
+	return schedules
 }
 
 func buildTaskQueues() []map[string]interface{} {
@@ -242,16 +282,25 @@ func sortTaskQueuesByQueuedDesc(queues []map[string]interface{}) {
 }
 
 func TaskHandler() gin.HandlerFunc {
+	// Build tasks map from tasksMeta
 	type forceTask struct {
-		id       string
+		id       TaskID
 		started  *bool
 		syncFunc func()
 		respond  string
 	}
-	tasks := map[string]forceTask{
-		"radarr": {"radarr", &radarrTaskStarted, SyncRadarr, "Sync Radarr forced"},
-		"sonarr": {"sonarr", &sonarrTaskStarted, SyncSonarr, "Sync Sonarr forced"},
-		"extras": {"extras", nil, StartExtrasDownloadTask, "Sync Extras forced"},
+	tasks := make(map[string]forceTask)
+	for id, meta := range tasksMeta {
+		if meta.Function == nil {
+			TrailarrLog(WARN, "Tasks", "No sync function for taskId=%s", id)
+			continue
+		}
+		tasks[string(id)] = forceTask{
+			id:       id,
+			started:  nil,
+			syncFunc: meta.Function,
+			respond:  fmt.Sprintf("Sync %s forced", meta.Name),
+		}
 	}
 	return func(c *gin.Context) {
 		var req struct {
@@ -262,211 +311,142 @@ func TaskHandler() gin.HandlerFunc {
 			return
 		}
 		println("[FORCE] Requested force execution for:", req.TaskId)
-		times, _ := LoadTaskTimes()
 		t, ok := tasks[req.TaskId]
 		if !ok {
-			TrailarrLog(DEBUG, "Tasks", "[FORCE] Unknown job requested: %s", req.TaskId)
 			respondError(c, http.StatusBadRequest, "unknown task")
 			return
 		}
-		TrailarrLog(DEBUG, "Tasks", "[FORCE] Starting %s job at %s", t.id, time.Now().Format(time.RFC3339Nano))
-		if t.started != nil {
-			*t.started = true
-		}
-		broadcastTaskStatus(map[string]interface{}{
-			"schedules": []map[string]interface{}{
-				{
-					"taskId":        times[t.id].TaskId,
-					"name":          times[t.id].Name,
-					"interval":      times[t.id].Interval,
-					"lastExecution": times[t.id].LastExecution,
-					"lastDuration":  times[t.id].LastDuration,
-					"nextExecution": calcNext(times[t.id].LastExecution, times[t.id].Interval),
-					"status":        "running",
-				},
-			},
-		})
-		start := time.Now()
-		t.syncFunc()
-		duration := time.Since(start)
-		if t.started != nil {
-			*t.started = false
-		}
-		broadcastTaskStatus(getCurrentTaskStatus())
-		TrailarrLog(DEBUG, "Tasks", "[FORCE] %s job finished at %s, duration=%s", t.id, time.Now().Format(time.RFC3339Nano), duration.String())
-		taskTimes := times[t.id]
-		taskTimes.LastDuration = duration.Seconds()
-		taskTimes.LastExecution = start
-		times[t.id] = taskTimes
-		saveTaskTimes(times)
-		TrailarrLog(DEBUG, "Tasks", "[FORCE] Updated times.%s: %+v", t.id, times[t.id])
+		// Run all tasks async, status managed in goroutine
+		go func(taskId TaskID, syncFunc func()) {
+			// Copy current in-memory state to avoid overwriting other running statuses
+			states := make(TaskStates)
+			for k, v := range GlobalTaskStates {
+				states[k] = v
+			}
+			// Set running flag for this task only
+			states[taskId] = TaskState{
+				ID:            taskId,
+				LastExecution: states[taskId].LastExecution,
+				LastDuration:  states[taskId].LastDuration,
+				Status:        "running",
+			}
+			GlobalTaskStates = states
+			broadcastTaskStatus(getCurrentTaskStatus())
+			start := time.Now()
+			syncFunc()
+			duration := time.Since(start)
+			// Set idle flag for this task only
+			states[taskId] = TaskState{
+				ID:            taskId,
+				LastExecution: start,
+				LastDuration:  duration.Seconds(),
+				Status:        "idle",
+			}
+			GlobalTaskStates = states
+			broadcastTaskStatus(getCurrentTaskStatus())
+			saveTaskStates(states)
+		}(t.id, t.syncFunc)
 		respondJSON(c, http.StatusOK, gin.H{"status": t.respond})
 	}
 }
 
 func StartBackgroundTasks() {
+	// Periodic heartbeat log to confirm process is alive and clock is advancing
+	go func() {
+		for {
+			time.Sleep(10 * time.Second)
+		}
+	}()
 	TrailarrLog(INFO, "Tasks", "StartBackgroundTasks called. PID=%d, time=%s", os.Getpid(), time.Now().Format(time.RFC3339Nano))
-	TrailarrLog(DEBUG, "Tasks", "StartBackgroundTasks: entering function")
-	times, err := LoadTaskTimes()
+	states, err := LoadTaskStates()
 	if err != nil {
 		TrailarrLog(WARN, "Tasks", "Could not load last task times: %v", err)
 	}
-	TrailarrLog(DEBUG, "Tasks", "Loaded times.Extras: %+v", times["extras"])
 
 	type bgTask struct {
-		id        string
+		id        TaskID
 		started   *bool
 		syncFunc  func()
 		interval  time.Duration
 		lastExec  time.Time
 		logPrefix string
 	}
-	taskList := []bgTask{
-		{"radarr", &radarrTaskStarted, SyncRadarr, time.Duration(Timings["radarr"]) * time.Minute, times["radarr"].LastExecution, "Radarr"},
-		{"sonarr", &sonarrTaskStarted, SyncSonarr, time.Duration(Timings["sonarr"]) * time.Minute, times["sonarr"].LastExecution, "Sonarr"},
-		{"extras", &extrasTaskStarted, StartExtrasDownloadTask, time.Duration(Timings["extras"]) * time.Minute, times["extras"].LastExecution, "Extras"},
-	}
-
-	TrailarrLog(DEBUG, "Tasks", "StartBackgroundTasks: initializing scheduler and storage")
-	store := storage.NewMemoryStorage()
-	sched := scheduler.New(store)
-
-	scheduleNext := func(lastRun string, interval time.Duration, taskId string, runJob func()) {
-		var recur func(string)
-		recur = func(lastRun string) {
-			now := time.Now()
-			var nextRun time.Time
-			if lastRun != "" {
-				last, err := time.Parse(time.RFC3339, lastRun)
-				if err == nil {
-					nextRun = last.Add(interval)
-					if now.After(nextRun) {
-						TrailarrLog(INFO, "Tasks", "Missed %s job, running immediately.", taskId)
-						runJob()
-						TrailarrLog(INFO, "Tasks", "%s job executed at: %s", taskId, now.Format(time.RFC3339))
-						nextRun = now.Add(interval)
-					}
-				} else {
-					nextRun = now.Add(interval)
-				}
-			} else {
-				nextRun = now.Add(interval)
-			}
-			TrailarrLog(INFO, "Tasks", "Next %s execution: %s", taskId, nextRun.Local().Format("Mon Jan 2 15:04:05 2006 MST"))
-			sched.RunAt(nextRun, task.Function(func(params ...task.Param) {
-				runJob()
-				TrailarrLog(INFO, "Tasks", "%s job executed at: %s", taskId, time.Now().Format(time.RFC3339))
-				recur(time.Now().Format(time.RFC3339))
-			}))
+	// Build taskList from tasksMeta
+	var taskList []bgTask
+	for id, meta := range tasksMeta {
+		intervalVal, ok := Timings[string(id)]
+		if !ok {
+			TrailarrLog(WARN, "Tasks", "No interval found in Timings for %s", id)
+			intervalVal = 0
 		}
-		recur(lastRun)
-	}
-
-	shouldRunNowTime := func(lastExecution time.Time, interval time.Duration) bool {
-		if lastExecution.IsZero() {
-			return true
+		interval := time.Duration(intervalVal) * time.Minute
+		lastExec := states[id].LastExecution
+		if meta.Function == nil {
+			TrailarrLog(WARN, "Tasks", "No sync function for taskId=%s", id)
+			continue
 		}
-		return lastExecution.Add(interval).Before(time.Now()) || lastExecution.Add(interval).Equal(time.Now())
-	}
-
-	for i := range taskList {
-		t := &taskList[i]
-		if shouldRunNowTime(t.lastExec, t.interval) {
-			if t.started != nil {
-				*t.started = true
-			}
-			broadcastTaskStatus(getCurrentTaskStatus())
-			start := time.Now()
-			t.syncFunc()
-			duration := time.Since(start)
-			if t.started != nil {
-				*t.started = false
-			}
-			broadcastTaskStatus(getCurrentTaskStatus())
-			taskTimes := times[t.id]
-			taskTimes.LastDuration = duration.Seconds()
-			taskTimes.LastExecution = start
-			times[t.id] = taskTimes
-			saveTaskTimes(times)
-		}
-		TrailarrLog(DEBUG, "Tasks", "StartBackgroundTasks: scheduling %s task with interval=%v, lastExecution=%v", t.logPrefix, t.interval, t.lastExec)
-		scheduleNext(t.lastExec.Format(time.RFC3339), t.interval, t.logPrefix, func() {
-			if t.started != nil {
-				*t.started = true
-			}
-			broadcastTaskStatus(getCurrentTaskStatus())
-			start := time.Now()
-			t.syncFunc()
-			duration := time.Since(start)
-			if t.started != nil {
-				*t.started = false
-			}
-			broadcastTaskStatus(getCurrentTaskStatus())
-			taskTimes := times[t.id]
-			taskTimes.LastDuration = duration.Seconds()
-			taskTimes.LastExecution = start
-			times[t.id] = taskTimes
-			saveTaskTimes(times)
+		taskList = append(taskList, bgTask{
+			id:        id,
+			started:   nil,
+			syncFunc:  meta.Function,
+			interval:  interval,
+			lastExec:  lastExec,
+			logPrefix: meta.Name,
 		})
 	}
 
-	TrailarrLog(DEBUG, "Tasks", "StartBackgroundTasks: starting scheduler goroutine")
-	go func() {
-		TrailarrLog(DEBUG, "Tasks", "Scheduler goroutine: calling sched.Start()")
-		if err := sched.Start(); err != nil {
-			TrailarrLog(WARN, "Tasks", "Scheduler failed to start: %v", err)
-		} else {
-			TrailarrLog(DEBUG, "Tasks", "Scheduler started successfully")
+	// Native Go scheduler: one goroutine per task using time.Ticker
+	for i := range taskList {
+		task := &taskList[i]
+		interval := task.interval
+		if interval <= 0 {
+			TrailarrLog(WARN, "Tasks", "Task %s has non-positive interval, skipping scheduling", task.logPrefix)
+			continue
 		}
-	}()
-
-	TrailarrLog(INFO, "Tasks", "Scheduler started. Jobs will persist last execution times in %s", taskTimesFile)
+		go func(t bgTask) {
+			now := time.Now()
+			initialDelay := t.lastExec.Add(interval).Sub(now)
+			if initialDelay < 0 {
+				initialDelay = 0
+			}
+			time.Sleep(initialDelay)
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				go runTaskAsync(GlobalTaskStates, TaskID(t.id), t.syncFunc)
+				<-ticker.C
+			}
+		}(*task)
+	}
+	TrailarrLog(INFO, "Tasks", "Native Go scheduler started. Jobs will persist last execution times in %s", taskTimesFile)
 }
 
 func StartExtrasDownloadTask() {
-	TrailarrLog(INFO, "Tasks", "StartExtrasDownloadTask called. PID=%d, time=%s, extrasTaskCancel=%v, extrasTaskStarted=%v", os.Getpid(), time.Now().Format(time.RFC3339Nano), extrasTaskCancel, extrasTaskStarted)
-	TrailarrLog(DEBUG, "Tasks", "StartExtrasDownloadTask: entering function")
-	TrailarrLog(DEBUG, "Tasks", "[DEBUG] StartExtrasDownloadTask: checking extrasTaskStarted=%v", extrasTaskStarted)
-	if extrasTaskCancel != nil || extrasTaskStarted {
-		TrailarrLog(WARN, "Tasks", "Attempted to start extras download task, but one is already running. extrasTaskCancel=%v, extrasTaskStarted=%v", extrasTaskCancel, extrasTaskStarted)
-		// Cleanup: reset flags so future tasks can start
-		if extrasTaskCancel != nil {
-			extrasTaskCancel()
-			extrasTaskCancel = nil
-		}
-		TrailarrLog(DEBUG, "Tasks", "[DEBUG] StartExtrasDownloadTask: setting extrasTaskStarted=false (cleanup)")
-		extrasTaskStarted = false
-		TrailarrLog(INFO, "Tasks", "Extras task flags reset after blocked start.")
-		return
+	TrailarrLog(INFO, "Tasks", "[EXTRAS-TRIGGER] StartExtrasDownloadTask called. PID=%d, time=%s", os.Getpid(), time.Now().Format(time.RFC3339Nano))
+	TrailarrLog(INFO, "Tasks", "[EXTRAS-TRIGGER] Call stack: %s", getStackTrace())
+	TrailarrLog(INFO, "Tasks", "Starting extras download task (manual trigger)...")
+	// Manual/forced run: runTaskAsync with the actual sync logic
+	states := make(TaskStates)
+	for k, v := range GlobalTaskStates {
+		states[k] = v
 	}
-	TrailarrLog(DEBUG, "Tasks", "[DEBUG] StartExtrasDownloadTask: setting extrasTaskStarted=true")
-	extrasTaskStarted = true
-	TrailarrLog(INFO, "Tasks", "Starting extras download task... extrasTaskCancel=%v", extrasTaskCancel)
-	ctx, cancel := context.WithCancel(context.Background())
-	extrasTaskCancel = cancel
-	go func() {
-		TrailarrLog(DEBUG, "Tasks", "ExtrasDownloadTask goroutine: started")
-		defer func() {
-			TrailarrLog(DEBUG, "Tasks", "ExtrasDownloadTask goroutine: exiting, setting extrasTaskStarted=false")
-			extrasTaskStarted = false
-			TrailarrLog(DEBUG, "Tasks", "[DEBUG] ExtrasDownloadTask goroutine: extrasTaskStarted now=%v", extrasTaskStarted)
-		}()
-		TrailarrLog(DEBUG, "Tasks", "ExtrasDownloadTask goroutine: calling handleExtrasDownloadLoop, extrasTaskStarted=%v", extrasTaskStarted)
-		handleExtrasDownloadLoop(ctx)
-		TrailarrLog(DEBUG, "Tasks", "ExtrasDownloadTask goroutine: finished handleExtrasDownloadLoop, exiting goroutine")
-	}()
+	go runTaskAsync(states, "extras", func() { handleExtrasDownloadLoop(context.Background()) })
 }
 
 func handleExtrasDownloadLoop(ctx context.Context) bool {
-	TrailarrLog(DEBUG, "Tasks", "handleExtrasDownloadLoop: entered")
-	cfg := mustLoadSearchExtrasConfig()
+	TrailarrLog(INFO, "Tasks", "[EXTRAS-TRIGGER] handleExtrasDownloadLoop entered. PID=%d, time=%s", os.Getpid(), time.Now().Format(time.RFC3339Nano))
+	TrailarrLog(INFO, "Tasks", "[EXTRAS-TRIGGER] Call stack: %s", getStackTrace())
 	interval := getExtrasInterval()
-	TrailarrLog(DEBUG, "Tasks", "handleExtrasDownloadLoop: loaded config=%+v, interval=%v", cfg, interval)
-	processExtras(ctx, cfg)
-	TrailarrLog(DEBUG, "Tasks", "handleExtrasDownloadLoop: processExtras complete, waiting or done")
+	processExtras(ctx)
 	result := waitOrDone(ctx, time.Duration(interval)*time.Minute)
-	TrailarrLog(DEBUG, "Tasks", "handleExtrasDownloadLoop: waitOrDone returned %v", result)
 	return result
+}
+
+// getStackTrace returns a string with the current call stack for debugging triggers
+func getStackTrace() string {
+	buf := make([]byte, 2048)
+	n := runtime.Stack(buf, false)
+	return string(buf[:n])
 }
 
 func waitOrDone(ctx context.Context, d time.Duration) bool {
@@ -479,16 +459,6 @@ func waitOrDone(ctx context.Context, d time.Duration) bool {
 	}
 }
 
-func mustLoadSearchExtrasConfig() SearchExtrasConfig {
-	cfg, err := GetSearchExtrasConfig()
-	if CheckErrLog(WARN, "Tasks", "Could not load search extras config", err) != nil {
-		cfg.SearchMoviesExtras = true
-		cfg.SearchSeriesExtras = true
-		cfg.AutoDownloadExtras = true
-	}
-	return cfg
-}
-
 func getExtrasInterval() int {
 	interval := 360 // default 6 hours
 	if v, ok := Timings["extras"]; ok {
@@ -497,59 +467,75 @@ func getExtrasInterval() int {
 	return interval
 }
 
-func processExtras(ctx context.Context, cfg SearchExtrasConfig) {
-	TrailarrLog(DEBUG, "Tasks", "processExtras: entering function with config: %+v", cfg)
+func processExtras(ctx context.Context) {
 	extraTypesCfg, err := GetExtraTypesConfig()
 	CheckErrLog(WARN, "Tasks", "Could not load extra types config", err)
-	if cfg.SearchMoviesExtras {
-		TrailarrLog(INFO, "Tasks", "[TASK] Searching for missing movie extras...")
-		DownloadMissingMoviesExtrasWithTypeFilter(ctx, extraTypesCfg)
-	} else {
-		TrailarrLog(DEBUG, "Tasks", "processExtras: SearchMoviesExtras is disabled")
-	}
-	if cfg.SearchSeriesExtras {
-		TrailarrLog(INFO, "Tasks", "[TASK] Searching for missing series extras...")
-		DownloadMissingSeriesExtrasWithTypeFilter(ctx, extraTypesCfg)
-	} else {
-		TrailarrLog(DEBUG, "Tasks", "processExtras: SearchSeriesExtras is disabled")
-	}
+	TrailarrLog(INFO, "Tasks", "[TASK] Searching for missing movie extras...")
+	downloadMissingExtrasWithTypeFilter(ctx, extraTypesCfg, "movie", TrailarrRoot+"/movies_wanted.json")
+	TrailarrLog(INFO, "Tasks", "[TASK] Searching for missing series extras...")
+	downloadMissingExtrasWithTypeFilter(ctx, extraTypesCfg, "tv", TrailarrRoot+"/series_wanted.json")
 }
 
 func StopExtrasDownloadTask() {
-	TrailarrLog(DEBUG, "Tasks", "[DEBUG] StopExtrasDownloadTask: checking extrasTaskStarted=%v", extrasTaskStarted)
-	if extrasTaskCancel != nil || extrasTaskStarted {
-		TrailarrLog(INFO, "Tasks", "Stopping extras download task... extrasTaskCancel=%v, extrasTaskStarted=%v", extrasTaskCancel, extrasTaskStarted)
-		if extrasTaskCancel != nil {
-			extrasTaskCancel()
-			extrasTaskCancel = nil
+	states, _ := LoadTaskStates()
+	if states["extras"].Status == "running" {
+		TrailarrLog(INFO, "Tasks", "Stopping extras download task... extrasTaskState.Status=%v", states["extras"].Status)
+		states["extras"] = TaskState{
+			ID:            "extras",
+			LastExecution: states["extras"].LastExecution,
+			LastDuration:  states["extras"].LastDuration,
+			Status:        "idle",
 		}
-		TrailarrLog(DEBUG, "Tasks", "[DEBUG] StopExtrasDownloadTask: setting extrasTaskStarted=false")
-		extrasTaskStarted = false
+		saveTaskStates(states)
 	} else {
-		TrailarrLog(INFO, "Tasks", "StopExtrasDownloadTask called but extrasTaskCancel is nil and extrasTaskStarted is false")
+		TrailarrLog(INFO, "Tasks", "StopExtrasDownloadTask called but extrasTaskState.Status is not running")
 	}
-}
-
-// Download missing movie extras, filtering by enabled types
-func DownloadMissingMoviesExtrasWithTypeFilter(ctx context.Context, cfg ExtraTypesConfig) {
-	// Example: get all movies, for each, get extras, filter by type, download only enabled types
-	downloadMissingExtrasWithTypeFilter(ctx, cfg, "movie", TrailarrRoot+"/movies_wanted.json")
-}
-
-// Download missing series extras, filtering by enabled types
-func DownloadMissingSeriesExtrasWithTypeFilter(ctx context.Context, cfg ExtraTypesConfig) {
-	downloadMissingExtrasWithTypeFilter(ctx, cfg, "tv", TrailarrRoot+"/series_wanted.json")
 }
 
 // Shared logic for type-filtered extras download
 func downloadMissingExtrasWithTypeFilter(ctx context.Context, cfg ExtraTypesConfig, mediaType MediaType, cacheFile string) {
-	TrailarrLog(DEBUG, "Tasks", "Starting downloadMissingExtrasWithTypeFilter: mediaType=%v, cacheFile=%s", mediaType, cacheFile)
+	// --- QUEUE: Add extras batch task to queue.json on start ---
+	queued := time.Now()
+	queueSection := "extras"
+	item := SyncQueueItem{
+		TaskId:  queueSection,
+		Queued:  queued,
+		Status:  "running",
+		Started: queued,
+	}
+	var fileQueue []SyncQueueItem
+	if err := ReadJSONFile(QueueFile, &fileQueue); err != nil {
+		TrailarrLog(ERROR, "QUEUE", "[EXTRAS] (TypeFilter) Failed to read queue file: %v", err)
+	}
+	fileQueue = append(fileQueue, item)
+	if err := WriteJSONFile(QueueFile, fileQueue); err != nil {
+		TrailarrLog(ERROR, "QUEUE", "[EXTRAS] (TypeFilter) Failed to write queue file: %v", err)
+	} else {
+		TrailarrLog(INFO, "QUEUE", "[EXTRAS] (TypeFilter) Wrote new extras batch task to queue: %s", queueSection)
+	}
+
 	items, err := loadCache(cacheFile)
-	if CheckErrLog(DEBUG, "Tasks", "Failed to load cache", err) != nil {
-		TrailarrLog(DEBUG, "Tasks", "No items loaded from cache: %s", cacheFile)
+	if err != nil {
+		// --- QUEUE: update as failed ---
+		if err := ReadJSONFile(QueueFile, &fileQueue); err != nil {
+			TrailarrLog(ERROR, "QUEUE", "[EXTRAS] (TypeFilter) Failed to read queue file for fail update: %v", err)
+		}
+		for i := len(fileQueue) - 1; i >= 0; i-- {
+			if fileQueue[i].TaskId == queueSection && fileQueue[i].Queued.Equal(queued) {
+				fileQueue[i].Status = "failed"
+				fileQueue[i].Started = queued
+				fileQueue[i].Ended = time.Now()
+				fileQueue[i].Duration = time.Since(queued)
+				fileQueue[i].Error = err.Error()
+				TrailarrLog(INFO, "QUEUE", "[EXTRAS] (TypeFilter) Marked extras batch task as failed in queue: %s", queueSection)
+				break
+			}
+		}
+		if err := WriteJSONFile(QueueFile, fileQueue); err != nil {
+			TrailarrLog(ERROR, "QUEUE", "[EXTRAS] (TypeFilter) Failed to write queue file for fail update: %v", err)
+		}
 		return
 	}
-	TrailarrLog(DEBUG, "Tasks", "Loaded %d items from cache", len(items))
 
 	for _, item := range items {
 		if ctx != nil && ctx.Err() != nil {
@@ -558,22 +544,18 @@ func downloadMissingExtrasWithTypeFilter(ctx context.Context, cfg ExtraTypesConf
 		}
 		mediaId, ok := parseMediaID(item["id"])
 		if !ok {
-			TrailarrLog(DEBUG, "Tasks", "Skipping item with invalid mediaId: %+v", item)
 			continue
 		}
-		TrailarrLog(DEBUG, "Tasks", "Processing mediaId=%v", mediaId)
 		extras, err := SearchExtras(mediaType, mediaId)
 		if err != nil {
 			TrailarrLog(WARN, "Tasks", "SearchExtras failed for mediaId=%v: %v", mediaId, err)
 			continue
 		}
-		TrailarrLog(DEBUG, "Tasks", "Found %d extras for mediaId=%v", len(extras), mediaId)
 		mediaPath, err := FindMediaPathByID(cacheFile, mediaId)
 		if err != nil || mediaPath == "" {
 			TrailarrLog(WARN, "Tasks", "FindMediaPathByID failed for mediaId=%v: %v", mediaId, err)
 			continue
 		}
-		TrailarrLog(DEBUG, "Tasks", "Media path for mediaId=%v: %s", mediaId, mediaPath)
 		MarkDownloadedExtras(extras, mediaPath, "type", "title")
 		// Defensive: mark rejected extras before any download
 		rejectedExtras := GetRejectedExtrasForMedia(mediaType, mediaId)
@@ -597,11 +579,9 @@ func downloadMissingExtrasWithTypeFilter(ctx context.Context, cfg ExtraTypesConf
 				continue
 			}
 			if extra.Status == "rejected" {
-				TrailarrLog(DEBUG, "Tasks", "[SEQ] Skipping rejected extra: mediaType=%v, mediaId=%v, type=%s, title=%s, youtubeId=%s", mediaType, mediaId, extra.Type, extra.Title, extra.YoutubeId)
 				continue
 			}
 			if extra.Status == "missing" && extra.YoutubeId != "" {
-				TrailarrLog(DEBUG, "Tasks", "[SEQ] Downloading extra: mediaType=%v, mediaId=%v, type=%s, title=%s, youtubeId=%s", mediaType, mediaId, extra.Type, extra.Title, extra.YoutubeId)
 				err := handleTypeFilteredExtraDownload(mediaType, mediaId, extra)
 				if err != nil {
 					TrailarrLog(WARN, "Tasks", "[SEQ] Download failed: %v", err)
@@ -609,11 +589,28 @@ func downloadMissingExtrasWithTypeFilter(ctx context.Context, cfg ExtraTypesConf
 			}
 		}
 	}
-	TrailarrLog(DEBUG, "Tasks", "All downloads finished.")
+	// --- QUEUE: update as success ---
+	if err := ReadJSONFile(QueueFile, &fileQueue); err != nil {
+		TrailarrLog(ERROR, "QUEUE", "[EXTRAS] (TypeFilter) Failed to read queue file for success update: %v", err)
+	}
+	for i := len(fileQueue) - 1; i >= 0; i-- {
+		if fileQueue[i].TaskId == queueSection && fileQueue[i].Queued.Equal(queued) {
+			fileQueue[i].Status = "success"
+			fileQueue[i].Started = queued
+			fileQueue[i].Ended = time.Now()
+			fileQueue[i].Duration = time.Since(queued)
+			fileQueue[i].Error = ""
+			TrailarrLog(INFO, "QUEUE", "[EXTRAS] (TypeFilter) Marked extras batch task as success in queue: %s", queueSection)
+			break
+		}
+	}
+	if err := WriteJSONFile(QueueFile, fileQueue); err != nil {
+		TrailarrLog(ERROR, "QUEUE", "[EXTRAS] (TypeFilter) Failed to write queue file for success update: %v", err)
+	}
 }
 
+// Handles downloading a single extra and appending to history if successful
 func handleTypeFilteredExtraDownload(mediaType MediaType, mediaId int, extra Extra) error {
-	TrailarrLog(DEBUG, "Tasks", "Downloading YouTube extra: mediaType=%v, mediaId=%v, type=%s, title=%s, youtubeId=%s", mediaType, mediaId, extra.Type, extra.Title, extra.YoutubeId)
 	_, err := DownloadYouTubeExtra(mediaType, mediaId, extra.Type, extra.Title, extra.YoutubeId)
 	if err != nil {
 		TrailarrLog(WARN, "Tasks", "DownloadYouTubeExtra failed: %v", err)
@@ -706,25 +703,9 @@ func sendTaskStatus(conn *websocket.Conn, status interface{}) {
 
 // Returns a map with all tasks' current status for broadcasting
 func getCurrentTaskStatus() map[string]interface{} {
-	times := GlobalTaskTimes
-	var radarrStatus, sonarrStatus, extrasStatus string
-	if radarrTaskStarted {
-		radarrStatus = "running"
-	} else {
-		radarrStatus = "idle"
-	}
-	if sonarrTaskStarted {
-		sonarrStatus = "running"
-	} else {
-		sonarrStatus = "idle"
-	}
-	if extrasTaskStarted {
-		extrasStatus = "running"
-	} else {
-		extrasStatus = "idle"
-	}
+	states := GlobalTaskStates
 	return map[string]interface{}{
-		"schedules": buildSchedules(times, radarrStatus, sonarrStatus, extrasStatus),
+		"schedules": buildSchedules(states),
 	}
 }
 
@@ -742,6 +723,41 @@ func GetSyncStatusHandler(section string, status *SyncStatus, displayName string
 				"lastError":     LastError(status),
 			},
 			"queue": Queue(status),
+		})
+	}
+}
+
+// Helper to run a task async and manage status
+func runTaskAsync(states TaskStates, taskId TaskID, syncFunc func()) {
+	// Set running flag
+	GlobalTaskStates[taskId] = TaskState{
+		ID:            taskId,
+		LastExecution: GlobalTaskStates[taskId].LastExecution, // unchanged until end
+		LastDuration:  GlobalTaskStates[taskId].LastDuration,
+		Status:        "running",
+	}
+	broadcastTaskStatus(getCurrentTaskStatus())
+	start := time.Now()
+	syncFunc()
+	duration := time.Since(start)
+	// Set idle flag and update LastExecution to NOW (end of task)
+	GlobalTaskStates[taskId] = TaskState{
+		ID:            taskId,
+		LastExecution: time.Now(),
+		LastDuration:  duration.Seconds(),
+		Status:        "idle",
+	}
+	broadcastTaskStatus(getCurrentTaskStatus())
+	saveTaskStates(GlobalTaskStates)
+}
+
+// Handler to return only the queue items as 'queues' array
+func GetTaskQueueHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		queues := buildTaskQueues()
+		sortTaskQueuesByQueuedDesc(queues)
+		c.JSON(http.StatusOK, gin.H{
+			"queues": queues,
 		})
 	}
 }

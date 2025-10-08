@@ -16,7 +16,7 @@ func main() {
 	cleanYTDLPTmpDirs()
 
 	// Ensure cookies.txt exists and is in Netscape format
-	cookiesPath := internal.TrailarrRoot + "/cookies.txt"
+	cookiesPath := internal.CookiesFile
 	ensureNetscapeCookiesFile(cookiesPath)
 	// Ensure config.yml exists and is filled with defaults
 	_ = internal.EnsureConfigDefaults()
@@ -25,7 +25,7 @@ func main() {
 		internal.TrailarrLog(internal.WARN, "Startup", "Could not load config.yml: %v", err)
 	}
 	// Only log backend/server logs to file. Gin (frontend HTTP) logs go to stdout only.
-	logDir := internal.TrailarrRoot + "/logs"
+	logDir := internal.LogsDir
 	logFile := logDir + "/trailarr.txt"
 	_ = os.MkdirAll(logDir, 0775)
 	internal.InitTrailarrLogWriter(logFile)
@@ -41,10 +41,10 @@ func main() {
 	internal.TrailarrLog(internal.INFO, "Startup", "Sync timings: %v", timings)
 
 	// Load task_times.json into memory at startup
-	if _, err := internal.LoadTaskTimes(); err != nil {
+	if _, err := internal.LoadTaskStates(); err != nil {
 		internal.TrailarrLog(internal.WARN, "Startup", "Could not load task_times.json: %v", err)
 	}
-	internal.TrailarrLog(internal.DEBUG, "Startup", "Loaded GlobalTaskTimes: %+v", internal.GlobalTaskTimes)
+	internal.TrailarrLog(internal.DEBUG, "Startup", "Loaded GlobalTaskStates: %+v", internal.GlobalTaskStates)
 	r := gin.Default()
 	internal.RegisterRoutes(r)
 	go internal.StartBackgroundTasks()

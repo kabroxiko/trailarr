@@ -28,7 +28,7 @@ const HistoryPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [page, setPage] = useState(1);
-  const pageSize = 10;
+  const pageSize = 20;
   const totalPages = Math.ceil(history.length / pageSize);
   const paginatedHistory = history.slice((page - 1) * pageSize, page * pageSize);
 

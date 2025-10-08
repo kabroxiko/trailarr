@@ -15,6 +15,14 @@ const (
 	TrailarrRoot             = "/var/lib/trailarr"
 	ConfigPath               = TrailarrRoot + "/config/config.yml"
 	MediaCoverPath           = TrailarrRoot + "/MediaCover"
+	MoviesJSONPath           = TrailarrRoot + "/movies.json"
+	SeriesJSONPath           = TrailarrRoot + "/series.json"
+	MoviesWantedFile         = TrailarrRoot + "/movies_wanted.json"
+	SeriesWantedFile         = TrailarrRoot + "/series_wanted.json"
+	QueueFile                = TrailarrRoot + "/queue.json"
+	CookiesFile              = TrailarrRoot + "/cookies.txt"
+	LogsDir                  = TrailarrRoot + "/logs"
+	HistoryFile              = TrailarrRoot + "/history.json"
 	ErrInvalidSonarrSettings = "Invalid Sonarr settings"
 	RemoteMediaCoverPath     = "/MediaCover/"
 	HeaderApiKey             = "X-Api-Key"
@@ -429,13 +437,6 @@ func SaveYtdlpFlagsConfigHandler(c *gin.Context) {
 
 var Timings map[string]int
 
-// SearchExtrasConfig holds config for searching movie/series extras
-type SearchExtrasConfig struct {
-	SearchMoviesExtras bool `yaml:"searchMoviesExtras" json:"searchMoviesExtras"`
-	SearchSeriesExtras bool `yaml:"searchSeriesExtras" json:"searchSeriesExtras"`
-	AutoDownloadExtras bool `yaml:"autoDownloadExtras" json:"autoDownloadExtras"`
-}
-
 // ExtraTypesConfig holds config for enabling/disabling specific extra types
 type ExtraTypesConfig struct {
 	Trailers        bool `yaml:"trailers" json:"trailers"`
@@ -544,76 +545,15 @@ func SaveExtraTypesConfigHandler(c *gin.Context) {
 	respondJSON(c, http.StatusOK, gin.H{"status": "saved"})
 }
 
-// GetSearchExtrasConfig loads search extras config from config.yml
-func GetSearchExtrasConfig() (SearchExtrasConfig, error) {
-	if Config == nil {
-		return SearchExtrasConfig{SearchMoviesExtras: true, SearchSeriesExtras: true, AutoDownloadExtras: true}, nil
-	}
-	sec, ok := Config["searchExtras"].(map[string]interface{})
-	if !ok {
-		return SearchExtrasConfig{SearchMoviesExtras: true, SearchSeriesExtras: true, AutoDownloadExtras: true}, nil
-	}
-	cfg := SearchExtrasConfig{}
-	if v, ok := sec["searchMoviesExtras"].(bool); ok {
-		cfg.SearchMoviesExtras = v
-	} else {
-		cfg.SearchMoviesExtras = true
-	}
-	if v, ok := sec["searchSeriesExtras"].(bool); ok {
-		cfg.SearchSeriesExtras = v
-	} else {
-		cfg.SearchSeriesExtras = true
-	}
-	if v, ok := sec["autoDownloadExtras"].(bool); ok {
-		cfg.AutoDownloadExtras = v
-	} else {
-		cfg.AutoDownloadExtras = true
-	}
-	return cfg, nil
-}
-
-// SaveSearchExtrasConfig saves search extras config to config.yml
-func SaveSearchExtrasConfig(cfg SearchExtrasConfig) error {
-	config, err := readConfigFile()
-	if CheckErrLog(WARN, "Settings", "readConfigFile failed", err) != nil {
-		config = map[string]interface{}{}
-	}
-	config["searchExtras"] = map[string]interface{}{
-		"searchMoviesExtras": cfg.SearchMoviesExtras,
-		"searchSeriesExtras": cfg.SearchSeriesExtras,
-		"autoDownloadExtras": cfg.AutoDownloadExtras,
-	}
-	err = writeConfigFile(config)
-	if err == nil {
-		// Update in-memory config
-		if Config != nil {
-			Config["searchExtras"] = config["searchExtras"]
-		}
-	}
-	return err
-}
-
 // Handler to get search extras config
 func GetSearchExtrasConfigHandler(c *gin.Context) {
-	cfg, err := GetSearchExtrasConfig()
-	if err != nil {
-		respondJSON(c, http.StatusOK, gin.H{"searchMoviesExtras": true, "searchSeriesExtras": true})
-		return
-	}
-	respondJSON(c, http.StatusOK, gin.H{"searchMoviesExtras": cfg.SearchMoviesExtras, "searchSeriesExtras": cfg.SearchSeriesExtras})
+	// Legacy fields removed; always return empty
+	respondJSON(c, http.StatusOK, gin.H{})
 }
 
 // Handler to save search extras config
 func SaveSearchExtrasConfigHandler(c *gin.Context) {
-	var req SearchExtrasConfig
-	if err := c.BindJSON(&req); err != nil {
-		respondError(c, http.StatusBadRequest, ErrInvalidRequest)
-		return
-	}
-	if err := SaveSearchExtrasConfig(req); err != nil {
-		respondError(c, http.StatusInternalServerError, err.Error())
-		return
-	}
+	// Legacy fields removed; always return success
 	respondJSON(c, http.StatusOK, gin.H{"status": "saved"})
 }
 
@@ -942,21 +882,21 @@ func saveGeneralSettingsHandler(c *gin.Context) {
 	}
 	general := config["general"].(map[string]interface{})
 	general["tmdbKey"] = req.TMDBApiKey
-	var prevAutoDownload bool
-	if v, ok := general["autoDownloadExtras"].(bool); ok {
-		prevAutoDownload = v
-	} else {
-		prevAutoDownload = true
-	}
-	if req.AutoDownloadExtras != nil {
-		general["autoDownloadExtras"] = *req.AutoDownloadExtras
-		// Trigger start/stop of extras download task if changed
-		if *req.AutoDownloadExtras && !prevAutoDownload {
-			StartExtrasDownloadTask()
-		} else if !*req.AutoDownloadExtras && prevAutoDownload {
-			StopExtrasDownloadTask()
-		}
-	}
+	// var prevAutoDownload bool
+	// if v, ok := general["autoDownloadExtras"].(bool); ok {
+	// 	prevAutoDownload = v
+	// } else {
+	// 	prevAutoDownload = true
+	// }
+	// if req.AutoDownloadExtras != nil {
+	// 	general["autoDownloadExtras"] = *req.AutoDownloadExtras
+	// 	// Trigger start/stop of extras download task if changed
+	// 	if *req.AutoDownloadExtras && !prevAutoDownload {
+	// 		StartExtrasDownloadTask()
+	// 	} else if !*req.AutoDownloadExtras && prevAutoDownload {
+	// 		StopExtrasDownloadTask()
+	// 	}
+	// }
 	if req.LogLevel != "" {
 		general["logLevel"] = req.LogLevel
 	}

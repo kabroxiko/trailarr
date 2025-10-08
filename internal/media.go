@@ -127,53 +127,6 @@ func UpdateSyncQueueItem(item *SyncQueueItem, status string, started, ended time
 	}
 }
 
-func saveQueue() {
-	// Only save if queue is non-empty
-	if len(GlobalSyncQueue) == 0 {
-		return
-	}
-	f, err := os.Create(queueFile)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	// Convert zero time fields to nil for JSON output
-	type queueItemOut struct {
-		TaskId   string         `json:"TaskId"`
-		Queued   time.Time      `json:"Queued"`
-		Started  *time.Time     `json:"Started"`
-		Ended    *time.Time     `json:"Ended"`
-		Duration *time.Duration `json:"Duration"`
-		Status   string         `json:"Status"`
-		Error    string         `json:"Error"`
-	}
-	out := make([]queueItemOut, 0, len(GlobalSyncQueue))
-	for _, item := range GlobalSyncQueue {
-		var startedPtr, endedPtr *time.Time
-		var durationPtr *time.Duration
-		if !item.Started.IsZero() {
-			startedPtr = &item.Started
-			if !item.Ended.IsZero() {
-				endedPtr = &item.Ended
-			}
-			// Duration is only valid if Started and Ended are set
-			if endedPtr != nil && item.Duration > 0 {
-				durationPtr = &item.Duration
-			}
-			out = append(out, queueItemOut{
-				TaskId:   item.TaskId,
-				Queued:   item.Queued,
-				Started:  startedPtr,
-				Ended:    endedPtr,
-				Duration: durationPtr,
-				Status:   item.Status,
-				Error:    item.Error,
-			})
-		}
-		_ = json.NewEncoder(f).Encode(out)
-	}
-}
-
 // SyncMedia executes a sync for the given section ("radarr" or "sonarr")
 // syncFunc: function to perform the sync (e.g. SyncRadarrImages or SyncSonarrImages)
 // timings: map of intervals (e.g. Timings)
@@ -190,39 +143,24 @@ func SyncMedia(
 ) {
 	println("[FORCE] Executing Sync", section, "...")
 	TrailarrLog(INFO, "SyncService", "Starting sync for section: %s", section)
-	// Truncate queue before adding new item to avoid idx out of range
-	if len(GlobalSyncQueue) >= 10 {
-		GlobalSyncQueue = GlobalSyncQueue[len(GlobalSyncQueue)-9:]
-	}
+	// Add new queue item to file on start
+	queued := time.Now()
 	item := SyncQueueItem{
-		TaskId: section,
-		Queued: time.Now(),
-		Status: "queued",
+		TaskId:  section,
+		Queued:  queued,
+		Status:  "running",
+		Started: queued,
 	}
-	GlobalSyncQueue = append(GlobalSyncQueue, item)
-	saveQueue()
-
-	// Find the last index for the current section (radarr or sonarr)
-	idx := -1
-	for i := len(GlobalSyncQueue) - 1; i >= 0; i-- {
-		if GlobalSyncQueue[i].TaskId == section {
-			idx = i
-			break
-		}
-	}
-	if idx == -1 {
-		println("[ERROR] Could not find queue item for section:", section)
-		return
-	}
-
-	started := time.Now()
-	UpdateSyncQueueItem(&GlobalSyncQueue[idx], "running", started, started, 0, nil)
-	saveQueue()
+	// Read queue file
+	var fileQueue []SyncQueueItem
+	_ = ReadJSONFile(QueueFile, &fileQueue)
+	fileQueue = append(fileQueue, item)
+	_ = WriteJSONFile(QueueFile, fileQueue)
 
 	TrailarrLog(DEBUG, "SyncService", "Invoking syncFunc for section: %s", section)
 	err := syncFunc()
 	ended := time.Now()
-	duration := ended.Sub(started)
+	duration := ended.Sub(queued)
 	status := "success"
 	if err != nil {
 		status = "failed"
@@ -230,13 +168,28 @@ func SyncMedia(
 	} else {
 		TrailarrLog(INFO, "SyncService", "Synced cache for %s.", section)
 	}
-	UpdateSyncQueueItem(&GlobalSyncQueue[idx], status, started, ended, duration, err)
-	saveQueue()
+	// Update the last queue item for this section (by TaskId and Queued)
+	_ = ReadJSONFile(QueueFile, &fileQueue)
+	for i := len(fileQueue) - 1; i >= 0; i-- {
+		if fileQueue[i].TaskId == section && fileQueue[i].Queued.Equal(queued) {
+			fileQueue[i].Status = status
+			fileQueue[i].Started = queued
+			fileQueue[i].Ended = ended
+			fileQueue[i].Duration = duration
+			if err != nil {
+				fileQueue[i].Error = err.Error()
+			} else {
+				fileQueue[i].Error = ""
+			}
+			break
+		}
+	}
+	_ = WriteJSONFile(QueueFile, fileQueue)
 	TrailarrLog(INFO, "SyncService", "Finished sync for section: %s", section)
-	*lastExecution = GlobalSyncQueue[idx].Ended
-	*lastDuration = GlobalSyncQueue[idx].Duration
+	*lastExecution = ended
+	*lastDuration = duration
 	interval := timings[section]
-	*nextExecution = GlobalSyncQueue[idx].Ended.Add(time.Duration(interval) * time.Minute)
+	*nextExecution = ended.Add(time.Duration(interval) * time.Minute)
 }
 
 // Helper to fetch and cache poster image
@@ -367,9 +320,9 @@ func loadCache(path string) ([]map[string]interface{}, error) {
 // Helper: Detect media type and main cache path
 func detectMediaTypeAndMainCachePath(path string) (MediaType, string) {
 	if strings.Contains(path, "movie") || strings.Contains(path, "Movie") {
-		return MediaTypeMovie, TrailarrRoot + "/movies.json"
+		return MediaTypeMovie, MoviesJSONPath
 	} else if strings.Contains(path, "series") || strings.Contains(path, "Series") {
-		return MediaTypeTV, TrailarrRoot + "/series.json"
+		return MediaTypeTV, SeriesJSONPath
 	}
 	return "", ""
 }

@@ -62,9 +62,9 @@ func deleteExtraHandler(c *gin.Context) {
 func resolveCachePath(mediaType MediaType) (string, error) {
 	switch mediaType {
 	case MediaTypeMovie:
-		return TrailarrRoot + "/movies.json", nil
+		return MoviesJSONPath, nil
 	case MediaTypeTV:
-		return TrailarrRoot + "/series.json", nil
+		return SeriesJSONPath, nil
 	}
 	return "", fmt.Errorf("unknown media type: %v", mediaType)
 }
@@ -382,8 +382,48 @@ func MarkDownloadedExtras(extras []Extra, mediaPath string, typeKey, titleKey st
 // DownloadMissingExtras downloads missing extras for a given media type ("movie" or "tv")
 func DownloadMissingExtras(mediaType MediaType, cacheFile string) error {
 	TrailarrLog(INFO, "DownloadMissingExtras", "DownloadMissingExtras: mediaType=%s, cacheFile=%s", mediaType, cacheFile)
+	TrailarrLog(INFO, "QUEUE", "[EXTRAS] Attempting to add extras task to queue for %s", mediaType)
+	// --- QUEUE: Add extras task to queue.json on start ---
+	queued := time.Now()
+	queueSection := "extras-" + string(mediaType)
+	item := SyncQueueItem{
+		TaskId:  queueSection,
+		Queued:  queued,
+		Status:  "running",
+		Started: queued,
+	}
+	var fileQueue []SyncQueueItem
+	if err := ReadJSONFile(QueueFile, &fileQueue); err != nil {
+		TrailarrLog(ERROR, "QUEUE", "[EXTRAS] Failed to read queue file: %v", err)
+	}
+	fileQueue = append(fileQueue, item)
+	if err := WriteJSONFile(QueueFile, fileQueue); err != nil {
+		TrailarrLog(ERROR, "QUEUE", "[EXTRAS] Failed to write queue file: %v", err)
+	} else {
+		TrailarrLog(INFO, "QUEUE", "[EXTRAS] Wrote new extras task to queue: %s", queueSection)
+	}
+
 	items, err := loadCache(cacheFile)
 	if CheckErrLog(WARN, "DownloadMissingExtras", "Failed to load cache", err) != nil {
+		TrailarrLog(ERROR, "QUEUE", "[EXTRAS] Failed to load cache for %s: %v", mediaType, err)
+		// --- QUEUE: update as failed ---
+		if err := ReadJSONFile(QueueFile, &fileQueue); err != nil {
+			TrailarrLog(ERROR, "QUEUE", "[EXTRAS] Failed to read queue file for fail update: %v", err)
+		}
+		for i := len(fileQueue) - 1; i >= 0; i-- {
+			if fileQueue[i].TaskId == queueSection && fileQueue[i].Queued.Equal(queued) {
+				fileQueue[i].Status = "failed"
+				fileQueue[i].Started = queued
+				fileQueue[i].Ended = time.Now()
+				fileQueue[i].Duration = time.Since(queued)
+				fileQueue[i].Error = err.Error()
+				TrailarrLog(INFO, "QUEUE", "[EXTRAS] Marked extras task as failed in queue: %s", queueSection)
+				break
+			}
+		}
+		if err := WriteJSONFile(QueueFile, fileQueue); err != nil {
+			TrailarrLog(ERROR, "QUEUE", "[EXTRAS] Failed to write queue file for fail update: %v", err)
+		}
 		return err
 	}
 	type downloadItem struct {
@@ -431,14 +471,26 @@ func DownloadMissingExtras(mediaType MediaType, cacheFile string) error {
 	for _, di := range mapped {
 		filterAndDownloadExtras(mediaType, di.idInt, di.extras, config)
 	}
+	// --- QUEUE: update as success ---
+	if err := ReadJSONFile(QueueFile, &fileQueue); err != nil {
+		TrailarrLog(ERROR, "QUEUE", "[EXTRAS] Failed to read queue file for success update: %v", err)
+	}
+	for i := len(fileQueue) - 1; i >= 0; i-- {
+		if fileQueue[i].TaskId == queueSection && fileQueue[i].Queued.Equal(queued) {
+			fileQueue[i].Status = "success"
+			fileQueue[i].Started = queued
+			fileQueue[i].Ended = time.Now()
+			fileQueue[i].Duration = time.Since(queued)
+			fileQueue[i].Error = ""
+			TrailarrLog(INFO, "QUEUE", "[EXTRAS] Marked extras task as success in queue: %s", queueSection)
+			break
+		}
+	}
+	if err := WriteJSONFile(QueueFile, fileQueue); err != nil {
+		TrailarrLog(ERROR, "QUEUE", "[EXTRAS] Failed to write queue file for success update: %v", err)
+	}
 	return nil
 }
-
-const (
-	MoviesWantedFile = TrailarrRoot + "/movies_wanted.json"
-	SeriesWantedFile = TrailarrRoot + "/series_wanted.json"
-	queueFile        = TrailarrRoot + "/queue.json"
-)
 
 // filterAndDownloadExtras filters extras and downloads them if enabled
 func filterAndDownloadExtras(mediaType MediaType, mediaId int, extras []Extra, config ExtraTypesConfig) {

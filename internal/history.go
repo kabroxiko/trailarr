@@ -29,7 +29,7 @@ func historyHandler(c *gin.Context) {
 	respondJSON(c, http.StatusOK, gin.H{"history": events})
 }
 
-var historyFile = TrailarrRoot + "/history.json"
+var historyFile = HistoryFile
 
 func AppendHistoryEvent(event HistoryEvent) error {
 	historyMutex.Lock()
