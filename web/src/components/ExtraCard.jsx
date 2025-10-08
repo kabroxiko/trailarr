@@ -3,7 +3,7 @@ import YoutubePlayer from './YoutubePlayer.jsx';
 import IconButton from './IconButton.jsx';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTrashCan, faCheckSquare } from '@fortawesome/free-regular-svg-icons';
-import { faPlay, faDownload, faBan } from '@fortawesome/free-solid-svg-icons';
+import { faPlay, faDownload, faBan, faCircleXmark } from '@fortawesome/free-solid-svg-icons';
 
 export default function ExtraCard({
   extra,
@@ -18,6 +18,8 @@ export default function ExtraCard({
   youtubeModal,
   setYoutubeModal,
   YoutubeEmbed,
+  rejected: rejectedProp,
+  onRemoveBan,
 }) {
   const [imgError, setImgError] = useState(false);
   const baseTitle = extra.Title;
@@ -50,7 +52,8 @@ export default function ExtraCard({
   if (displayTitle.length > 22) titleFontSize = 14;
   if (displayTitle.length > 32) titleFontSize = 12;
   const downloaded = extra.Status === 'downloaded';
-  const rejected = extra.Status === 'rejected';
+  // Use the rejected prop if provided, otherwise fallback to extra.Status
+  const rejected = typeof rejectedProp === 'boolean' ? rejectedProp : extra.Status === 'rejected';
   const [errorCard, setErrorCard] = useState(null);
   const isError = errorCard === idx;
   // Helper to show modal with error message
@@ -144,7 +147,7 @@ export default function ExtraCard({
           : '2px solid transparent',
     }}>
       <div
-        style={{ width: '100%', background: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        style={{ width: '100%', background: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}
       >
         <div
           style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: extra.YoutubeId && !imgError ? 'pointer' : 'default' }}
@@ -177,6 +180,20 @@ export default function ExtraCard({
             />
           ) : (
             <PosterImage src={null} alt="Denied" fallbackIcon={faBan} />
+          )}
+          {/* Remove Ban Button (Unban) */}
+          {rejected && typeof onRemoveBan === 'function' && (
+            <div style={{ position: 'absolute', top: 8, left: 8, zIndex: 2 }}>
+              <IconButton
+                icon={<FontAwesomeIcon icon={faCircleXmark} color="#ef4444" size="lg" />}
+                title="Remove ban"
+                onClick={e => {
+                  e.stopPropagation();
+                  onRemoveBan();
+                }}
+                aria-label="Remove ban"
+              />
+            </div>
           )}
           {/* Download or Delete Buttons */}
           {extra.YoutubeId && !downloaded && !imgError && (

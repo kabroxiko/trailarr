@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -487,4 +488,77 @@ func scanExtrasInfo(mediaPath string) map[string][]map[string]interface{} {
 		}
 	}
 	return extrasInfo
+}
+
+// Handler for serving the rejected extras blacklist
+func BlacklistExtrasHandler(c *gin.Context) {
+	file, err := os.Open(RejectedExtrasPath)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "Could not open rejected_extras.json: "+err.Error())
+		return
+	}
+	defer file.Close()
+	var data interface{}
+	if err := json.NewDecoder(file).Decode(&data); err != nil {
+		respondError(c, http.StatusInternalServerError, "Could not decode rejected_extras.json: "+err.Error())
+		return
+	}
+	respondJSON(c, http.StatusOK, data)
+}
+
+// Handler to remove an entry from the rejected extras blacklist
+func RemoveBlacklistExtraHandler(c *gin.Context) {
+	var req struct {
+		MediaType  string      `json:"mediaType"`
+		MediaId    interface{} `json:"mediaId"`
+		ExtraType  string      `json:"extraType"`
+		ExtraTitle string      `json:"extraTitle"`
+		YoutubeId  string      `json:"youtubeId"`
+	}
+	if err := c.BindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, ErrInvalidRequest)
+		return
+	}
+	// Read current blacklist
+	var blacklist []map[string]interface{}
+	f, err := os.Open(RejectedExtrasPath)
+	if err == nil {
+		_ = json.NewDecoder(f).Decode(&blacklist)
+		f.Close()
+	}
+	// Remove matching entry
+	newList := make([]map[string]interface{}, 0, len(blacklist))
+	for _, entry := range blacklist {
+		match := true
+		if req.MediaType != "" && entry["media_type"] != req.MediaType && entry["mediaType"] != req.MediaType {
+			match = false
+		}
+		if req.MediaId != nil && entry["media_id"] != req.MediaId && entry["mediaId"] != req.MediaId {
+			match = false
+		}
+		if req.ExtraType != "" && entry["extra_type"] != req.ExtraType && entry["extraType"] != req.ExtraType {
+			match = false
+		}
+		if req.ExtraTitle != "" && entry["extra_title"] != req.ExtraTitle && entry["extraTitle"] != req.ExtraTitle {
+			match = false
+		}
+		if req.YoutubeId != "" && entry["youtube_id"] != req.YoutubeId && entry["youtubeId"] != req.YoutubeId {
+			match = false
+		}
+		if !match {
+			newList = append(newList, entry)
+		}
+	}
+	// Write updated blacklist
+	f2, err := os.Create(RejectedExtrasPath)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "Could not update rejected_extras.json: "+err.Error())
+		return
+	}
+	defer f2.Close()
+	if err := json.NewEncoder(f2).Encode(newList); err != nil {
+		respondError(c, http.StatusInternalServerError, "Could not encode rejected_extras.json: "+err.Error())
+		return
+	}
+	respondJSON(c, http.StatusOK, gin.H{"status": "removed"})
 }

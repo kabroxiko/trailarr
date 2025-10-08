@@ -10,6 +10,8 @@ import (
 )
 
 func RegisterRoutes(r *gin.Engine) {
+	r.GET("/api/blacklist/extras", BlacklistExtrasHandler)
+	r.POST("/api/blacklist/extras/remove", RemoveBlacklistExtraHandler)
 	// --- WebSocket for real-time task status ---
 	r.GET("/ws/tasks", func(c *gin.Context) {
 		// Upgrade connection to WebSocket
@@ -156,6 +158,7 @@ func RegisterRoutes(r *gin.Engine) {
 	})
 
 	r.NoRoute(func(c *gin.Context) {
+		TrailarrLog(INFO, "WEB", "NoRoute handler hit for path: %s", c.Request.URL.Path)
 		c.File("./web/dist/index.html")
 	})
 

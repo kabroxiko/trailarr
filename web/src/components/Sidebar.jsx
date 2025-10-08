@@ -83,7 +83,7 @@ export default function Sidebar({ darkMode }) {
             { name: 'Series', icon: faCog, route: '/series' },
             { name: 'History', icon: faHistory, route: '/history' },
             { name: 'Wanted', icon: faStar },
-            { name: 'Blacklist', icon: faBan },
+            { name: 'Blacklist', icon: faBan, route: '/blacklist' },
             { name: 'Settings', icon: faCog },
             { name: 'System', icon: faServer }
           ].map(({ name, icon, route }) => (
@@ -153,12 +153,10 @@ export default function Sidebar({ darkMode }) {
                         <Link
                           to={submenu === 'Tasks' ? "/system/tasks" : "/system/logs"}
                           style={{ color: 'inherit', textDecoration: 'none', display: 'block', width: '100%', textAlign: 'left' }}
-                          // No-op: selection is now URL-based
                         >{submenu}</Link>
                       ) : (
                         <span
                           style={{ color: 'inherit', textDecoration: 'none', display: 'block', width: '100%', textAlign: 'left' }}
-                          // No-op: selection is now URL-based
                         >{submenu}</span>
                       )}
                     </li>

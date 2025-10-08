@@ -13,6 +13,7 @@ import (
 
 const (
 	TrailarrRoot             = "/var/lib/trailarr"
+	RejectedExtrasPath       = TrailarrRoot + "/rejected_extras.json"
 	ConfigPath               = TrailarrRoot + "/config/config.yml"
 	MediaCoverPath           = TrailarrRoot + "/MediaCover"
 	MoviesJSONPath           = TrailarrRoot + "/movies.json"
@@ -144,6 +145,16 @@ func EnsureConfigDefaults() error {
 	if config["ytdlpFlags"] == nil {
 		config["ytdlpFlags"] = DefaultYtdlpFlagsConfig()
 		changed = true
+	} else {
+		// Ensure cookiesFromBrowser is set to 'chrome' if not present
+		ytdlpFlags, ok := config["ytdlpFlags"].(map[string]interface{})
+		if ok {
+			if _, ok := ytdlpFlags["cookiesFromBrowser"]; !ok {
+				ytdlpFlags["cookiesFromBrowser"] = "chrome"
+				config["ytdlpFlags"] = ytdlpFlags
+				changed = true
+			}
+		}
 	}
 	// radarr
 	if config["radarr"] == nil {
@@ -331,6 +342,9 @@ func GetYtdlpFlagsConfig() (YtdlpFlagsConfig, error) {
 	if v, ok := sec["noprogress"].(bool); ok {
 		cfg.NoProgress = v
 	}
+	if v, ok := sec["cookiesFromBrowser"].(string); ok {
+		cfg.CookiesFromBrowser = v
+	}
 	if v, ok := sec["writesubs"].(bool); ok {
 		cfg.WriteSubs = v
 	}
@@ -390,21 +404,22 @@ func SaveYtdlpFlagsConfig(cfg YtdlpFlagsConfig) error {
 		config = map[string]interface{}{}
 	}
 	config["ytdlpFlags"] = map[string]interface{}{
-		"quiet":            cfg.Quiet,
-		"noprogress":       cfg.NoProgress,
-		"writesubs":        cfg.WriteSubs,
-		"writeautosubs":    cfg.WriteAutoSubs,
-		"embedsubs":        cfg.EmbedSubs,
-		"remuxvideo":       cfg.RemuxVideo,
-		"subformat":        cfg.SubFormat,
-		"sublangs":         cfg.SubLangs,
-		"requestedformats": cfg.RequestedFormats,
-		"timeout":          cfg.Timeout,
-		"sleepInterval":    cfg.SleepInterval,
-		"maxDownloads":     cfg.MaxDownloads,
-		"limitRate":        cfg.LimitRate,
-		"sleepRequests":    cfg.SleepRequests,
-		"maxSleepInterval": cfg.MaxSleepInterval,
+		"quiet":              cfg.Quiet,
+		"noprogress":         cfg.NoProgress,
+		"writesubs":          cfg.WriteSubs,
+		"writeautosubs":      cfg.WriteAutoSubs,
+		"embedsubs":          cfg.EmbedSubs,
+		"remuxvideo":         cfg.RemuxVideo,
+		"subformat":          cfg.SubFormat,
+		"sublangs":           cfg.SubLangs,
+		"requestedformats":   cfg.RequestedFormats,
+		"timeout":            cfg.Timeout,
+		"sleepInterval":      cfg.SleepInterval,
+		"maxDownloads":       cfg.MaxDownloads,
+		"limitRate":          cfg.LimitRate,
+		"sleepRequests":      cfg.SleepRequests,
+		"maxSleepInterval":   cfg.MaxSleepInterval,
+		"cookiesFromBrowser": cfg.CookiesFromBrowser,
 	}
 	return writeConfigFile(config)
 }

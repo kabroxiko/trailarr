@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import BlacklistPage from './components/BlacklistPage';
 import { useRef } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import './App.css';
@@ -215,57 +216,60 @@ function App() {
         />
         <main style={{ flex: 1, padding: '0em', height: '100%', boxSizing: 'border-box', overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'stretch', maxWidth: 'calc(100vw - 220px)', background: darkMode ? '#18181b' : '#fff', color: darkMode ? '#e5e7eb' : '#222' }}>
           <div style={{ background: darkMode ? '#23232a' : '#fff', boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb', padding: '0em', width: '100%', maxWidth: '100%', flex: 1, overflowY: 'auto', overflowX: 'hidden', color: darkMode ? '#e5e7eb' : '#222' }}>
-            <Routes>
-              <Route path="/series" element={
-                (() => {
-                  const { titleMatches, overviewMatches } = getSearchSections(series);
-                  return (
-                    <>
-                      {search.trim() ? (
-                        <>
-                          <MediaList items={titleMatches} darkMode={darkMode} type="series" />
-                          <div style={{ margin: '1.5em 0 0.5em 1em', fontWeight: 700, fontSize: 26, textAlign: 'left', width: '100%', letterSpacing: 0.5 }}>Other Results</div>
-                          <MediaList items={overviewMatches} darkMode={darkMode} type="series" />
-                        </>
-                      ) : (
-                        <MediaList items={series} darkMode={darkMode} type="series" />
-                      )}
-                      {seriesError && <div style={{ color: 'red', marginTop: '1em' }}>{seriesError}</div>}
-                    </>
-                  );
-                })()
-              } />
-              <Route path="/" element={
-                (() => {
-                  const { titleMatches, overviewMatches } = getSearchSections(movies);
-                  return (
-                    <>
-                      {search.trim() ? (
-                        <>
-                          <MediaList items={titleMatches} darkMode={darkMode} type="movie" />
-                          <div style={{ margin: '1.5em 0 0.5em 1em', fontWeight: 700, fontSize: 26, textAlign: 'left', width: '100%', letterSpacing: 0.5 }}>Other Results</div>
-                          <MediaList items={overviewMatches} darkMode={darkMode} type="movie" />
-                        </>
-                      ) : (
-                        <MediaList items={movies} darkMode={darkMode} type="movie" />
-                      )}
-                      {moviesError && <div style={{ color: 'red', marginTop: '1em' }}>{moviesError}</div>}
-                    </>
-                  );
-                })()
-              } />
-              <Route path="/movies/:id" element={<MediaDetails mediaItems={movies} loading={moviesLoading} mediaType="movie" />} />
-              <Route path="/series/:id" element={<MediaDetails mediaItems={series} loading={seriesLoading} mediaType="tv" />} />
-              <Route path="/history" element={<HistoryPage />} />
-              <Route path="/wanted/movies" element={<Wanted darkMode={darkMode} type="movie" />} />
-              <Route path="/wanted/series" element={<Wanted darkMode={darkMode} type="series" />} />
-              <Route path="/settings/radarr" element={<SettingsPage type="radarr"/>} />
-              <Route path="/settings/sonarr" element={<SettingsPage type="sonarr"/>} />
-              <Route path="/settings/general" element={<GeneralSettings />} />
-              <Route path="/settings/extras" element={<ExtrasSettings darkMode={darkMode} />} />
-              <Route path="/system/tasks" element={<Tasks />} />
-              <Route path="/system/logs" element={<LogsPage />} />
-            </Routes>
+            <React.Suspense fallback={null}>
+              <Routes>
+                <Route path="/series" element={
+                  (() => {
+                    const { titleMatches, overviewMatches } = getSearchSections(series);
+                    return (
+                      <>
+                        {search.trim() ? (
+                          <>
+                            <MediaList items={titleMatches} darkMode={darkMode} type="series" />
+                            <div style={{ margin: '1.5em 0 0.5em 1em', fontWeight: 700, fontSize: 26, textAlign: 'left', width: '100%', letterSpacing: 0.5 }}>Other Results</div>
+                            <MediaList items={overviewMatches} darkMode={darkMode} type="series" />
+                          </>
+                        ) : (
+                          <MediaList items={series} darkMode={darkMode} type="series" />
+                        )}
+                        {seriesError && <div style={{ color: 'red', marginTop: '1em' }}>{seriesError}</div>}
+                      </>
+                    );
+                  })()
+                } />
+                <Route path="/" element={
+                  (() => {
+                    const { titleMatches, overviewMatches } = getSearchSections(movies);
+                    return (
+                      <>
+                        {search.trim() ? (
+                          <>
+                            <MediaList items={titleMatches} darkMode={darkMode} type="movie" />
+                            <div style={{ margin: '1.5em 0 0.5em 1em', fontWeight: 700, fontSize: 26, textAlign: 'left', width: '100%', letterSpacing: 0.5 }}>Other Results</div>
+                            <MediaList items={overviewMatches} darkMode={darkMode} type="movie" />
+                          </>
+                        ) : (
+                          <MediaList items={movies} darkMode={darkMode} type="movie" />
+                        )}
+                        {moviesError && <div style={{ color: 'red', marginTop: '1em' }}>{moviesError}</div>}
+                      </>
+                    );
+                  })()
+                } />
+                <Route path="/movies/:id" element={<MediaDetails mediaItems={movies} loading={moviesLoading} mediaType="movie" />} />
+                <Route path="/series/:id" element={<MediaDetails mediaItems={series} loading={seriesLoading} mediaType="tv" />} />
+                <Route path="/history" element={<HistoryPage />} />
+                <Route path="/wanted/movies" element={<Wanted darkMode={darkMode} type="movie" />} />
+                <Route path="/wanted/series" element={<Wanted darkMode={darkMode} type="series" />} />
+                <Route path="/settings/radarr" element={<SettingsPage type="radarr"/>} />
+                <Route path="/settings/sonarr" element={<SettingsPage type="sonarr"/>} />
+                <Route path="/settings/general" element={<GeneralSettings />} />
+                <Route path="/settings/extras" element={<ExtrasSettings darkMode={darkMode} />} />
+                <Route path="/system/tasks" element={<Tasks />} />
+                <Route path="/system/logs" element={<LogsPage />} />
+                <Route path="/blacklist" element={<BlacklistPage />} />
+              </Routes>
+            </React.Suspense>
           </div>
         </main>
       </div>

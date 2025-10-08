@@ -13,40 +13,42 @@ import (
 )
 
 type YtdlpFlagsConfig struct {
-	Quiet            bool    `yaml:"quiet" json:"quiet"`
-	NoProgress       bool    `yaml:"noprogress" json:"noprogress"`
-	WriteSubs        bool    `yaml:"writesubs" json:"writesubs"`
-	WriteAutoSubs    bool    `yaml:"writeautosubs" json:"writeautosubs"`
-	EmbedSubs        bool    `yaml:"embedsubs" json:"embedsubs"`
-	RemuxVideo       string  `yaml:"remuxvideo" json:"remuxvideo"`
-	SubFormat        string  `yaml:"subformat" json:"subformat"`
-	SubLangs         string  `yaml:"sublangs" json:"sublangs"`
-	RequestedFormats string  `yaml:"requestedformats" json:"requestedformats"`
-	Timeout          float64 `yaml:"timeout" json:"timeout"`
-	SleepInterval    float64 `yaml:"sleepInterval" json:"sleepInterval"`
-	MaxDownloads     int     `yaml:"maxDownloads" json:"maxDownloads"`
-	LimitRate        string  `yaml:"limitRate" json:"limitRate"`
-	SleepRequests    float64 `yaml:"sleepRequests" json:"sleepRequests"`
-	MaxSleepInterval float64 `yaml:"maxSleepInterval" json:"maxSleepInterval"`
+	Quiet              bool    `yaml:"quiet" json:"quiet"`
+	NoProgress         bool    `yaml:"noprogress" json:"noprogress"`
+	WriteSubs          bool    `yaml:"writesubs" json:"writesubs"`
+	WriteAutoSubs      bool    `yaml:"writeautosubs" json:"writeautosubs"`
+	EmbedSubs          bool    `yaml:"embedsubs" json:"embedsubs"`
+	RemuxVideo         string  `yaml:"remuxvideo" json:"remuxvideo"`
+	SubFormat          string  `yaml:"subformat" json:"subformat"`
+	SubLangs           string  `yaml:"sublangs" json:"sublangs"`
+	RequestedFormats   string  `yaml:"requestedformats" json:"requestedformats"`
+	Timeout            float64 `yaml:"timeout" json:"timeout"`
+	SleepInterval      float64 `yaml:"sleepInterval" json:"sleepInterval"`
+	MaxDownloads       int     `yaml:"maxDownloads" json:"maxDownloads"`
+	LimitRate          string  `yaml:"limitRate" json:"limitRate"`
+	SleepRequests      float64 `yaml:"sleepRequests" json:"sleepRequests"`
+	MaxSleepInterval   float64 `yaml:"maxSleepInterval" json:"maxSleepInterval"`
+	CookiesFromBrowser string  `yaml:"cookiesFromBrowser" json:"cookiesFromBrowser"`
 }
 
 func DefaultYtdlpFlagsConfig() YtdlpFlagsConfig {
 	return YtdlpFlagsConfig{
-		Quiet:            true,
-		NoProgress:       true,
-		WriteSubs:        true,
-		WriteAutoSubs:    true,
-		EmbedSubs:        true,
-		RemuxVideo:       "mkv",
-		SubFormat:        "srt",
-		SubLangs:         "es.*",
-		RequestedFormats: "best[height<=1080]",
-		Timeout:          3.0,
-		SleepInterval:    5.0,
-		MaxDownloads:     5,
-		LimitRate:        "30M",
-		SleepRequests:    3.0,
-		MaxSleepInterval: 120.0,
+		Quiet:              true,
+		NoProgress:         true,
+		WriteSubs:          true,
+		WriteAutoSubs:      true,
+		EmbedSubs:          true,
+		RemuxVideo:         "mkv",
+		SubFormat:          "srt",
+		SubLangs:           "es.*",
+		RequestedFormats:   "best[height<=1080]",
+		Timeout:            3.0,
+		SleepInterval:      5.0,
+		MaxDownloads:       5,
+		LimitRate:          "30M",
+		SleepRequests:      3.0,
+		MaxSleepInterval:   120.0,
+		CookiesFromBrowser: "chrome",
 	}
 }
 
@@ -288,7 +290,7 @@ func checkExistingExtra(info *downloadInfo, youtubeId string) (*ExtraDownloadMet
 }
 
 func checkRejectedExtras(info *downloadInfo, youtubeId string) *ExtraDownloadMetadata {
-	rejectedPath := filepath.Join(TrailarrRoot, "rejected_extras.json")
+	rejectedPath := RejectedExtrasPath
 	rejected := make([]map[string]string, 0)
 
 	if err := ReadJSONFile(rejectedPath, &rejected); err == nil {
@@ -322,6 +324,10 @@ func performDownload(info *downloadInfo, youtubeId string) (*ExtraDownloadMetada
 		SetWorkDir(info.TempDir).
 		FormatSort("res,fps,codec,br").
 		SetFlagConfig(&flags)
+
+	// Debug: log the yt-dlp command context (flags, output, youtubeId)
+	flagsJson, _ := json.Marshal(flags)
+	TrailarrLog(INFO, "YouTube", "yt-dlp debug: output=%s flags=%s youtubeId=%s", info.TempFile, string(flagsJson), youtubeId)
 
 	output, err := cmd.Run(context.Background(), youtubeId)
 	if err != nil {
@@ -522,10 +528,9 @@ func handleDownloadError(info *downloadInfo, youtubeId string, err error, output
 }
 
 func addToRejectedExtras(info *downloadInfo, youtubeId, reason string) {
-	rejectedPath := filepath.Join(TrailarrRoot, "rejected_extras.json")
 	var rejectedList []RejectedExtra
 
-	_ = ReadJSONFile(rejectedPath, &rejectedList)
+	_ = ReadJSONFile(RejectedExtrasPath, &rejectedList)
 
 	// Check if already rejected
 	for _, rejected := range rejectedList {
@@ -559,7 +564,7 @@ func addToRejectedExtras(info *downloadInfo, youtubeId, reason string) {
 			}
 		}
 	}
-	_ = WriteJSONFile(rejectedPath, finalList)
+	_ = WriteJSONFile(RejectedExtrasPath, finalList)
 }
 
 func moveDownloadedFile(info *downloadInfo) error {
