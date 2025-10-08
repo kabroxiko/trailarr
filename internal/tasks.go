@@ -351,12 +351,6 @@ func TaskHandler() gin.HandlerFunc {
 }
 
 func StartBackgroundTasks() {
-	// Periodic heartbeat log to confirm process is alive and clock is advancing
-	go func() {
-		for {
-			time.Sleep(10 * time.Second)
-		}
-	}()
 	TrailarrLog(INFO, "Tasks", "StartBackgroundTasks called. PID=%d, time=%s", os.Getpid(), time.Now().Format(time.RFC3339Nano))
 	states, err := LoadTaskStates()
 	if err != nil {

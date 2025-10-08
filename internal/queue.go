@@ -20,9 +20,9 @@ func GetTaskQueueFileHandler() gin.HandlerFunc {
 			queues = append(queues, NewQueueStatusMap(item))
 		}
 		sortTaskQueuesByQueuedDesc(queues)
-		// Show only the first 12 records (most recent)
-		if len(queues) > 12 {
-			queues = queues[:12]
+		// Show only the first 100 records (most recent)
+		if len(queues) > 100 {
+			queues = queues[:100]
 		}
 		c.JSON(http.StatusOK, gin.H{"queues": queues})
 	}

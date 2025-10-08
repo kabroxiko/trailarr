@@ -91,7 +91,9 @@ func RegisterRoutes(r *gin.Engine) {
 	r.POST("/api/settings/ytdlpflags", SaveYtdlpFlagsConfigHandler)
 	// Log all API calls except /mediacover
 	r.Use(func(c *gin.Context) {
-		if len(c.Request.URL.Path) < 11 || c.Request.URL.Path[:11] != "/mediacover" {
+		// Omit logging for /mediacover and GET /api/tasks/queue
+		if !(c.Request.Method == "GET" && c.Request.URL.Path == "/api/tasks/queue") &&
+			(len(c.Request.URL.Path) < 11 || c.Request.URL.Path[:11] != "/mediacover") {
 			TrailarrLog(INFO, "API", "%s %s", c.Request.Method, c.Request.URL.Path)
 		}
 		c.Next()

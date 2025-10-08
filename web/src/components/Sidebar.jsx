@@ -2,17 +2,63 @@ import IconButton from './IconButton.jsx';
 import React from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCog, faFilm, faHistory, faStar, faBan, faServer } from '@fortawesome/free-solid-svg-icons';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
-export default function Sidebar({ selectedSection, setSelectedSection, selectedSettingsSub, setSelectedSettingsSub, darkMode, selectedSystemSub, setSelectedSystemSub }) {
+export default function Sidebar({ darkMode }) {
   const location = useLocation();
-  // Helper to toggle expandable menus
-  const handleSectionClick = (name) => {
-    if (selectedSection === name) {
-      setSelectedSection(''); // Collapse if already selected
-    } else {
-      setSelectedSection(name);
-    }
+  const navigate = useNavigate();
+  const path = location.pathname;
+  // Determine selected section and submenus from path
+  let selectedSection = '';
+  let selectedSettingsSub = '';
+  let selectedSystemSub = '';
+  if (path === '/' || path.startsWith('/movies')) selectedSection = 'Movies';
+  else if (path.startsWith('/series')) selectedSection = 'Series';
+  else if (path.startsWith('/history')) selectedSection = 'History';
+  else if (path.startsWith('/wanted')) selectedSection = 'Wanted';
+  else if (path.startsWith('/blacklist')) selectedSection = 'Blacklist';
+  else if (path.startsWith('/settings')) selectedSection = 'Settings';
+  else if (path.startsWith('/system')) selectedSection = 'System';
+
+  // Submenus
+  if (path.startsWith('/wanted/')) {
+    if (path.startsWith('/wanted/movies')) selectedSettingsSub = 'Movies';
+    else if (path.startsWith('/wanted/series')) selectedSettingsSub = 'Series';
+    else selectedSettingsSub = 'Movies';
+  }
+  if (path.startsWith('/settings/')) {
+    if (path.startsWith('/settings/general')) selectedSettingsSub = 'General';
+    else if (path.startsWith('/settings/radarr')) selectedSettingsSub = 'Radarr';
+    else if (path.startsWith('/settings/sonarr')) selectedSettingsSub = 'Sonarr';
+    else if (path.startsWith('/settings/extras')) selectedSettingsSub = 'Extras';
+    else selectedSettingsSub = 'General';
+  }
+  if (path.startsWith('/system/')) {
+    if (path.startsWith('/system/tasks')) selectedSystemSub = 'Tasks';
+    else if (path.startsWith('/system/logs')) selectedSystemSub = 'Logs';
+    else if (path.startsWith('/system/providers')) selectedSystemSub = 'Providers';
+    else if (path.startsWith('/system/backups')) selectedSystemSub = 'Backups';
+    else if (path.startsWith('/system/status')) selectedSystemSub = 'Status';
+    else if (path.startsWith('/system/releases')) selectedSystemSub = 'Releases';
+  }
+
+  // Local state for submenu expansion
+  const [openMenus, setOpenMenus] = React.useState({});
+  // Submenus only open if toggled by user
+  const isOpen = (menu) => !!openMenus[menu];
+  const handleToggle = (menu) => {
+    setOpenMenus((prev) => {
+      const isOpening = !prev[menu];
+      const newState = {};
+      if (isOpening) {
+        newState[menu] = true;
+        // Navigate to first submenu item if opening
+        if (menu === 'Wanted') navigate('/wanted/movies');
+        if (menu === 'Settings') navigate('/settings/general');
+        if (menu === 'System') navigate('/system/tasks');
+      }
+      return newState;
+    });
   };
 
   return (
@@ -33,7 +79,6 @@ export default function Sidebar({ selectedSection, setSelectedSection, selectedS
                 <Link
                   to={route}
                   style={{ textDecoration: 'none', background: selectedSection === name ? (darkMode ? '#333' : '#f3f4f6') : 'none', border: 'none', color: selectedSection === name ? (darkMode ? '#a855f7' : '#6d28d9') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSection === name ? 'bold' : 'normal', width: '100%', textAlign: 'left', padding: '0.5em 1em', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75em' }}
-                  onClick={() => setSelectedSection(name)}
                 >
                   <IconButton icon={<FontAwesomeIcon icon={icon} color={darkMode ? '#e5e7eb' : '#333'} />} style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} />
                   {name}
@@ -55,39 +100,39 @@ export default function Sidebar({ selectedSection, setSelectedSection, selectedS
                     alignItems: 'center',
                     gap: '0.75em',
                   }}
-                  onClick={() => handleSectionClick(name)}
+                  onClick={() => handleToggle(name)}
                 >
                   <IconButton icon={<FontAwesomeIcon icon={icon} color={darkMode ? '#e5e7eb' : '#333'} />} style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} />
                   {name}
                 </div>
               )}
-              {name === 'Wanted' && selectedSection === 'Wanted' && (
+              {name === 'Wanted' && isOpen('Wanted') && (
                 <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0 0', background: darkMode ? '#23232a' : '#f3f4f6', borderRadius: 6, color: darkMode ? '#e5e7eb' : '#222', textAlign: 'left' }}>
                   {['Movies', 'Series'].map((submenu) => (
                     <li key={submenu} style={{ padding: '0.5em 1em', borderLeft: selectedSettingsSub === submenu ? '3px solid #a855f7' : '3px solid transparent', background: 'none', color: selectedSettingsSub === submenu ? (darkMode ? '#a855f7' : '#6d28d9') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSettingsSub === submenu ? 'bold' : 'normal', cursor: 'pointer', textAlign: 'left' }}>
                       <Link
                         to={`/wanted/${submenu.toLowerCase()}`}
                         style={{ color: 'inherit', textDecoration: 'none', display: 'block', width: '100%', textAlign: 'left' }}
-                        onClick={() => setSelectedSettingsSub(submenu)}
+                        // No-op: selection is now URL-based
                       >{submenu}</Link>
                     </li>
                   ))}
                 </ul>
               )}
-              {name === 'Settings' && selectedSection === 'Settings' && (
+              {name === 'Settings' && isOpen('Settings') && (
                 <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0 0', background: darkMode ? '#23232a' : '#f3f4f6', borderRadius: 6, color: darkMode ? '#e5e7eb' : '#222', textAlign: 'left' }}>
                   {['General', 'Radarr', 'Sonarr', 'Extras'].map((submenu, idx) => (
                     <li key={submenu} style={{ padding: '0.5em 1em', borderLeft: selectedSettingsSub === submenu ? '3px solid #a855f7' : '3px solid transparent', background: 'none', color: selectedSettingsSub === submenu ? (darkMode ? '#a855f7' : '#6d28d9') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSettingsSub === submenu ? 'bold' : 'normal', cursor: 'pointer', textAlign: 'left' }}>
                       <Link
                         to={`/settings/${submenu.toLowerCase()}`}
                         style={{ color: 'inherit', textDecoration: 'none', display: 'block', width: '100%', textAlign: 'left' }}
-                        onClick={() => setSelectedSettingsSub(submenu)}
+                        // No-op: selection is now URL-based
                       >{submenu}</Link>
                     </li>
                   ))}
                 </ul>
               )}
-              {name === 'System' && selectedSection === 'System' && (
+              {name === 'System' && isOpen('System') && (
                 <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0 0', background: darkMode ? '#23232a' : '#f3f4f6', borderRadius: 6, color: darkMode ? '#e5e7eb' : '#222', textAlign: 'left' }}>
                   {['Tasks', 'Logs', 'Providers', 'Backups', 'Status', 'Releases'].map((submenu) => (
                     <li key={submenu} style={{ padding: '0.5em 1em', borderLeft: selectedSystemSub === submenu ? '3px solid #a855f7' : '3px solid transparent', background: 'none', color: selectedSystemSub === submenu ? (darkMode ? '#a855f7' : '#6d28d9') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSystemSub === submenu ? 'bold' : 'normal', cursor: 'pointer', textAlign: 'left' }}>
@@ -95,12 +140,12 @@ export default function Sidebar({ selectedSection, setSelectedSection, selectedS
                         <Link
                           to={submenu === 'Tasks' ? "/system/tasks" : "/system/logs"}
                           style={{ color: 'inherit', textDecoration: 'none', display: 'block', width: '100%', textAlign: 'left' }}
-                          onClick={() => setSelectedSystemSub(submenu)}
+                          // No-op: selection is now URL-based
                         >{submenu}</Link>
                       ) : (
                         <span
                           style={{ color: 'inherit', textDecoration: 'none', display: 'block', width: '100%', textAlign: 'left' }}
-                          onClick={() => setSelectedSystemSub(submenu)}
+                          // No-op: selection is now URL-based
                         >{submenu}</span>
                       )}
                     </li>

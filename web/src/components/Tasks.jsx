@@ -74,7 +74,11 @@ export default function Tasks() {
     try {
       const res = await fetch('/api/tasks/queue');
       const data = await res.json();
-      setQueues(Array.isArray(data.queues) ? data.queues : []);
+      if (data && Array.isArray(data.queues)) {
+        setQueues(data.queues);
+      } else {
+        setQueues([]);
+      }
     } catch (e) {
       setQueues([]);
     }
@@ -387,9 +391,9 @@ export default function Tasks() {
           </tr>
         </thead>
         <tbody>
-          {(!queueLoading && queues.length === 0) ? (
+          {(!queueLoading && (!queues || queues.length === 0)) ? (
             <tr><td colSpan={6} style={{...styles.td, textAlign: 'center'}}>No queue items</td></tr>
-          ) : queues.map((item, idx) => {
+          ) : (Array.isArray(queues) ? queues : []).map((item, idx) => {
             // Try to get the task name from schedules (by taskId)
             let taskId = item.TaskId;
             if (schedules && item.TaskId) {
@@ -414,15 +418,23 @@ export default function Tasks() {
                 <td style={{...styles.td, textAlign: 'center'}}>{item.Ended ? new Date(item.Ended).toLocaleString() : '—'}</td>
                 <td style={styles.td}>{(() => {
                   if (!item.Duration || item.Duration === '') return '—';
-                  if (typeof item.Duration === 'number') {
+                  let dur = item.Duration;
+                  if (typeof dur === 'string') {
+                    dur = Number(dur);
+                  }
+                  if (typeof dur === 'number' && !isNaN(dur)) {
                     // If > 1s, show seconds, else show ms
-                    if (item.Duration >= 1e9) {
-                      return `${(item.Duration / 1e9).toFixed(2)} s`;
+                    if (dur >= 1e9) {
+                      return `${(dur / 1e9).toFixed(2)} s`;
+                    } else if (dur >= 1e6) {
+                      return `${Math.round(dur / 1e6)} ms`;
+                    } else if (dur >= 1e3) {
+                      return `${Math.round(dur / 1e3)} μs`;
                     } else {
-                      return `${Math.round(item.Duration / 1e6)} ms`;
+                      return `${dur} ns`;
                     }
                   }
-                  // If string, fallback to previous logic
+                  // If string and not a number, fallback to previous logic
                   return item.Duration;
                 })()}</td>
               </tr>
