@@ -260,41 +260,7 @@ func updateItemTitle(item map[string]interface{}, titleMap map[string]string) {
 	}
 }
 
-// Writes the wanted (no trailer) media to a JSON file
-func writeWantedCache(mediaType MediaType, cacheFile, wantedPath string) error {
-	items, err := loadCache(cacheFile)
-	if CheckErrLog(WARN, "writeWantedCache", "Failed to load cache", err) != nil {
-		return err
-	}
-	mappings, err := GetPathMappings(mediaType)
-	if CheckErrLog(WARN, "writeWantedCache", "GetPathMappings failed", err) != nil {
-		// If can't get mappings, use default paths
-		mappings = nil
-	}
-	var trailerPaths []string
-	for _, m := range mappings {
-		if len(m) > 1 && m[1] != "" {
-			trailerPaths = append(trailerPaths, m[1])
-		}
-	}
-	if len(trailerPaths) == 0 {
-		if mediaType == MediaTypeMovie {
-			trailerPaths = append(trailerPaths, "/Movies")
-		} else {
-			trailerPaths = append(trailerPaths, "/Series")
-		}
-	}
-	trailerSet := findMediaWithTrailers(trailerPaths...)
-	var wanted []map[string]interface{}
-	for _, item := range items {
-		path, ok := item["path"].(string)
-		if !ok || trailerSet[path] {
-			continue
-		}
-		wanted = append(wanted, item)
-	}
-	return WriteJSONFile(wantedPath, wanted)
-}
+// (Removed: see updateWantedStatusInMainJson)
 
 // Generic sync function for Radarr/Sonarr
 // Syncs only the JSON cache for Radarr/Sonarr, not the media files themselves
@@ -326,23 +292,23 @@ func SyncMediaCacheJson(provider, apiPath, cacheFile string, filter func(map[str
 	items := make([]map[string]interface{}, 0)
 	for _, m := range allItems {
 		if filter(m) {
+			// Add existing_extras info
+			mediaPath, _ := m["path"].(string)
+			m["existing_extras"] = scanExtrasInfo(mediaPath)
 			items = append(items, m)
 		}
 	}
 	_ = WriteJSONFile(cacheFile, items)
 	TrailarrLog(INFO, "SyncMediaCacheJson", "[Sync%s] Synced %d items to cache.", provider, len(items))
 
-	// After syncing main cache, update wanted cache
-	var wantedPath string
+	// After syncing main cache, update wanted status in main JSON
 	var mediaType MediaType
 	if provider == "radarr" {
-		wantedPath = MoviesWantedFile
 		mediaType = MediaTypeMovie
 	} else {
-		wantedPath = SeriesWantedFile
 		mediaType = MediaTypeTV
 	}
-	_ = writeWantedCache(mediaType, cacheFile, wantedPath)
+	_ = updateWantedStatusInMainJson(mediaType, cacheFile)
 	return nil
 }
 
@@ -356,7 +322,18 @@ func GetMissingExtrasHandler(wantedPath string) gin.HandlerFunc {
 			respondError(c, http.StatusInternalServerError, "wanted cache not found")
 			return
 		}
-		respondJSON(c, http.StatusOK, gin.H{"items": items})
+		// Get required extra types from config
+		cfg, err := GetExtraTypesConfig()
+		if err != nil {
+			respondError(c, http.StatusInternalServerError, "failed to load extra types config")
+			return
+		}
+		// Map config keys to canonical Plex type names
+		requiredTypes := GetEnabledCanonicalExtraTypes(cfg)
+		missing := Filter(items, func(m map[string]interface{}) bool {
+			return !HasAnyEnabledExtras(m, requiredTypes)
+		})
+		respondJSON(c, http.StatusOK, gin.H{"items": missing})
 	}
 }
 
@@ -418,4 +395,101 @@ func respondError(c *gin.Context, code int, msg string) {
 // respondJSON is a helper for Gin JSON responses
 func respondJSON(c *gin.Context, code int, obj interface{}) {
 	c.JSON(code, obj)
+}
+
+// Updates the main JSON file to mark items as wanted if they have no trailer
+func updateWantedStatusInMainJson(mediaType MediaType, cacheFile string) error {
+	items, err := loadCache(cacheFile)
+	if CheckErrLog(WARN, "updateWantedStatusInMainJson", "Failed to load cache", err) != nil {
+		return err
+	}
+	mappings, err := GetPathMappings(mediaType)
+	if CheckErrLog(WARN, "updateWantedStatusInMainJson", "GetPathMappings failed", err) != nil {
+		mappings = nil
+	}
+	var trailerPaths []string
+	for _, m := range mappings {
+		if len(m) > 1 && m[1] != "" {
+			trailerPaths = append(trailerPaths, m[1])
+		}
+	}
+	if len(trailerPaths) == 0 {
+		if mediaType == MediaTypeMovie {
+			trailerPaths = append(trailerPaths, "/Movies")
+		} else {
+			trailerPaths = append(trailerPaths, "/Series")
+		}
+	}
+	trailerSet := findMediaWithTrailers(trailerPaths...)
+	for _, item := range items {
+		path, ok := item["path"].(string)
+		if !ok {
+			item["wanted"] = false
+			continue
+		}
+		item["wanted"] = !trailerSet[path]
+	}
+	return WriteJSONFile(cacheFile, items)
+}
+
+// Handler to get a single media item by path parameter (e.g. /api/movies/:id)
+func GetMediaByIdHandler(cacheFile, key string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		idParam := c.Param("id")
+		TrailarrLog(DEBUG, "GetMediaByIdHandler", "HTTP %s %s, idParam: %s", c.Request.Method, c.Request.URL.String(), idParam)
+		items, err := loadCache(cacheFile)
+		if err != nil {
+			TrailarrLog(DEBUG, "GetMediaByIdHandler", "Failed to load cache: %v", err)
+			respondError(c, http.StatusInternalServerError, "cache not found")
+			return
+		}
+		filtered := Filter(items, func(m map[string]interface{}) bool {
+			id, ok := m[key]
+			return ok && fmt.Sprintf("%v", id) == idParam
+		})
+		TrailarrLog(DEBUG, "GetMediaByIdHandler", "Filtered by id=%s, %d items remain", idParam, len(filtered))
+		if len(filtered) == 0 {
+			respondError(c, http.StatusNotFound, "item not found")
+			return
+		}
+		TrailarrLog(DEBUG, "GetMediaByIdHandler", "Item: %+v", filtered[0])
+		respondJSON(c, http.StatusOK, gin.H{"item": filtered[0]})
+	}
+}
+
+// Returns true if the item has any extras of the enabled types (case/plural robust)
+func HasAnyEnabledExtras(item map[string]interface{}, enabledTypes []string) bool {
+	extras, ok := item["existing_extras"]
+	if !ok {
+		return false
+	}
+	extrasMap, ok := extras.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	lowerKeys := make(map[string]string)
+	for k := range extrasMap {
+		lowerKeys[strings.ToLower(k)] = k
+	}
+	for _, typ := range enabledTypes {
+		tLower := strings.ToLower(typ)
+		key, found := lowerKeys[tLower]
+		if !found && strings.HasSuffix(tLower, "s") {
+			key, found = lowerKeys[tLower[:len(tLower)-1]]
+		} else if !found {
+			key, found = lowerKeys[tLower+"s"]
+		}
+		if found {
+			v := extrasMap[key]
+			switch vv := v.(type) {
+			case []interface{}:
+				if len(vv) > 0 {
+					return true
+				}
+			default:
+				return true
+			}
+		}
+	}
+	return false
 }

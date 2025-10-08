@@ -55,7 +55,6 @@ func RegisterRoutes(r *gin.Engine) {
 		}
 		respondJSON(c, http.StatusOK, gin.H{"logs": logs, "logDir": LogsDir})
 	})
-	// ...existing code...
 	// Test TMDB API key endpoint
 	r.GET("/api/test/tmdb", func(c *gin.Context) {
 		apiKey := c.Query("apiKey")
@@ -168,15 +167,15 @@ func RegisterRoutes(r *gin.Engine) {
 	for _, media := range []struct {
 		section      string
 		cacheFile    string
-		wantedFile   string
 		fallbackPath string
 		extrasType   MediaType
 	}{
-		{"movies", MoviesJSONPath, MoviesWantedFile, "/Movies", MediaTypeMovie},
-		{"series", SeriesJSONPath, SeriesWantedFile, "/Series", MediaTypeTV},
+		{"movies", MoviesJSONPath, "/Movies", MediaTypeMovie},
+		{"series", SeriesJSONPath, "/Series", MediaTypeTV},
 	} {
 		r.GET("/api/"+media.section, GetMediaHandler(media.cacheFile, "id"))
-		r.GET("/api/"+media.section+"/wanted", GetMissingExtrasHandler(media.wantedFile))
+		r.GET("/api/"+media.section+"/wanted", GetMissingExtrasHandler(media.cacheFile))
+		r.GET("/api/"+media.section+"/:id", GetMediaByIdHandler(media.cacheFile, "id"))
 		r.GET("/api/"+media.section+"/:id/extras", sharedExtrasHandler(media.extrasType))
 	}
 	// Group settings endpoints for Radarr/Sonarr

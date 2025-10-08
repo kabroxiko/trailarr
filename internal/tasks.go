@@ -455,9 +455,9 @@ func processExtras(ctx context.Context) {
 	extraTypesCfg, err := GetExtraTypesConfig()
 	CheckErrLog(WARN, "Tasks", "Could not load extra types config", err)
 	TrailarrLog(INFO, "Tasks", "[TASK] Searching for missing movie extras...")
-	downloadMissingExtrasWithTypeFilter(ctx, extraTypesCfg, MediaTypeMovie, MoviesWantedFile)
+	downloadMissingExtrasWithTypeFilter(ctx, extraTypesCfg, MediaTypeMovie, MoviesJSONPath)
 	TrailarrLog(INFO, "Tasks", "[TASK] Searching for missing series extras...")
-	downloadMissingExtrasWithTypeFilter(ctx, extraTypesCfg, MediaTypeTV, SeriesWantedFile)
+	downloadMissingExtrasWithTypeFilter(ctx, extraTypesCfg, MediaTypeTV, SeriesJSONPath)
 }
 
 func StopExtrasDownloadTask() {
@@ -489,6 +489,11 @@ func downloadMissingExtrasWithTypeFilter(ctx context.Context, cfg ExtraTypesConf
 			TrailarrLog(INFO, "Tasks", "Extras download cancelled before processing item.")
 			break
 		}
+		// Skip items that have any extras of enabled types
+		enabledTypes := GetEnabledCanonicalExtraTypes(cfg)
+		if HasAnyEnabledExtras(item, enabledTypes) {
+			continue // skip this item, it has at least one extra of an enabled type
+		}
 		mediaId, ok := parseMediaID(item["id"])
 		if !ok {
 			continue
@@ -503,6 +508,7 @@ func downloadMissingExtrasWithTypeFilter(ctx context.Context, cfg ExtraTypesConf
 			TrailarrLog(WARN, "Tasks", "FindMediaPathByID failed for mediaId=%v: %v", mediaId, err)
 			continue
 		}
+		TrailarrLog(INFO, "Tasks", "Searching extras for %s %v: %s", mediaType, mediaId, item["title"])
 		MarkDownloadedExtras(extras, mediaPath, "type", "title")
 		// Defensive: mark rejected extras before any download
 		rejectedExtras := GetRejectedExtrasForMedia(mediaType, mediaId)
@@ -536,7 +542,6 @@ func downloadMissingExtrasWithTypeFilter(ctx context.Context, cfg ExtraTypesConf
 			}
 		}
 	}
-	// ...existing code...
 }
 
 // Handles downloading a single extra and appending to history if successful
@@ -548,7 +553,8 @@ func handleTypeFilteredExtraDownload(mediaType MediaType, mediaId int, extra Ext
 	}
 	// Add to history if download succeeded
 	AppendHistoryEvent(HistoryEvent{
-		Action:     "download",
+		Action: "download",
+
 		Title:      getMediaTitleFromCache(mediaType, mediaId),
 		MediaType:  mediaType,
 		MediaId:    mediaId,

@@ -17,8 +17,6 @@ const (
 	MediaCoverPath           = TrailarrRoot + "/MediaCover"
 	MoviesJSONPath           = TrailarrRoot + "/movies.json"
 	SeriesJSONPath           = TrailarrRoot + "/series.json"
-	MoviesWantedFile         = TrailarrRoot + "/movies_wanted.json"
-	SeriesWantedFile         = TrailarrRoot + "/series_wanted.json"
 	QueueFile                = TrailarrRoot + "/queue.json"
 	CookiesFile              = TrailarrRoot + "/cookies.txt"
 	LogsDir                  = TrailarrRoot + "/logs"
@@ -545,18 +543,6 @@ func SaveExtraTypesConfigHandler(c *gin.Context) {
 	respondJSON(c, http.StatusOK, gin.H{"status": "saved"})
 }
 
-// Handler to get search extras config
-func GetSearchExtrasConfigHandler(c *gin.Context) {
-	// Legacy fields removed; always return empty
-	respondJSON(c, http.StatusOK, gin.H{})
-}
-
-// Handler to save search extras config
-func SaveSearchExtrasConfigHandler(c *gin.Context) {
-	// Legacy fields removed; always return success
-	respondJSON(c, http.StatusOK, gin.H{"status": "saved"})
-}
-
 // EnsureSyncTimingsConfig creates config.yml with sync timings if not present, or loads timings if present
 func EnsureSyncTimingsConfig() (map[string]int, error) {
 	defaultTimings := map[string]int{
@@ -965,4 +951,34 @@ func testMediaConnection(url, apiKey, _ string) error {
 		return fmt.Errorf("API returned status %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// Returns a slice of canonical extra types enabled in config
+func GetEnabledCanonicalExtraTypes(cfg ExtraTypesConfig) []string {
+	types := make([]string, 0)
+	if cfg.Trailers {
+		types = append(types, canonicalizeExtraType("trailers", ""))
+	}
+	if cfg.Scenes {
+		types = append(types, canonicalizeExtraType("scenes", ""))
+	}
+	if cfg.BehindTheScenes {
+		types = append(types, canonicalizeExtraType("behindTheScenes", ""))
+	}
+	if cfg.Interviews {
+		types = append(types, canonicalizeExtraType("interviews", ""))
+	}
+	if cfg.Featurettes {
+		types = append(types, canonicalizeExtraType("featurettes", ""))
+	}
+	if cfg.DeletedScenes {
+		types = append(types, canonicalizeExtraType("deletedScenes", ""))
+	}
+	if cfg.Other {
+		types = append(types, canonicalizeExtraType("other", ""))
+	}
+	if len(types) == 0 {
+		types = []string{canonicalizeExtraType("trailers", "")}
+	}
+	return types
 }

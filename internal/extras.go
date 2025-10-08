@@ -433,7 +433,6 @@ func DownloadMissingExtras(mediaType MediaType, cacheFile string) error {
 	for _, di := range mapped {
 		filterAndDownloadExtras(mediaType, di.idInt, di.extras, config)
 	}
-	// ...existing code...
 	return nil
 }
 
@@ -457,4 +456,35 @@ func filterAndDownloadExtras(mediaType MediaType, mediaId int, extras []Extra, c
 		err := handleExtraDownload(mediaType, mediaId, extra)
 		CheckErrLog(WARN, "DownloadMissingExtras", "Failed to download", err)
 	}
+}
+
+// Helper: Scan extras directories and collect info for a media path
+func scanExtrasInfo(mediaPath string) map[string][]map[string]interface{} {
+	extrasInfo := make(map[string][]map[string]interface{})
+	if mediaPath == "" {
+		return extrasInfo
+	}
+	entries, err := os.ReadDir(mediaPath)
+	if err != nil {
+		return extrasInfo
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		extraType := entry.Name()
+		subdir := filepath.Join(mediaPath, extraType)
+		files, _ := os.ReadDir(subdir)
+		for _, f := range files {
+			if f.IsDir() || !strings.HasSuffix(f.Name(), ".json") || !strings.HasSuffix(f.Name(), ".mkv.json") {
+				continue
+			}
+			filePath := filepath.Join(subdir, f.Name())
+			var meta map[string]interface{}
+			if err := ReadJSONFile(filePath, &meta); err == nil {
+				extrasInfo[extraType] = append(extrasInfo[extraType], meta)
+			}
+		}
+	}
+	return extrasInfo
 }
