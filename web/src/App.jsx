@@ -1,16 +1,27 @@
 import React, { useState, useEffect } from 'react';
-import MediaList from './components/MediaList';
-import MediaDetails from './components/MediaDetails';
-import Header from './components/Header';
-import Sidebar from './components/Sidebar';
-import GeneralSettings from './components/GeneralSettings';
-import Tasks from './components/Tasks';
-import HistoryPage from './components/HistoryPage';
-import Wanted from './components/Wanted';
-import SettingsPage from './components/SettingsPage';
+import { useRef } from 'react';
 import { Routes, Route } from 'react-router-dom';
-import ExtrasSettings from './components/ExtrasSettings';
-import LogsPage from './components/LogsPage';
+import './App.css';
+
+// Helper to load a component dynamically, but only once
+function loadComponent(importFn, ref) {
+  if (!ref.current) {
+    ref.current = React.lazy(importFn);
+  }
+  return ref.current;
+}
+
+const MediaListRef = { current: null };
+const MediaDetailsRef = { current: null };
+const HeaderRef = { current: null };
+const SidebarRef = { current: null };
+const GeneralSettingsRef = { current: null };
+const TasksRef = { current: null };
+const HistoryPageRef = { current: null };
+const WantedRef = { current: null };
+const SettingsPageRef = { current: null };
+const ExtrasSettingsRef = { current: null };
+const LogsPageRef = { current: null };
 import './App.css';
 // Removed static import of api.js
 // Refactored to use dynamic imports
@@ -176,6 +187,19 @@ function App() {
     }
   }, [pageTitle]);
 
+  // Dynamically load components
+  const MediaList = loadComponent(() => import('./components/MediaList'), MediaListRef);
+  const MediaDetails = loadComponent(() => import('./components/MediaDetails'), MediaDetailsRef);
+  const Header = loadComponent(() => import('./components/Header'), HeaderRef);
+  const Sidebar = loadComponent(() => import('./components/Sidebar'), SidebarRef);
+  const GeneralSettings = loadComponent(() => import('./components/GeneralSettings'), GeneralSettingsRef);
+  const Tasks = loadComponent(() => import('./components/Tasks'), TasksRef);
+  const HistoryPage = loadComponent(() => import('./components/HistoryPage'), HistoryPageRef);
+  const Wanted = loadComponent(() => import('./components/Wanted'), WantedRef);
+  const SettingsPage = loadComponent(() => import('./components/SettingsPage'), SettingsPageRef);
+  const ExtrasSettings = loadComponent(() => import('./components/ExtrasSettings'), ExtrasSettingsRef);
+  const LogsPage = loadComponent(() => import('./components/LogsPage'), LogsPageRef);
+
   return (
     <div className="app-container">
       <Header darkMode={darkMode} search={search} setSearch={setSearch} pageTitle={pageTitle} />
@@ -190,8 +214,6 @@ function App() {
           setSelectedSystemSub={setSelectedSystemSub}
         />
         <main style={{ flex: 1, padding: '0em', height: '100%', boxSizing: 'border-box', overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'stretch', maxWidth: 'calc(100vw - 220px)', background: darkMode ? '#18181b' : '#fff', color: darkMode ? '#e5e7eb' : '#222' }}>
-          {/* Removed content title (Movies, Settings, etc) */}
-          {/* Radarr Connection block is now rendered via a dedicated route below */}
           <div style={{ background: darkMode ? '#23232a' : '#fff', boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb', padding: '0em', width: '100%', maxWidth: '100%', flex: 1, overflowY: 'auto', overflowX: 'hidden', color: darkMode ? '#e5e7eb' : '#222' }}>
             <Routes>
               <Route path="/series" element={
