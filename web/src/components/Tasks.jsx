@@ -260,15 +260,15 @@ export default function Tasks() {
 
   function formatDuration(duration) {
     if (!duration || duration === '-') return '-';
-    // Accepts either ms (number) or string like '1m23.456s' or '267.00858ms'
+    // Accepts either seconds (number) or string like '1m23.456s' or '267.00858ms'
     if (typeof duration === 'number') {
-      if (duration < 1000) {
-        return `${duration.toFixed(2)} ms`;
+      if (duration < 1) {
+        return `${(duration * 1000).toFixed(2)} ms`;
       }
-      return durationToText(duration);
+      return durationToText(duration * 1000);
     }
     // Handle ms string like '267.00858ms'
-    if (duration.endsWith('ms')) {
+    if (typeof duration === 'string' && duration.endsWith('ms')) {
       const ms = parseFloat(duration.replace('ms', ''));
       if (ms < 1000) {
         return `${ms.toFixed(2)} ms`;
@@ -395,30 +395,36 @@ export default function Tasks() {
             <tr><td colSpan={6} style={{...styles.td, textAlign: 'center'}}>No queue items</td></tr>
           ) : (Array.isArray(queues) ? queues : []).map((item, idx) => {
             // Try to get the task name from schedules (by taskId)
-            let taskId = item.TaskId;
-            if (schedules && item.TaskId) {
-              const sch = schedules.find(s => s.taskId === item.TaskId);
-              if (sch && sch.name) taskId = sch.name;
+            let taskName = item.taskId;
+            if (schedules && item.taskId) {
+              const sch = schedules.find(s => s.taskId === item.taskId);
+              if (sch && sch.name) taskName = sch.name;
             }
             return (
               <tr key={idx}>
                 <td style={{...styles.td, textAlign: 'center'}}>
                   {(() => {
-                    if (!item.Status) return <span title="Unknown">-</span>;
-                    if (item.Status === 'success') return <span title="Success" style={{color: darkMode ? '#4fdc7b' : '#28a745'}}>&#x2714;</span>;
-                    if (item.Status === 'running') return <span title="Running" style={{color: darkMode ? '#66aaff' : '#007bff'}}>&#x25D4;</span>;
-                    if (item.Status === 'failed') return <span title="Failed" style={{color: darkMode ? '#ff6b6b' : '#dc3545'}}>&#x2716;</span>;
-                    if (item.Status === 'queued') return <FaClock title="Queued" style={{color: darkMode ? '#ffb300' : '#e6b800', verticalAlign: 'middle'}} />;
-                    return <span title={item.Status}>{item.Status}</span>;
+                    if (!item.status) return <span title="Unknown">-</span>;
+                    if (item.status === 'success') return <span title="Success" style={{color: darkMode ? '#4fdc7b' : '#28a745'}}>&#x2714;</span>;
+                    if (item.status === 'running') return <span title="Running" style={{color: darkMode ? '#66aaff' : '#007bff'}}>&#x25D4;</span>;
+                    if (item.status === 'failed') return <span title="Failed" style={{color: darkMode ? '#ff6b6b' : '#dc3545'}}>&#x2716;</span>;
+                    if (item.status === 'queued') return <FaClock title="Queued" style={{color: darkMode ? '#ffb300' : '#e6b800', verticalAlign: 'middle'}} />;
+                    return <span title={item.status}>{item.status}</span>;
                   })()}
                 </td>
-                <td style={styles.td}>{taskId || '-'}</td>
-                <td style={{...styles.td, textAlign: 'center'}}>{item.Queued ? new Date(item.Queued).toLocaleString() : '—'}</td>
-                <td style={{...styles.td, textAlign: 'center'}}>{item.Started ? new Date(item.Started).toLocaleString() : '—'}</td>
-                <td style={{...styles.td, textAlign: 'center'}}>{item.Ended ? new Date(item.Ended).toLocaleString() : '—'}</td>
+                <td style={styles.td}>{taskName || '-'}</td>
+                <td style={{...styles.td, textAlign: 'center'}}>{item.queued ? new Date(item.queued).toLocaleString() : '—'}</td>
+                <td style={{...styles.td, textAlign: 'center'}}>{item.started ? new Date(item.started).toLocaleString() : '—'}</td>
+                <td style={{...styles.td, textAlign: 'center'}}>{(() => {
+                  if (!item.ended) return '—';
+                  const endedDate = new Date(item.ended);
+                  // Check for invalid or zero date (year 1 or 1970)
+                  if (isNaN(endedDate.getTime()) || endedDate.getFullYear() <= 1971) return '—';
+                  return endedDate.toLocaleString();
+                })()}</td>
                 <td style={styles.td}>{(() => {
-                  if (!item.Duration || item.Duration === '') return '—';
-                  let dur = item.Duration;
+                  if (!item.duration || item.duration === '') return '—';
+                  let dur = item.duration;
                   if (typeof dur === 'string') {
                     dur = Number(dur);
                   }
@@ -435,7 +441,7 @@ export default function Tasks() {
                     }
                   }
                   // If string and not a number, fallback to previous logic
-                  return item.Duration;
+                  return item.duration;
                 })()}</td>
               </tr>
             );

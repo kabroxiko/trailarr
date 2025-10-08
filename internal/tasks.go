@@ -16,6 +16,34 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+var GlobalSyncQueue []TaskStatus
+
+// Parametric force sync for Radarr/Sonarr
+type SyncQueueItem struct {
+	TaskId   string
+	Queued   time.Time
+	Started  time.Time
+	Ended    time.Time
+	Duration time.Duration
+	Status   string
+	Error    string
+}
+
+// Unified struct for queue, persistent state, and reporting
+type TaskStatus struct {
+	TaskId        string    `json:"taskId"`
+	Name          string    `json:"name,omitempty"`
+	Queued        time.Time `json:"queued,omitempty"`
+	Started       time.Time `json:"started,omitempty"`
+	Ended         time.Time `json:"ended,omitempty"`
+	Duration      float64   `json:"duration,omitempty"`
+	Interval      int       `json:"interval,omitempty"`
+	LastExecution time.Time `json:"lastExecution,omitempty"`
+	NextExecution time.Time `json:"nextExecution,omitempty"`
+	Status        string    `json:"status"`
+	Error         string    `json:"error,omitempty"`
+}
+
 // Unified Task struct: combines metadata, state, and scheduling info
 type Task struct {
 	Meta      TaskMeta
@@ -94,10 +122,9 @@ func init() {
 		}
 	}
 	tasksMeta = map[TaskID]TaskMeta{
-		"radarr": {ID: "radarr", Name: "Sync with Radarr", Function: SyncRadarr, Order: 1},
-		"sonarr": {ID: "sonarr", Name: "Sync with Sonarr", Function: SyncSonarr, Order: 2},
-		// For scheduling, use the actual extras sync logic, not StartExtrasDownloadTask
-		"extras": {ID: "extras", Name: "Search for Missing Extras", Function: func() { handleExtrasDownloadLoop(context.Background()) }, Order: 3},
+		"radarr": {ID: "radarr", Name: "Sync with Radarr", Function: wrapWithQueue("radarr", func() error { SyncRadarr(); return nil }), Order: 1},
+		"sonarr": {ID: "sonarr", Name: "Sync with Sonarr", Function: wrapWithQueue("sonarr", func() error { SyncSonarr(); return nil }), Order: 2},
+		"extras": {ID: "extras", Name: "Search for Missing Extras", Function: wrapWithQueue("extras", func() error { handleExtrasDownloadLoop(context.Background()); return nil }), Order: 3},
 	}
 }
 
@@ -234,50 +261,13 @@ func buildSchedules(states TaskStates) []TaskSchedule {
 	return schedules
 }
 
-func buildTaskQueues() []map[string]interface{} {
-	queues := make([]map[string]interface{}, 0)
-	for _, item := range GlobalSyncQueue {
-		queues = append(queues, NewQueueStatusMap(item))
-	}
-	return queues
+func buildTaskQueues() []TaskStatus {
+	return GlobalSyncQueue
 }
 
-// NewQueueStatusMap constructs a status map for a SyncQueueItem
-func NewQueueStatusMap(item SyncQueueItem) map[string]interface{} {
-	return map[string]interface{}{
-		"TaskId":   item.TaskId,
-		"Queued":   item.Queued,
-		"Started":  getTimeOrEmpty(item.Started),
-		"Ended":    getTimeOrEmpty(item.Ended),
-		"Duration": getDurationOrEmpty(item.Duration),
-		"Status":   item.Status,
-		"Error":    item.Error,
-	}
-}
-
-func getTimeOrEmpty(t time.Time) interface{} {
-	if !t.IsZero() {
-		return t
-	}
-	return ""
-}
-
-func getDurationOrEmpty(d time.Duration) interface{} {
-	if d > 0 {
-		return d
-	}
-	return ""
-}
-
-func sortTaskQueuesByQueuedDesc(queues []map[string]interface{}) {
+func sortTaskQueuesByQueuedDesc(queues []TaskStatus) {
 	sort.Slice(queues, func(i, j int) bool {
-		qi, qj := queues[i]["Queued"], queues[j]["Queued"]
-		ti, ok1 := qi.(time.Time)
-		tj, ok2 := qj.(time.Time)
-		if ok1 && ok2 {
-			return ti.After(tj)
-		}
-		return false
+		return queues[i].Queued.After(queues[j].Queued)
 	})
 }
 
@@ -407,7 +397,7 @@ func StartBackgroundTasks() {
 			ticker := time.NewTicker(interval)
 			defer ticker.Stop()
 			for {
-				go runTaskAsync(GlobalTaskStates, TaskID(t.id), t.syncFunc)
+				go runTaskAsync(TaskID(t.id), t.syncFunc)
 				<-ticker.C
 			}
 		}(*task)
@@ -424,7 +414,7 @@ func StartExtrasDownloadTask() {
 	for k, v := range GlobalTaskStates {
 		states[k] = v
 	}
-	go runTaskAsync(states, "extras", func() { handleExtrasDownloadLoop(context.Background()) })
+	go runTaskAsync("extras", func() { handleExtrasDownloadLoop(context.Background()) })
 }
 
 func handleExtrasDownloadLoop(ctx context.Context) bool {
@@ -465,9 +455,9 @@ func processExtras(ctx context.Context) {
 	extraTypesCfg, err := GetExtraTypesConfig()
 	CheckErrLog(WARN, "Tasks", "Could not load extra types config", err)
 	TrailarrLog(INFO, "Tasks", "[TASK] Searching for missing movie extras...")
-	downloadMissingExtrasWithTypeFilter(ctx, extraTypesCfg, "movie", TrailarrRoot+"/movies_wanted.json")
+	downloadMissingExtrasWithTypeFilter(ctx, extraTypesCfg, MediaTypeMovie, MoviesWantedFile)
 	TrailarrLog(INFO, "Tasks", "[TASK] Searching for missing series extras...")
-	downloadMissingExtrasWithTypeFilter(ctx, extraTypesCfg, "tv", TrailarrRoot+"/series_wanted.json")
+	downloadMissingExtrasWithTypeFilter(ctx, extraTypesCfg, MediaTypeTV, SeriesWantedFile)
 }
 
 func StopExtrasDownloadTask() {
@@ -488,46 +478,9 @@ func StopExtrasDownloadTask() {
 
 // Shared logic for type-filtered extras download
 func downloadMissingExtrasWithTypeFilter(ctx context.Context, cfg ExtraTypesConfig, mediaType MediaType, cacheFile string) {
-	// --- QUEUE: Add extras batch task to queue.json on start ---
-	queued := time.Now()
-	queueSection := "extras"
-	item := SyncQueueItem{
-		TaskId:  queueSection,
-		Queued:  queued,
-		Status:  "running",
-		Started: queued,
-	}
-	var fileQueue []SyncQueueItem
-	if err := ReadJSONFile(QueueFile, &fileQueue); err != nil {
-		TrailarrLog(ERROR, "QUEUE", "[EXTRAS] (TypeFilter) Failed to read queue file: %v", err)
-	}
-	fileQueue = append(fileQueue, item)
-	if err := WriteJSONFile(QueueFile, fileQueue); err != nil {
-		TrailarrLog(ERROR, "QUEUE", "[EXTRAS] (TypeFilter) Failed to write queue file: %v", err)
-	} else {
-		TrailarrLog(INFO, "QUEUE", "[EXTRAS] (TypeFilter) Wrote new extras batch task to queue: %s", queueSection)
-	}
 
 	items, err := loadCache(cacheFile)
 	if err != nil {
-		// --- QUEUE: update as failed ---
-		if err := ReadJSONFile(QueueFile, &fileQueue); err != nil {
-			TrailarrLog(ERROR, "QUEUE", "[EXTRAS] (TypeFilter) Failed to read queue file for fail update: %v", err)
-		}
-		for i := len(fileQueue) - 1; i >= 0; i-- {
-			if fileQueue[i].TaskId == queueSection && fileQueue[i].Queued.Equal(queued) {
-				fileQueue[i].Status = "failed"
-				fileQueue[i].Started = queued
-				fileQueue[i].Ended = time.Now()
-				fileQueue[i].Duration = time.Since(queued)
-				fileQueue[i].Error = err.Error()
-				TrailarrLog(INFO, "QUEUE", "[EXTRAS] (TypeFilter) Marked extras batch task as failed in queue: %s", queueSection)
-				break
-			}
-		}
-		if err := WriteJSONFile(QueueFile, fileQueue); err != nil {
-			TrailarrLog(ERROR, "QUEUE", "[EXTRAS] (TypeFilter) Failed to write queue file for fail update: %v", err)
-		}
 		return
 	}
 
@@ -583,24 +536,7 @@ func downloadMissingExtrasWithTypeFilter(ctx context.Context, cfg ExtraTypesConf
 			}
 		}
 	}
-	// --- QUEUE: update as success ---
-	if err := ReadJSONFile(QueueFile, &fileQueue); err != nil {
-		TrailarrLog(ERROR, "QUEUE", "[EXTRAS] (TypeFilter) Failed to read queue file for success update: %v", err)
-	}
-	for i := len(fileQueue) - 1; i >= 0; i-- {
-		if fileQueue[i].TaskId == queueSection && fileQueue[i].Queued.Equal(queued) {
-			fileQueue[i].Status = "success"
-			fileQueue[i].Started = queued
-			fileQueue[i].Ended = time.Now()
-			fileQueue[i].Duration = time.Since(queued)
-			fileQueue[i].Error = ""
-			TrailarrLog(INFO, "QUEUE", "[EXTRAS] (TypeFilter) Marked extras batch task as success in queue: %s", queueSection)
-			break
-		}
-	}
-	if err := WriteJSONFile(QueueFile, fileQueue); err != nil {
-		TrailarrLog(ERROR, "QUEUE", "[EXTRAS] (TypeFilter) Failed to write queue file for success update: %v", err)
-	}
+	// ...existing code...
 }
 
 // Handles downloading a single extra and appending to history if successful
@@ -703,26 +639,8 @@ func getCurrentTaskStatus() map[string]interface{} {
 	}
 }
 
-// Generic handler for Radarr/Sonarr sync status
-func GetSyncStatusHandler(section string, status *SyncStatus, displayName string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		interval := Timings[section]
-		respondJSON(c, http.StatusOK, gin.H{
-			"scheduled": gin.H{
-				"name":          "Sync with " + displayName,
-				"interval":      fmt.Sprintf("%d minutes", interval),
-				"lastExecution": LastExecution(status),
-				"lastDuration":  LastDuration(status).String(),
-				"nextExecution": NextExecution(status),
-				"lastError":     LastError(status),
-			},
-			"queue": Queue(status),
-		})
-	}
-}
-
 // Helper to run a task async and manage status
-func runTaskAsync(states TaskStates, taskId TaskID, syncFunc func()) {
+func runTaskAsync(taskId TaskID, syncFunc func()) {
 	// Set running flag
 	GlobalTaskStates[taskId] = TaskState{
 		ID:            taskId,
@@ -753,5 +671,51 @@ func GetTaskQueueHandler() gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{
 			"queues": queues,
 		})
+	}
+}
+
+// Centralized queue wrapper for all tasks
+func wrapWithQueue(taskId TaskID, syncFunc func() error) func() {
+	return func() {
+		// Add new queue item to file on start
+		queued := time.Now()
+		item := SyncQueueItem{
+			TaskId:  string(taskId),
+			Queued:  queued,
+			Status:  "running",
+			Started: queued,
+		}
+		var fileQueue []SyncQueueItem
+		_ = ReadJSONFile(QueueFile, &fileQueue)
+		fileQueue = append(fileQueue, item)
+		_ = WriteJSONFile(QueueFile, fileQueue)
+
+		err := syncFunc()
+		ended := time.Now()
+		duration := ended.Sub(queued)
+		status := "success"
+		if err != nil {
+			status = "failed"
+			TrailarrLog(ERROR, "Tasks", "Task %s error: %s", taskId, err.Error())
+		} else {
+			TrailarrLog(INFO, "Tasks", "Task %s completed successfully.", taskId)
+		}
+		// Update the last queue item for this task (by TaskId and Queued)
+		_ = ReadJSONFile(QueueFile, &fileQueue)
+		for i := len(fileQueue) - 1; i >= 0; i-- {
+			if fileQueue[i].TaskId == string(taskId) && fileQueue[i].Queued.Equal(queued) {
+				fileQueue[i].Status = status
+				fileQueue[i].Started = queued
+				fileQueue[i].Ended = ended
+				fileQueue[i].Duration = duration
+				if err != nil {
+					fileQueue[i].Error = err.Error()
+				} else {
+					fileQueue[i].Error = ""
+				}
+				break
+			}
+		}
+		_ = WriteJSONFile(QueueFile, fileQueue)
 	}
 }

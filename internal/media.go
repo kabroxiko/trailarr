@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -19,10 +18,8 @@ const (
 	MediaTypeTV    MediaType = "tv"
 )
 
-var GlobalSyncQueue []SyncQueueItem
-
-// Generic function to sync media images for Radarr/Sonarr
-func SyncMediaImages(provider, apiPath, cacheFile string, filter func(map[string]interface{}) bool, posterDir string, posterSuffixes []string) error {
+// Syncs media cache and caches poster images for Radarr/Sonarr
+func SyncMedia(provider, apiPath, cacheFile string, filter func(map[string]interface{}) bool, posterDir string, posterSuffixes []string) error {
 	err := SyncMediaCacheJson(provider, apiPath, cacheFile, filter)
 	if err != nil {
 		return err
@@ -79,117 +76,6 @@ func parseMediaID(id interface{}) (int, bool) {
 		return 0, false
 	}
 	return idInt, true
-}
-
-// Parametric force sync for Radarr/Sonarr
-type SyncQueueItem struct {
-	TaskId   string
-	Queued   time.Time
-	Started  time.Time
-	Ended    time.Time
-	Duration time.Duration
-	Status   string
-	Error    string
-}
-
-// Parametric status struct for Radarr/Sonarr
-type SyncStatus struct {
-	LastExecution time.Time
-	LastDuration  time.Duration
-	NextExecution time.Time
-	LastError     string
-	Queue         []SyncQueueItem
-}
-
-func NewSyncStatus() *SyncStatus {
-	return &SyncStatus{
-		Queue: make([]SyncQueueItem, 0),
-	}
-}
-
-// Parametric status getters
-func LastExecution(status *SyncStatus) time.Time    { return status.LastExecution }
-func LastDuration(status *SyncStatus) time.Duration { return status.LastDuration }
-func NextExecution(status *SyncStatus) time.Time    { return status.NextExecution }
-func LastError(status *SyncStatus) string           { return status.LastError }
-func Queue(status *SyncStatus) []SyncQueueItem      { return status.Queue }
-
-// UpdateSyncQueueItem updates status, timestamps, and error for a SyncQueueItem
-func UpdateSyncQueueItem(item *SyncQueueItem, status string, started, ended time.Time, duration time.Duration, err error) {
-	item.Status = status
-	item.Started = started
-	item.Ended = ended
-	item.Duration = duration
-	if err != nil {
-		item.Error = err.Error()
-	} else {
-		item.Error = ""
-	}
-}
-
-// SyncMedia executes a sync for the given section ("radarr" or "sonarr")
-// syncFunc: function to perform the sync (e.g. SyncRadarrImages or SyncSonarrImages)
-// timings: map of intervals (e.g. Timings)
-// queue: pointer to a slice of SyncQueueItem
-// lastError, lastExecution, lastDuration, nextExecution: pointers to status fields
-func SyncMedia(
-	section string,
-	syncFunc func() error,
-	timings map[string]int,
-	lastError *string,
-	lastExecution *time.Time,
-	lastDuration *time.Duration,
-	nextExecution *time.Time,
-) {
-	println("[FORCE] Executing Sync", section, "...")
-	TrailarrLog(INFO, "SyncService", "Starting sync for section: %s", section)
-	// Add new queue item to file on start
-	queued := time.Now()
-	item := SyncQueueItem{
-		TaskId:  section,
-		Queued:  queued,
-		Status:  "running",
-		Started: queued,
-	}
-	// Read queue file
-	var fileQueue []SyncQueueItem
-	_ = ReadJSONFile(QueueFile, &fileQueue)
-	fileQueue = append(fileQueue, item)
-	_ = WriteJSONFile(QueueFile, fileQueue)
-
-	TrailarrLog(DEBUG, "SyncService", "Invoking syncFunc for section: %s", section)
-	err := syncFunc()
-	ended := time.Now()
-	duration := ended.Sub(queued)
-	status := "success"
-	if err != nil {
-		status = "failed"
-		TrailarrLog(ERROR, "SyncService", "Sync %s error: %s", section, err.Error())
-	} else {
-		TrailarrLog(INFO, "SyncService", "Synced cache for %s.", section)
-	}
-	// Update the last queue item for this section (by TaskId and Queued)
-	_ = ReadJSONFile(QueueFile, &fileQueue)
-	for i := len(fileQueue) - 1; i >= 0; i-- {
-		if fileQueue[i].TaskId == section && fileQueue[i].Queued.Equal(queued) {
-			fileQueue[i].Status = status
-			fileQueue[i].Started = queued
-			fileQueue[i].Ended = ended
-			fileQueue[i].Duration = duration
-			if err != nil {
-				fileQueue[i].Error = err.Error()
-			} else {
-				fileQueue[i].Error = ""
-			}
-			break
-		}
-	}
-	_ = WriteJSONFile(QueueFile, fileQueue)
-	TrailarrLog(INFO, "SyncService", "Finished sync for section: %s", section)
-	*lastExecution = ended
-	*lastDuration = duration
-	interval := timings[section]
-	*nextExecution = ended.Add(time.Duration(interval) * time.Minute)
 }
 
 // Helper to fetch and cache poster image
@@ -461,35 +347,6 @@ func SyncMediaCacheJson(provider, apiPath, cacheFile string, filter func(map[str
 }
 
 // Generic background sync for Radarr/Sonarr
-func BackgroundSync(
-	interval time.Duration,
-	syncFunc func() error,
-	queueAppend func(item interface{}),
-	itemFactory func() interface{},
-	itemUpdate func(item interface{}, started, ended time.Time, duration time.Duration, status, errStr string),
-	queueTrim func(),
-) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		item := itemFactory()
-		queueAppend(item)
-		started := time.Now()
-		itemUpdate(item, started, started, 0, "running", "")
-		err := syncFunc()
-		ended := time.Now()
-		duration := ended.Sub(started)
-		status := "done"
-		errStr := ""
-		if err != nil {
-			status = "error"
-			errStr = err.Error()
-		}
-		itemUpdate(item, started, ended, duration, status, errStr)
-		queueTrim()
-		<-ticker.C
-	}
-}
 
 // Returns a Gin handler to list media (movies/series) without any downloaded trailer extra
 func GetMediaWithoutTrailerExtraHandler(section, cacheFile, defaultPath string) gin.HandlerFunc {
