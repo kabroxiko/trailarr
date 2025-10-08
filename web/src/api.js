@@ -17,13 +17,15 @@ export async function getHistory() {
 export async function getSeries() {
 	const res = await fetch('/api/series');
 	if (!res.ok) throw new Error('Failed to fetch Sonarr series');
-	return await res.json();
+	const data = await res.json();
+	return { series: data.items || [] };
 }
 
 export async function getMovies() {
 	const res = await fetch('/api/movies');
 	if (!res.ok) throw new Error('Failed to fetch Radarr movies');
-	return await res.json();
+	const data = await res.json();
+	return { movies: data.items || [] };
 }
 
 // API functions for Gin backend

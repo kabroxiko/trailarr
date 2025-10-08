@@ -14,8 +14,7 @@ export default function Wanted({ darkMode, type }) {
         const endpoint = type === 'movie' ? '/api/movies/wanted' : '/api/series/wanted';
         const res = await fetch(endpoint);
         const data = await res.json();
-        const key = type === 'movie' ? 'movies' : 'series';
-        const sorted = (data[key] || []).slice().sort((a, b) => {
+        const sorted = (data.items || []).slice().sort((a, b) => {
           if (!a.title) return 1;
           if (!b.title) return -1;
           return a.title.localeCompare(b.title);

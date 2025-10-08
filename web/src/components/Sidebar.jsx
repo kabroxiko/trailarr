@@ -44,7 +44,20 @@ export default function Sidebar({ darkMode }) {
 
   // Local state for submenu expansion
   const [openMenus, setOpenMenus] = React.useState({});
-  // Submenus only open if toggled by user
+  // Submenus stay open if path matches a submenu section
+  React.useEffect(() => {
+    // Determine which menu should be open based on path
+    let menuToOpen = null;
+    if (selectedSection === 'Wanted') menuToOpen = 'Wanted';
+    else if (selectedSection === 'Settings') menuToOpen = 'Settings';
+    else if (selectedSection === 'System') menuToOpen = 'System';
+    if (menuToOpen) {
+      setOpenMenus({ [menuToOpen]: true });
+    } else {
+      setOpenMenus({});
+    }
+  }, [selectedSection]);
+
   const isOpen = (menu) => !!openMenus[menu];
   const handleToggle = (menu) => {
     setOpenMenus((prev) => {

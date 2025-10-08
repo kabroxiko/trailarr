@@ -164,26 +164,6 @@ func RegisterRoutes(r *gin.Engine) {
 	r.Static("/mediacover", MediaCoverPath)
 	r.StaticFile("/logo.svg", "web/public/logo.svg")
 	// Helper for default media path
-	getDefaultPath := func(provider, fallback string) string {
-		var mediaType MediaType
-		switch provider {
-		case "radarr":
-			mediaType = MediaTypeMovie
-		case "sonarr":
-			mediaType = MediaTypeTV
-		default:
-			return fallback
-		}
-		mappings, err := GetPathMappings(mediaType)
-		if CheckErrLog(WARN, "API", "GetPathMappings "+provider+" failed", err) == nil && len(mappings) > 0 {
-			for _, m := range mappings {
-				if len(m) > 1 && m[1] != "" {
-					return m[1]
-				}
-			}
-		}
-		return fallback
-	}
 	// Group movies/series endpoints
 	for _, media := range []struct {
 		section      string
@@ -195,18 +175,8 @@ func RegisterRoutes(r *gin.Engine) {
 		{"movies", MoviesJSONPath, MoviesWantedFile, "/Movies", MediaTypeMovie},
 		{"series", SeriesJSONPath, SeriesWantedFile, "/Series", MediaTypeTV},
 	} {
-		r.GET("/api/"+media.section, GetMediaHandler(media.section, media.cacheFile, "id"))
-		var provider string
-		if media.section == "movies" {
-			provider = "radarr"
-		} else {
-			provider = "sonarr"
-		}
-		r.GET("/api/"+media.section+"/wanted", GetMediaWithoutTrailerExtraHandler(
-			provider,
-			media.wantedFile,
-			getDefaultPath(provider, media.fallbackPath),
-		))
+		r.GET("/api/"+media.section, GetMediaHandler(media.cacheFile, "id"))
+		r.GET("/api/"+media.section+"/wanted", GetMissingExtrasHandler(media.wantedFile))
 		r.GET("/api/"+media.section+"/:id/extras", sharedExtrasHandler(media.extrasType))
 	}
 	// Group settings endpoints for Radarr/Sonarr
