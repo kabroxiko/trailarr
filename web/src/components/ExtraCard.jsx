@@ -18,6 +18,7 @@ export default function ExtraCard({
   YoutubeEmbed,
   rejected: rejectedProp,
   onPlay,
+  onDownloaded,
 }) {
   const [imgError, setImgError] = useState(false);
   const baseTitle = extra.Title;
@@ -80,9 +81,14 @@ export default function ExtraCard({
         })
       });
       if (res.ok) {
-        setExtras(prev => prev.map((e, i) =>
-          e.Title === extra.Title && e.Type === extra.Type ? { ...e, Status: 'downloaded' } : e
-        ));
+        if (typeof setExtras === 'function') {
+          setExtras(prev => prev.map((e, i) =>
+            e.Title === extra.Title && e.Type === extra.Type ? { ...e, Status: 'downloaded' } : e
+          ));
+        }
+        if (typeof onDownloaded === 'function') {
+          onDownloaded();
+        }
         setErrorCard(null);
       } else {
         const data = await res.json();

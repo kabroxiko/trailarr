@@ -556,27 +556,27 @@ func RemoveBlacklistExtraHandler(c *gin.Context) {
 	respondJSON(c, http.StatusOK, gin.H{"status": "removed"})
 }
 
-// removeRejectedTooManyRequests removes all rejected extras with reason containing 'Too Many Requests' from the rejected_extras.json file.
-func removeRejectedTooManyRequests() {
-	TrailarrLog(INFO, "Tasks", "[removeRejectedTooManyRequests] Entered. Path: %s", RejectedExtrasPath)
+// removeRejectedExtrasWithReasons removes all rejected extras with reasons matching certain substrings from the rejected_extras.json file.
+func removeRejectedExtrasWithReasons() {
+	TrailarrLog(INFO, "Tasks", "[removeRejectedExtrasWithReasons] Entered. Path: %s", RejectedExtrasPath)
 	var rejected []RejectedExtra
 	f, err := os.Open(RejectedExtrasPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return // nothing to do
 		}
-		TrailarrLog(WARN, "Tasks", "[removeRejectedTooManyRequests] Could not open rejected_extras.json: %v", err)
+		TrailarrLog(WARN, "Tasks", "[removeRejectedExtrasWithReasons] Could not open rejected_extras.json: %v", err)
 		return
 	}
 	defer f.Close()
 	dec := json.NewDecoder(f)
 	if err := dec.Decode(&rejected); err != nil {
-		TrailarrLog(WARN, "Tasks", "[removeRejectedTooManyRequests] Could not decode rejected_extras.json: %v", err)
+		TrailarrLog(WARN, "Tasks", "[removeRejectedExtrasWithReasons] Could not decode rejected_extras.json: %v", err)
 		return
 	}
 	var filtered []RejectedExtra
 	for _, r := range rejected {
-		if r.Reason != "" && (containsTooManyRequests(r.Reason) || containsChromeCookiesDatabase(r.Reason)) {
+		if r.Reason != "" && containsAnyReason(r.Reason, "Too Many Requests", "could not find chrome cookies database", "Sign in to confirm you’re not a bot") {
 			continue
 		}
 		filtered = append(filtered, r)
@@ -585,24 +585,28 @@ func removeRejectedTooManyRequests() {
 	f.Close()
 	out, err := os.Create(RejectedExtrasPath)
 	if err != nil {
-		TrailarrLog(WARN, "Tasks", "[removeRejectedTooManyRequests] Could not write rejected_extras.json: %v", err)
+		TrailarrLog(WARN, "Tasks", "[removeRejectedExtrasWithReasons] Could not write rejected_extras.json: %v", err)
 		return
 	}
 	defer out.Close()
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(filtered); err != nil {
-		TrailarrLog(WARN, "Tasks", "[removeRejectedTooManyRequests] Could not encode rejected_extras.json: %v", err)
+		TrailarrLog(WARN, "Tasks", "[removeRejectedExtrasWithReasons] Could not encode rejected_extras.json: %v", err)
 	}
 }
 
-// containsTooManyRequests returns true if the reason contains 'Too Many Requests' (case-insensitive)
-// containsChromeCookiesDatabase returns true if the reason contains 'could not find chrome cookies database' (case-insensitive)
-func containsChromeCookiesDatabase(reason string) bool {
-	return (len(reason) > 0 && containsIgnoreCase(reason, "could not find chrome cookies database"))
-}
-func containsTooManyRequests(reason string) bool {
-	return (len(reason) > 0 && (containsIgnoreCase(reason, "Too Many Requests")))
+// containsAnyReason returns true if the reason contains any of the provided substrings (case-insensitive)
+func containsAnyReason(reason string, substrings ...string) bool {
+	if len(reason) == 0 {
+		return false
+	}
+	for _, substr := range substrings {
+		if containsIgnoreCase(reason, substr) {
+			return true
+		}
+	}
+	return false
 }
 
 // containsIgnoreCase returns true if substr is in s, case-insensitive

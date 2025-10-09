@@ -31,8 +31,8 @@ type YtdlpFlagsConfig struct {
 
 func DefaultYtdlpFlagsConfig() YtdlpFlagsConfig {
 	return YtdlpFlagsConfig{
-		Quiet:              true,
-		NoProgress:         true,
+		Quiet:              false,
+		NoProgress:         false,
 		WriteSubs:          true,
 		WriteAutoSubs:      true,
 		EmbedSubs:          true,
@@ -394,26 +394,6 @@ func handleDownloadErrorNative(info *downloadInfo, youtubeId string, err error, 
 	TrailarrLog(ERROR, "YouTube", "Download failed for %s: %s", youtubeId, reason)
 	addToRejectedExtras(info, youtubeId, reason)
 	return fmt.Errorf(reason+": %w", err)
-}
-
-func setupCookiesFile() *string {
-	TrailarrLog(DEBUG, "YouTube", "TrailarrRoot: %s", TrailarrRoot)
-	cookiesFile := filepath.Join(TrailarrRoot, "cookies.txt")
-
-	if _, err := os.Stat(cookiesFile); err == nil {
-		TrailarrLog(INFO, "YouTube", "Using cookies file: %s", cookiesFile)
-		return &cookiesFile
-	}
-
-	// Create an empty cookies.txt if it does not exist
-	if f, createErr := os.Create(cookiesFile); createErr == nil {
-		_ = f.Close()
-		TrailarrLog(INFO, "YouTube", "Created empty cookies.txt at %s", cookiesFile)
-		return &cookiesFile
-	} else {
-		TrailarrLog(ERROR, "YouTube", "Could not create cookies.txt at %s: %v", cookiesFile, createErr)
-		return nil
-	}
 }
 
 func addToRejectedExtras(info *downloadInfo, youtubeId, reason string) {

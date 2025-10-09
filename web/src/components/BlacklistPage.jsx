@@ -138,6 +138,7 @@ function BlacklistPage({ darkMode }) {
                   Type: item.extra_type || item.extraType || '',
                   YoutubeId: item.youtube_id || item.youtubeId || '',
                   reason: item.reason || item.message || '',
+                  Status: item.Status || item.status || '',
                 };
                 const media = {
                   id: item.media_id || item.mediaId || '',
@@ -155,12 +156,31 @@ function BlacklistPage({ darkMode }) {
                       darkMode={darkMode}
                       media={media}
                       mediaType={mediaType}
-                      setExtras={() => {}}
+                      setExtras={null}
                       setModalMsg={() => {}}
                       setShowModal={() => {}}
                       YoutubeEmbed={null}
                       rejected={true}
                       onPlay={videoId => setYoutubeModal({ open: true, videoId })}
+                      onDownloaded={() => {
+                        setBlacklist(prev => {
+                          if (!prev) return prev;
+                          // Update the correct item in the blacklist
+                          const update = (arr) => arr.map((item2) => {
+                            if ((item2.extra_title || item2.extraTitle) === extra.Title &&
+                                (item2.extra_type || item2.extraType) === extra.Type &&
+                                (item2.youtube_id || item2.youtubeId) === extra.YoutubeId) {
+                              return { ...item2, status: 'downloaded', Status: 'downloaded' };
+                            }
+                            return item2;
+                          });
+                          if (Array.isArray(prev)) return update(prev);
+                          // If object, update all values
+                          const updated = {};
+                          for (const k in prev) updated[k] = update(prev[k]);
+                          return updated;
+                        });
+                      }}
                     />
                     {media.title && media.id && (
                       <a

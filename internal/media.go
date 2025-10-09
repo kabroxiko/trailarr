@@ -382,7 +382,6 @@ func sharedExtrasHandler(mediaType MediaType) gin.HandlerFunc {
 				})
 			}
 		}
-		TrailarrLog(DEBUG, "sharedExtrasHandler", "Extras response: %+v", extras)
 		respondJSON(c, http.StatusOK, gin.H{"extras": extras})
 	}
 }

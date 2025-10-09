@@ -1,7 +1,7 @@
 package internal
 
 func SyncSonarr() error {
-	removeRejectedTooManyRequests()
+	removeRejectedExtrasWithReasons()
 	return SyncMedia(
 		"sonarr",
 		"/api/v3/series",
