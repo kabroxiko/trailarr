@@ -51,6 +51,7 @@ export default function ExtraCard({
   if (displayTitle.length > 22) titleFontSize = 14;
   if (displayTitle.length > 32) titleFontSize = 12;
   const downloaded = extra.Status === 'downloaded';
+  const [downloading, setDownloading] = useState(false);
   // Use the rejected prop if provided, otherwise fallback to extra.Status
   const [unbanned, setUnbanned] = useState(false);
   const rejected = !unbanned && (typeof rejectedProp === 'boolean' ? rejectedProp : extra.Status === 'rejected');
@@ -67,7 +68,8 @@ export default function ExtraCard({
   };
 
   const handleDownloadClick = async () => {
-    if (downloaded) return;
+    if (downloaded || downloading) return;
+    setDownloading(true);
     try {
       const res = await fetch(`/api/extras/download`, {
         method: 'POST',
@@ -96,6 +98,8 @@ export default function ExtraCard({
       }
     } catch (e) {
       showErrorModal(e.message || e);
+    } finally {
+      setDownloading(false);
     }
   };
   // Poster image or fallback factory
@@ -220,17 +224,29 @@ export default function ExtraCard({
           {extra.YoutubeId && !downloaded && !imgError && (
             <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 2 }}>
               <IconButton
-                icon={<FontAwesomeIcon icon={faDownload} color={rejected ? '#aaa' : '#fff'} size="lg" />}
-                title={rejected ? (extra.reason ? `Rejected: ${extra.reason}` : 'Rejected (cannot download)') : 'Download'}
-                onClick={rejected
+                icon={
+                  downloading ? (
+                    <span className="download-spinner" style={{ display: 'inline-block', width: 22, height: 22, background: 'transparent' }}>
+                      <svg viewBox="0 0 50 50" style={{ width: 22, height: 22, background: 'transparent' }}>
+                        <circle cx="25" cy="25" r="20" fill="none" stroke="#fff" strokeWidth="5" strokeDasharray="31.4 31.4" strokeLinecap="round">
+                          <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="0.8s" repeatCount="indefinite" />
+                        </circle>
+                      </svg>
+                    </span>
+                  ) : (
+                    <FontAwesomeIcon icon={faDownload} color="#fff" size="lg" />
+                  )
+                }
+                title={rejected ? (extra.reason ? `Rejected: ${extra.reason}` : 'Rejected (cannot download)') : (downloading ? 'Downloading...' : 'Download')}
+                onClick={rejected || downloading
                   ? undefined
                   : (e => {
                       e.stopPropagation();
                       handleDownloadClick();
                     })}
-                disabled={rejected}
+                disabled={rejected || downloading}
                 aria-label="Download"
-                style={{ opacity: rejected ? 0.5 : 1 }}
+                style={{ opacity: rejected ? 0.5 : (downloading ? 0.7 : 1), background: 'transparent', borderRadius: downloading ? 8 : 0, transition: 'background 0.2s, opacity 0.2s' }}
               />
             </div>
           )}
@@ -244,7 +260,8 @@ export default function ExtraCard({
                 <IconButton
                   icon={<FontAwesomeIcon icon={faTrashCan} color="#ef4444" size="md" />}
                   title="Delete"
-                  onClick={async () => {
+                  onClick={async (e) => {
+                    e.stopPropagation();
                     if (!window.confirm('Delete this extra?')) return;
                     try {
                       const { deleteExtra } = await import('../api');

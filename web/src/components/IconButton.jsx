@@ -9,6 +9,8 @@ export default function IconButton({ icon, onClick, title, disabled = false, sty
       style={{
         background: 'none',
         border: 'none',
+        outline: 'none',
+        boxShadow: 'none',
         padding: 0,
         margin: 0,
         cursor: disabled ? 'not-allowed' : 'pointer',
@@ -18,6 +20,8 @@ export default function IconButton({ icon, onClick, title, disabled = false, sty
         justifyContent: 'center',
         ...style,
       }}
+      onFocus={e => { e.target.style.outline = 'none'; e.target.style.boxShadow = 'none'; }}
+      onMouseDown={e => { e.target.style.outline = 'none'; e.target.style.boxShadow = 'none'; }}
       {...props}
     >
       {icon}
