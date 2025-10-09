@@ -93,7 +93,7 @@ jobs:
 
           echo "New tag: $new_tag"
           git tag $new_tag
-          
+
           # Configure git to use the token for pushing
           git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
           git push origin $new_tag
@@ -192,18 +192,25 @@ jobs:
           cp $binary_name $archive_name/
           cp README.md $archive_name/ 2>/dev/null || true
           cp LICENSE $archive_name/ 2>/dev/null || true
+          
+          echo "Creating archive for ${{ matrix.platform }}..."
           if [ "${{ matrix.goos }}" = "windows" ]; then
             zip -r ${archive_name}.zip $archive_name
+            echo "Created: ${archive_name}.zip"
+            ls -la ${archive_name}.zip
           else
             tar -czf ${archive_name}.tar.gz $archive_name
+            echo "Created: ${archive_name}.tar.gz" 
+            ls -la ${archive_name}.tar.gz
           fi
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: trailarr-${{ matrix.platform }}
           path: |
-            *.tar.gz
-            *.zip
+            trailarr-${{ needs.tag.outputs.tag }}-${{ matrix.platform }}.tar.gz
+            trailarr-${{ needs.tag.outputs.tag }}-${{ matrix.platform }}.zip
+          if-no-files-found: ignore
 
   release:
     runs-on: ubuntu-latest
@@ -218,6 +225,11 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: ./artifacts
+          merge-multiple: true
+      - name: List downloaded files
+        run: |
+          echo "Downloaded files:"
+          find ./artifacts -type f -name "*.tar.gz" -o -name "*.zip" | sort
       - name: Generate changelog
         id: changelog
         run: |
@@ -247,8 +259,8 @@ jobs:
             ## Downloads
             Download the appropriate binary for your platform below.
           files: |
-            ./artifacts/**/*.tar.gz
-            ./artifacts/**/*.zip
+            ./artifacts/*.tar.gz
+            ./artifacts/*.zip
           draft: false
           prerelease: false
         env:
