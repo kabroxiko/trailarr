@@ -27,6 +27,7 @@ jobs:
         with:
           name: frontend-build
           path: web/dist/
+          compression-level: 0
 
   test:
     runs-on: ubuntu-latest
@@ -90,14 +91,14 @@ jobs:
           fi
 
           echo "New tag: $new_tag"
-          
+
           # Check if tag already exists
           if git rev-parse "refs/tags/$new_tag" >/dev/null 2>&1; then
             echo "Tag $new_tag already exists, skipping tag creation"
             echo "tag=$new_tag" >> $GITHUB_OUTPUT
             exit 0
           fi
-          
+
           # Create and push the new tag
           git tag $new_tag
 
@@ -168,11 +169,26 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.21.x'
+      - name: Set up Node.js (fallback)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
       - name: Download frontend build
         uses: actions/download-artifact@v4
         with:
           name: frontend-build
           path: web/dist/
+        continue-on-error: false
+      - name: Verify frontend build
+        run: |
+          echo "Checking frontend build files:"
+          ls -la web/dist/ || echo "web/dist/ not found"
+          if [ ! -d "web/dist" ] || [ -z "$(ls -A web/dist)" ]; then
+            echo "Frontend build not found or empty, building locally..."
+            cd web
+            npm ci
+            npm run build
+          fi
       - name: Build binary
         env:
           GOOS: ${{ matrix.goos }}
