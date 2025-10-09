@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import BlacklistPage from './components/BlacklistPage';
 import { useRef } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import './App.css';
 
 // Helper to load a component dynamically, but only once
@@ -28,6 +28,7 @@ import './App.css';
 // Refactored to use dynamic imports
 
 function App() {
+  const location = useLocation();
   const [search, setSearch] = useState('');
   const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   const [darkMode, setDarkMode] = useState(prefersDark);
@@ -50,9 +51,9 @@ function App() {
   const [seriesError, setSeriesError] = useState('');
   const [seriesLoading, setSeriesLoading] = useState(true);
 
-  // Sync sidebar state with route on mount/refresh
+  // Sync sidebar state and page title with route on every navigation
   useEffect(() => {
-    const path = window.location.pathname;
+    const path = location.pathname;
     if (path.startsWith('/settings/')) {
       setSelectedSection('Settings');
       const sub = path.split('/')[2];
@@ -68,6 +69,8 @@ function App() {
     } else if (path.startsWith('/wanted/series')) {
       setSelectedSection('Wanted');
       setSelectedSettingsSub('Series');
+    } else if (path.startsWith('/blacklist')) {
+      setSelectedSection('Blacklist');
     } else if (path === '/' || path.match(/^\/[0-9a-zA-Z_-]+$/)) {
       setSelectedSection('Movies');
     } else if (path.startsWith('/series')) {
@@ -77,8 +80,11 @@ function App() {
     } else if (path.startsWith('/system/tasks')) {
       setSelectedSection('System');
       setSelectedSystemSub('Tasks');
+    } else if (path.startsWith('/system/logs')) {
+      setSelectedSection('System');
+      setSelectedSystemSub('Logs');
     }
-  }, []);
+  }, [location.pathname]);
 
   // Sonarr series fetch from backend
   useEffect(() => {
@@ -178,7 +184,7 @@ function App() {
   } else if (selectedSection === 'Wanted') {
     pageTitle = `Wanted${selectedSettingsSub ? ' ' + selectedSettingsSub : ''}`;
   } else if (selectedSection === 'System') {
-    pageTitle = `${selectedSystemSub ? selectedSystemSub : ''}`;
+    pageTitle = `System${selectedSystemSub ? ' ' + selectedSystemSub : ''}`;
   }
 
   // Update document title dynamically

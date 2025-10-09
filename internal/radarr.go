@@ -1,6 +1,7 @@
 package internal
 
 func SyncRadarr() error {
+	removeRejectedTooManyRequests()
 	return SyncMedia(
 		"radarr",
 		"/api/v3/movie",

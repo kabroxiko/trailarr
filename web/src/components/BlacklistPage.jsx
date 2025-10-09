@@ -1,16 +1,26 @@
 
 import React, { useState, useEffect } from 'react';
 import ExtraCard from './ExtraCard.jsx';
+import YoutubePlayer from './YoutubePlayer.jsx';
 import Container from './Container.jsx';
 import SectionHeader from './SectionHeader.jsx';
 
 
-function BlacklistPage() {
+function BlacklistPage({ darkMode }) {
+  const longArgStringPhrase = "Long argument string detected";
+  const longArgStringGroupKey = "Long argument string detected (all)";
+  const postprocessingFailedPhrase = "Postprocessing: Conversion failed";
+  const postprocessingFailedGroupKey = "Postprocessing: Conversion failed (all)";
+  const noDataBlocksPhrase = "Did not get any data blocks";
+  const noDataBlocksGroupKey = "Did not get any data blocks (all)";
+  const videoUnavailablePhrase = "Video unavailable";
+  const videoUnavailableGroupKey = "Video unavailable (all)";
+  const signinBotPhrase = "Sign in to confirm you’re not a bot";
+  const signinBotGroupKey = "Sign in to confirm you’re not a bot (all)";
   const [blacklist, setBlacklist] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-  // Track unbanned cards by a unique key (mediaType|mediaId|extraType|extraTitle|youtubeId)
-  const [unbanned, setUnbanned] = useState({});
+  const [youtubeModal, setYoutubeModal] = useState({ open: false, videoId: '' });
 
   useEffect(() => {
     fetch('/api/blacklist/extras')
@@ -41,6 +51,13 @@ function BlacklistPage() {
   // Group items by normalized reason (replace YouTube ID with XXXXXXXX)
   const groups = {};
   const youtubeIdRegex = /([A-Za-z0-9_-]{8,20})/g;
+  const countryPhrase = 'The uploader has not made this video available in your country';
+  const countryGroupKey = 'Not available in your country (all)';
+  const signinPhrase = "Sign in if you've been granted access to this video";
+  const signinAgePhrase = "Sign in to confirm your age";
+  const signinGroupKey = "Sign-in required (all)";
+  const tooManyRequestsPhrase = 'HTTP Error 429: Too Many Requests';
+  const tooManyRequestsGroupKey = 'Too Many Requests (all)';
   items.forEach((item) => {
     let reason = item.reason || item.message || '';
     // Replace YouTube ID in reason with XXXXXXXX if present
@@ -56,8 +73,27 @@ function BlacklistPage() {
       if (item.youtubeId && match === item.youtubeId) return 'XXXXXXXX';
       return match;
     });
-    if (!groups[reason]) groups[reason] = [];
-    groups[reason].push(item);
+    // Group all country restriction, sign-in, and 429 reasons together
+    let groupKey = reason;
+    if (reason.includes(countryPhrase)) {
+      groupKey = countryGroupKey;
+    } else if (reason.includes(signinBotPhrase)) {
+      groupKey = signinBotGroupKey;
+    } else if (reason.includes(signinPhrase) || reason.includes(signinAgePhrase)) {
+      groupKey = signinGroupKey;
+    } else if (reason.includes(tooManyRequestsPhrase)) {
+      groupKey = tooManyRequestsGroupKey;
+    } else if (reason.includes(videoUnavailablePhrase)) {
+      groupKey = videoUnavailableGroupKey;
+    } else if (reason.includes(noDataBlocksPhrase)) {
+      groupKey = noDataBlocksGroupKey;
+    } else if (reason.includes(postprocessingFailedPhrase)) {
+      groupKey = postprocessingFailedGroupKey;
+    } else if (reason.includes(longArgStringPhrase)) {
+      groupKey = longArgStringGroupKey;
+    }
+    if (!groups[groupKey]) groups[groupKey] = [];
+    groups[groupKey].push(item);
   });
 
   const gridStyle = {
@@ -73,7 +109,12 @@ function BlacklistPage() {
   };
 
   return (
-    <Container style={{ minHeight: 'calc(100vh - 64px)', padding: 0 }}>
+    <Container style={{
+      minHeight: 'calc(100vh - 64px)',
+      padding: 0,
+      background: darkMode ? '#18181b' : '#fff',
+      color: darkMode ? '#f3f4f6' : '#18181b'
+    }}>
       {Object.entries(groups).map(([reason, groupItems], groupIdx) => {
         // Only shrink if reason contains this phrase
         let displayReason = reason;
@@ -81,10 +122,17 @@ function BlacklistPage() {
           displayReason = reason.slice(0, 1000) + '...';
         }
         return (
-          <div key={groupIdx} style={{ marginBottom: 40 }}>
-            <div style={{ fontWeight: 600, fontSize: '1.1em', margin: '0 0 16px 8px', color: '#ef4444', textAlign: 'left', wordBreak: 'break-word' }}>{displayReason}</div>
+          <div key={groupIdx} style={{
+            marginBottom: 40,
+            background: darkMode ? '#23232a' : '#f3f4f6',
+            borderRadius: 12,
+            boxShadow: darkMode ? '0 2px 8px #0004' : '0 2px 8px #0001',
+            padding: 12
+          }}>
+            <SectionHeader darkMode={darkMode} style={{ fontWeight: 600, fontSize: '1.1em', margin: '0 0 16px 8px', color: '#ef4444', textAlign: 'left', wordBreak: 'break-word' }}>{displayReason}</SectionHeader>
             <div style={{ ...gridStyle, justifyContent: 'start' }}>
               {groupItems.map((item, idx) => {
+                console.log('Blacklist item:', item);
                 const extra = {
                   Title: item.extra_title || item.extraTitle || '',
                   Type: item.extra_type || item.extraType || '',
@@ -95,47 +143,81 @@ function BlacklistPage() {
                   id: item.media_id || item.mediaId || '',
                   title: item.media_title || item.mediaTitle || '',
                 };
+                console.log('Mapped media:', media);
                 const mediaType = item.media_type || item.mediaType || '';
                 // Unique key for this card
-                const cardKey = `${mediaType}|${media.id}|${extra.Type}|${extra.Title}|${extra.YoutubeId}`;
-                const isUnbanned = !!unbanned[cardKey];
                 return (
-                  <ExtraCard
-                    key={idx}
-                    extra={extra}
-                    idx={idx}
-                    typeExtras={[]}
-                    darkMode={true}
-                    media={media}
-                    mediaType={mediaType}
-                    setExtras={() => {}}
-                    setModalMsg={() => {}}
-                    setShowModal={() => {}}
-                    youtubeModal={{ open: false, videoId: '' }}
-                    setYoutubeModal={() => {}}
-                    YoutubeEmbed={null}
-                    rejected={!isUnbanned}
-                    onRemoveBan={async () => {
-                      await fetch('/api/blacklist/extras/remove', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          mediaType,
-                          mediaId: media.id,
-                          extraType: extra.Type,
-                          extraTitle: extra.Title,
-                          youtubeId: extra.YoutubeId
-                        })
-                      });
-                      setUnbanned(prev => ({ ...prev, [cardKey]: true }));
-                    }}
-                  />
+                  <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
+                    <ExtraCard
+                      extra={extra}
+                      idx={idx}
+                      typeExtras={[]}
+                      darkMode={darkMode}
+                      media={media}
+                      mediaType={mediaType}
+                      setExtras={() => {}}
+                      setModalMsg={() => {}}
+                      setShowModal={() => {}}
+                      YoutubeEmbed={null}
+                      rejected={true}
+                      onPlay={videoId => setYoutubeModal({ open: true, videoId })}
+                    />
+                    {media.title && media.id && (
+                      <a
+                        href={
+                          mediaType === 'movie'
+                            ? `/movies/${media.id}`
+                            : mediaType === 'tv'
+                              ? `/series/${media.id}`
+                              : '#'
+                        }
+                        style={{
+                          marginTop: 8,
+                          fontSize: '0.97em',
+                          color: darkMode ? '#f3f4f6' : '#23232a',
+                          textDecoration: 'none',
+                          textAlign: 'center',
+                          wordBreak: 'break-word',
+                          display: 'block',
+                          fontWeight: 500,
+                        }}
+                      >
+                        {media.title}
+                      </a>
+                    )}
+                  </div>
                 );
               })}
             </div>
           </div>
         );
       })}
+      {/* Render YouTube modal only once at the page level */}
+      {(youtubeModal.open && youtubeModal.videoId) && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.7)', zIndex: 99999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            position: 'relative',
+            background: '#18181b',
+            borderRadius: 16,
+            boxShadow: '0 2px 24px #000',
+            padding: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'visible',
+          }}>
+            <button
+              onClick={() => setYoutubeModal({ open: false, videoId: '' })}
+              style={{ position: 'absolute', top: 8, right: 12, zIndex: 2, fontSize: 28, color: '#fff', background: 'transparent', border: 'none', cursor: 'pointer' }}
+              aria-label="Close"
+            >×</button>
+            <YoutubePlayer videoId={youtubeModal.videoId} />
+          </div>
+        </div>
+      )}
     </Container>
   );
 }

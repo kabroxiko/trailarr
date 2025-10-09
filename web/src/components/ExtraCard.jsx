@@ -15,11 +15,9 @@ export default function ExtraCard({
   setExtras,
   setModalMsg,
   setShowModal,
-  youtubeModal,
-  setYoutubeModal,
   YoutubeEmbed,
   rejected: rejectedProp,
-  onRemoveBan,
+  onPlay,
 }) {
   const [imgError, setImgError] = useState(false);
   const baseTitle = extra.Title;
@@ -53,7 +51,8 @@ export default function ExtraCard({
   if (displayTitle.length > 32) titleFontSize = 12;
   const downloaded = extra.Status === 'downloaded';
   // Use the rejected prop if provided, otherwise fallback to extra.Status
-  const rejected = typeof rejectedProp === 'boolean' ? rejectedProp : extra.Status === 'rejected';
+  const [unbanned, setUnbanned] = useState(false);
+  const rejected = !unbanned && (typeof rejectedProp === 'boolean' ? rejectedProp : extra.Status === 'rejected');
   const [errorCard, setErrorCard] = useState(null);
   const isError = errorCard === idx;
   // Helper to show modal with error message
@@ -152,7 +151,7 @@ export default function ExtraCard({
         <div
           style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: extra.YoutubeId && !imgError ? 'pointer' : 'default' }}
           onClick={() => {
-            if (extra.YoutubeId && !imgError) setYoutubeModal({ open: true, videoId: extra.YoutubeId });
+            if (extra.YoutubeId && !imgError && onPlay) onPlay(extra.YoutubeId);
           }}
         >
           {/** Play button overlay */}
@@ -163,7 +162,7 @@ export default function ExtraCard({
                 title="Play"
                 onClick={e => {
                   e.stopPropagation();
-                  setYoutubeModal({ open: true, videoId: extra.YoutubeId });
+                  if (onPlay) onPlay(extra.YoutubeId);
                 }}
               />
             </div>
@@ -182,14 +181,30 @@ export default function ExtraCard({
             <PosterImage src={null} alt="Denied" fallbackIcon={faBan} />
           )}
           {/* Remove Ban Button (Unban) */}
-          {rejected && typeof onRemoveBan === 'function' && (
+          {rejected && !unbanned && (
             <div style={{ position: 'absolute', top: 8, left: 8, zIndex: 2 }}>
               <IconButton
                 icon={<FontAwesomeIcon icon={faCircleXmark} color="#ef4444" size="lg" />}
                 title="Remove ban"
-                onClick={e => {
+                onClick={async e => {
                   e.stopPropagation();
-                  onRemoveBan();
+                  try {
+                    await fetch('/api/blacklist/extras/remove', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        mediaType,
+                        mediaId: media.id,
+                        extraType: extra.Type,
+                        extraTitle: extra.Title,
+                        youtubeId: extra.YoutubeId
+                      })
+                    });
+                    setUnbanned(true);
+                  } catch (err) {
+                    setModalMsg('Failed to remove ban.');
+                    setShowModal(true);
+                  }
                 }}
                 aria-label="Remove ban"
               />
@@ -202,8 +217,11 @@ export default function ExtraCard({
                 icon={<FontAwesomeIcon icon={faDownload} color={rejected ? '#aaa' : '#fff'} size="lg" />}
                 title={rejected ? (extra.reason ? `Rejected: ${extra.reason}` : 'Rejected (cannot download)') : 'Download'}
                 onClick={rejected
-                  ? () => { if (extra.reason) setModalMsg(extra.reason); setShowModal(true); }
-                  : handleDownloadClick}
+                  ? undefined
+                  : (e => {
+                      e.stopPropagation();
+                      handleDownloadClick();
+                    })}
                 disabled={rejected}
                 aria-label="Download"
                 style={{ opacity: rejected ? 0.5 : 1 }}
@@ -249,31 +267,7 @@ export default function ExtraCard({
       <div style={{ width: '100%', padding: '12px 10px 0 10px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <div style={{ fontWeight: 600, fontSize: titleFontSize, color: darkMode ? '#e5e7eb' : '#222', textAlign: 'center', marginBottom: 4, height: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', width: '100%' }}>{displayTitle}</div>
         <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 18, position: 'absolute', bottom: 12, left: 0 }}></div>
-        {(youtubeModal.open && youtubeModal.videoId) && (
-          <div style={{
-            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.7)', zIndex: 99999,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <div style={{
-              position: 'relative',
-              background: '#18181b',
-              borderRadius: 16,
-              boxShadow: '0 2px 24px #000',
-              padding: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              overflow: 'visible',
-            }}>
-              <button
-                onClick={() => setYoutubeModal({ open: false, videoId: '' })}
-                style={{ position: 'absolute', top: 8, right: 12, zIndex: 2, fontSize: 28, color: '#fff', background: 'transparent', border: 'none', cursor: 'pointer' }}
-                aria-label="Close"
-              >×</button>
-              <YoutubePlayer videoId={youtubeModal.videoId} />
-            </div>
-          </div>
-        )}
+        {/* YouTube modal is now rendered at the page level */}
       </div>
     </div>
   );

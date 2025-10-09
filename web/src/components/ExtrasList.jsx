@@ -43,9 +43,8 @@ function ExtrasList({
             setExtras={setExtras}
             setModalMsg={setModalMsg}
             setShowModal={setShowModal}
-            youtubeModal={youtubeModal}
-            setYoutubeModal={setYoutubeModal}
             YoutubeEmbed={YoutubeEmbed}
+            onPlay={videoId => setYoutubeModal({ open: true, videoId })}
           />
         ))}
       </div>

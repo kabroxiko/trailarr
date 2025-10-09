@@ -23,9 +23,8 @@ type Extra struct {
 
 // GetRejectedExtrasForMedia returns rejected extras for a given media type and id
 func GetRejectedExtrasForMedia(mediaType MediaType, id int) []RejectedExtra {
-	rejectedPath := filepath.Join(TrailarrRoot, "rejected_extras.json")
 	var rejected []RejectedExtra
-	_ = ReadJSONFile(rejectedPath, &rejected)
+	_ = ReadJSONFile(RejectedExtrasPath, &rejected)
 	return Filter(rejected, func(r RejectedExtra) bool {
 		return r.MediaType == mediaType && r.MediaId == id
 	})
@@ -509,56 +508,115 @@ func BlacklistExtrasHandler(c *gin.Context) {
 // Handler to remove an entry from the rejected extras blacklist
 func RemoveBlacklistExtraHandler(c *gin.Context) {
 	var req struct {
-		MediaType  string      `json:"mediaType"`
-		MediaId    interface{} `json:"mediaId"`
-		ExtraType  string      `json:"extraType"`
-		ExtraTitle string      `json:"extraTitle"`
-		YoutubeId  string      `json:"youtubeId"`
+		MediaType  string `json:"mediaType"`
+		MediaId    int    `json:"mediaId"`
+		ExtraType  string `json:"extraType"`
+		ExtraTitle string `json:"extraTitle"`
+		YoutubeId  string `json:"youtubeId"`
 	}
 	if err := c.BindJSON(&req); err != nil {
 		respondError(c, http.StatusBadRequest, ErrInvalidRequest)
 		return
 	}
-	// Read current blacklist
-	var blacklist []map[string]interface{}
+	// Read current blacklist as []RejectedExtra
+	var blacklist []RejectedExtra
 	f, err := os.Open(RejectedExtrasPath)
 	if err == nil {
 		_ = json.NewDecoder(f).Decode(&blacklist)
 		f.Close()
 	}
-	// Remove matching entry
-	newList := make([]map[string]interface{}, 0, len(blacklist))
+	// Remove only the matching entry (all fields must match)
+	newList := make([]RejectedExtra, 0, len(blacklist))
+	removed := false
 	for _, entry := range blacklist {
-		match := true
-		if req.MediaType != "" && entry["media_type"] != req.MediaType && entry["mediaType"] != req.MediaType {
-			match = false
+		if !removed &&
+			string(entry.MediaType) == req.MediaType &&
+			entry.MediaId == req.MediaId &&
+			entry.ExtraType == req.ExtraType &&
+			entry.ExtraTitle == req.ExtraTitle &&
+			entry.YoutubeId == req.YoutubeId {
+			removed = true
+			continue
 		}
-		if req.MediaId != nil && entry["media_id"] != req.MediaId && entry["mediaId"] != req.MediaId {
-			match = false
-		}
-		if req.ExtraType != "" && entry["extra_type"] != req.ExtraType && entry["extraType"] != req.ExtraType {
-			match = false
-		}
-		if req.ExtraTitle != "" && entry["extra_title"] != req.ExtraTitle && entry["extraTitle"] != req.ExtraTitle {
-			match = false
-		}
-		if req.YoutubeId != "" && entry["youtube_id"] != req.YoutubeId && entry["youtubeId"] != req.YoutubeId {
-			match = false
-		}
-		if !match {
-			newList = append(newList, entry)
-		}
+		newList = append(newList, entry)
 	}
-	// Write updated blacklist
+	// Write updated blacklist, pretty-printed
 	f2, err := os.Create(RejectedExtrasPath)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, "Could not update rejected_extras.json: "+err.Error())
 		return
 	}
 	defer f2.Close()
-	if err := json.NewEncoder(f2).Encode(newList); err != nil {
+	enc := json.NewEncoder(f2)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(newList); err != nil {
 		respondError(c, http.StatusInternalServerError, "Could not encode rejected_extras.json: "+err.Error())
 		return
 	}
 	respondJSON(c, http.StatusOK, gin.H{"status": "removed"})
+}
+
+// removeRejectedTooManyRequests removes all rejected extras with reason containing 'Too Many Requests' from the rejected_extras.json file.
+func removeRejectedTooManyRequests() {
+	TrailarrLog(INFO, "Tasks", "[removeRejectedTooManyRequests] Entered. Path: %s", RejectedExtrasPath)
+	var rejected []RejectedExtra
+	f, err := os.Open(RejectedExtrasPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return // nothing to do
+		}
+		TrailarrLog(WARN, "Tasks", "[removeRejectedTooManyRequests] Could not open rejected_extras.json: %v", err)
+		return
+	}
+	defer f.Close()
+	dec := json.NewDecoder(f)
+	if err := dec.Decode(&rejected); err != nil {
+		TrailarrLog(WARN, "Tasks", "[removeRejectedTooManyRequests] Could not decode rejected_extras.json: %v", err)
+		return
+	}
+	var filtered []RejectedExtra
+	for _, r := range rejected {
+		if r.Reason != "" && (containsTooManyRequests(r.Reason) || containsChromeCookiesDatabase(r.Reason)) {
+			continue
+		}
+		filtered = append(filtered, r)
+	}
+	// Always pretty-print the file with all non-removed entries
+	f.Close()
+	out, err := os.Create(RejectedExtrasPath)
+	if err != nil {
+		TrailarrLog(WARN, "Tasks", "[removeRejectedTooManyRequests] Could not write rejected_extras.json: %v", err)
+		return
+	}
+	defer out.Close()
+	enc := json.NewEncoder(out)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(filtered); err != nil {
+		TrailarrLog(WARN, "Tasks", "[removeRejectedTooManyRequests] Could not encode rejected_extras.json: %v", err)
+	}
+}
+
+// containsTooManyRequests returns true if the reason contains 'Too Many Requests' (case-insensitive)
+// containsChromeCookiesDatabase returns true if the reason contains 'could not find chrome cookies database' (case-insensitive)
+func containsChromeCookiesDatabase(reason string) bool {
+	return (len(reason) > 0 && containsIgnoreCase(reason, "could not find chrome cookies database"))
+}
+func containsTooManyRequests(reason string) bool {
+	return (len(reason) > 0 && (containsIgnoreCase(reason, "Too Many Requests")))
+}
+
+// containsIgnoreCase returns true if substr is in s, case-insensitive
+func containsIgnoreCase(s, substr string) bool {
+	return len(s) >= len(substr) && (stringContainsFold(s, substr))
+}
+
+// stringContainsFold is like strings.Contains but case-insensitive
+func stringContainsFold(s, substr string) bool {
+	sLower := s
+	subLower := substr
+	if s != "" && substr != "" {
+		sLower = strings.ToLower(s)
+		subLower = strings.ToLower(substr)
+	}
+	return strings.Contains(sLower, subLower)
 }

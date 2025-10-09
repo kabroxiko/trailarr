@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import MediaInfoLane from './MediaInfoLane.jsx';
 import MediaCard from './MediaCard.jsx';
 import ExtrasList from './ExtrasList';
+import YoutubePlayer from './YoutubePlayer.jsx';
 import { useParams } from 'react-router-dom';
 
 // Spinner and YouTubeEmbed component
@@ -200,10 +201,35 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
             setExtras={setExtras}
             setModalMsg={setModalMsg}
             setShowModal={setShowModal}
-            youtubeModal={youtubeModal}
-            setYoutubeModal={setYoutubeModal}
             YoutubeEmbed={YoutubeEmbed}
+            setYoutubeModal={setYoutubeModal}
           />
+        </div>
+      )}
+      {/* Render YouTube modal only once at the page level */}
+      {(youtubeModal.open && youtubeModal.videoId) && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.7)', zIndex: 99999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            position: 'relative',
+            background: '#18181b',
+            borderRadius: 16,
+            boxShadow: '0 2px 24px #000',
+            padding: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'visible',
+          }}>
+            <button
+              onClick={() => setYoutubeModal({ open: false, videoId: '' })}
+              style={{ position: 'absolute', top: 8, right: 12, zIndex: 2, fontSize: 28, color: '#fff', background: 'transparent', border: 'none', cursor: 'pointer' }}
+              aria-label="Close"
+            >×</button>
+            <YoutubePlayer videoId={youtubeModal.videoId} />
+          </div>
         </div>
       )}
     </div>

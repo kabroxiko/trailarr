@@ -1,15 +1,13 @@
 package internal
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
-
-	ytdlp "github.com/lrstanley/go-ytdlp"
 )
 
 type YtdlpFlagsConfig struct {
@@ -103,11 +101,7 @@ type RejectedExtra struct {
 	Reason     string    `json:"reason"`
 }
 
-type RequestBody struct {
-	Env   map[string]string `json:"env,omitempty"`
-	Flags ytdlp.FlagConfig  `json:"flags"`
-	Args  []string          `json:"args"`
-}
+// No longer needed
 
 func DownloadYouTubeExtra(mediaType MediaType, mediaId int, extraType, extraTitle, youtubeId string, forceDownload ...bool) (*ExtraDownloadMetadata, error) {
 	TrailarrLog(DEBUG, "YouTube", "DownloadYouTubeExtra called with mediaType=%s, mediaId=%d, extraType=%s, extraTitle=%s, youtubeId=%s, forceDownload=%v",
@@ -315,46 +309,34 @@ func cleanupRejectedExtras(rejected []map[string]string, rejectedPath string) {
 
 func performDownload(info *downloadInfo, youtubeId string) (*ExtraDownloadMetadata, error) {
 
-	// Setup yt-dlp
-	ytdlp.MustInstall(context.Background(), nil)
+	// Build yt-dlp command args
+	args := buildYtDlpArgs(info, youtubeId, true)
 
-	// First attempt with impersonation
-	flags := createYtdlpFlags(info)
-	cmd := ytdlp.New().
-		SetWorkDir(info.TempDir).
-		FormatSort("res,fps,codec,br").
-		SetFlagConfig(&flags)
+	// Debug: print the full yt-dlp command line
+	fullCmd := "yt-dlp " + strings.Join(args, " ")
+	TrailarrLog(INFO, "YouTube", "yt-dlp command: %s", fullCmd)
 
-	// Debug: log the yt-dlp command context (flags, output, youtubeId)
-	flagsJson, _ := json.Marshal(flags)
-	TrailarrLog(INFO, "YouTube", "yt-dlp debug: output=%s flags=%s youtubeId=%s", info.TempFile, string(flagsJson), youtubeId)
+	cmd := exec.Command("yt-dlp", args...)
+	cmd.Dir = info.TempDir
+	output, err := cmd.CombinedOutput()
 
-	output, err := cmd.Run(context.Background(), youtubeId)
-	if err != nil {
-		// Check if error is related to impersonation
-		if isImpersonationError(err) {
-			fmt.Printf("[DownloadYouTubeExtra] Impersonation failed, retrying without impersonation: %s\n", youtubeId)
-
-			// Retry without impersonation
-			flagsNoImpersonate := createYtdlpFlagsWithoutImpersonation(info)
-			cmdRetry := ytdlp.New().
-				SetWorkDir(info.TempDir).
-				FormatSort("res,fps,codec,br").
-				SetFlagConfig(&flagsNoImpersonate)
-
-			output, err = cmdRetry.Run(context.Background(), youtubeId)
-		}
+	if err != nil && isImpersonationErrorNative(string(output)) {
+		fmt.Printf("[DownloadYouTubeExtra] Impersonation failed, retrying without impersonation: %s\n", youtubeId)
+		args = buildYtDlpArgs(info, youtubeId, false)
+		cmd = exec.Command("yt-dlp", args...)
+		cmd.Dir = info.TempDir
+		output, err = cmd.CombinedOutput()
 	}
 
-	if output != nil && output.Stdout != "" {
-		for _, line := range strings.Split(output.Stdout, "\n") {
+	if len(output) > 0 {
+		for _, line := range strings.Split(string(output), "\n") {
 			if strings.TrimSpace(line) != "" {
-				TrailarrLog(DEBUG, "YouTube", "yt-dlp stdout for %s: %s", youtubeId, line)
+				TrailarrLog(DEBUG, "YouTube", "yt-dlp output for %s: %s", youtubeId, line)
 			}
 		}
 	}
 	if err != nil {
-		return nil, handleDownloadError(info, youtubeId, err, output)
+		return nil, handleDownloadErrorNative(info, youtubeId, err, string(output))
 	}
 
 	// Move file to final location
@@ -366,123 +348,52 @@ func performDownload(info *downloadInfo, youtubeId string) (*ExtraDownloadMetada
 	return createSuccessMetadata(info, youtubeId)
 }
 
-func shouldUseImpersonation() bool {
-	// For now, always try to use impersonation
-	// In the future, this could check for curl_cffi availability or user settings
-	return true
+func isImpersonationErrorNative(output string) bool {
+	return strings.Contains(output, "Impersonate target") ||
+		strings.Contains(output, "is not available") ||
+		strings.Contains(output, "missing dependencies required to support this target")
 }
 
-func getImpersonationTarget() string {
-	// Try different impersonation targets in order of preference
-	// chrome is preferred as it's most commonly supported
-	return "chrome"
-}
-
-func isImpersonationError(err error) bool {
-	if err == nil {
-		return false
-	}
-	errStr := err.Error()
-	return strings.Contains(errStr, "Impersonate target") ||
-		strings.Contains(errStr, "is not available") ||
-		strings.Contains(errStr, "missing dependencies required to support this target")
-}
-
-func createYtdlpFlagsWithoutImpersonation(info *downloadInfo) ytdlp.FlagConfig {
+func buildYtDlpArgs(info *downloadInfo, youtubeId string, impersonate bool) []string {
 	cfg, _ := GetYtdlpFlagsConfig()
-	cookiesPath := setupCookiesFile()
-	networkFlags := ytdlp.FlagsNetwork{
-		SocketTimeout: &cfg.Timeout,
+	args := []string{
+		"--no-progress",
+		"--quiet",
+		"--write-subs",
+		"--write-auto-subs",
+		"--embed-subs",
+		"--sub-format", cfg.SubFormat,
+		"--sub-langs", cfg.SubLangs,
+		"--remux-video", cfg.RemuxVideo,
+		"--format", cfg.RequestedFormats,
+		"--output", info.TempFile,
+		"--max-downloads", fmt.Sprintf("%d", cfg.MaxDownloads),
+		"--limit-rate", cfg.LimitRate,
+		"--sleep-interval", fmt.Sprintf("%.0f", cfg.SleepInterval),
+		"--sleep-requests", fmt.Sprintf("%.0f", cfg.SleepRequests),
+		"--max-sleep-interval", fmt.Sprintf("%.0f", cfg.MaxSleepInterval),
+		"--socket-timeout", fmt.Sprintf("%.0f", cfg.Timeout),
 	}
-	// Force progress output for logging
-	quiet := false
-	noprogress := false
-	return ytdlp.FlagConfig{
-		Network: networkFlags,
-		VerbositySimulation: ytdlp.FlagsVerbositySimulation{
-			Quiet:      &quiet,
-			NoProgress: &noprogress,
-		},
-		Subtitle: ytdlp.FlagsSubtitle{
-			WriteSubs:     &cfg.WriteSubs,
-			WriteAutoSubs: &cfg.WriteAutoSubs,
-			SubFormat:     &cfg.SubFormat,
-			SubLangs:      &cfg.SubLangs,
-		},
-		PostProcessing: ytdlp.FlagsPostProcessing{
-			EmbedSubs:  &cfg.EmbedSubs,
-			RemuxVideo: &cfg.RemuxVideo,
-		},
-		VideoFormat: ytdlp.FlagsVideoFormat{
-			Format: &cfg.RequestedFormats,
-		},
-		Workarounds: ytdlp.FlagsWorkarounds{
-			SleepInterval:    &cfg.SleepInterval,
-			SleepRequests:    &cfg.SleepRequests,
-			MaxSleepInterval: &cfg.MaxSleepInterval,
-		},
-		VideoSelection: ytdlp.FlagsVideoSelection{
-			MaxDownloads: &cfg.MaxDownloads,
-		},
-		Filesystem: ytdlp.FlagsFilesystem{
-			Output:  &info.TempFile,
-			Cookies: cookiesPath,
-		},
-		Download: ytdlp.FlagsDownload{
-			LimitRate: &cfg.LimitRate,
-		},
+
+	if impersonate {
+		args = append(args, "--impersonate", "chrome")
 	}
+
+	// args = append(args, "--cookies-from-browser", "chrome")
+	args = append(args, "--cookies", CookiesFile)
+	args = append(args, "--", youtubeId)
+	return args
 }
 
-func createYtdlpFlags(info *downloadInfo) ytdlp.FlagConfig {
-	cfg, _ := GetYtdlpFlagsConfig()
-	cookiesPath := setupCookiesFile()
-	networkFlags := ytdlp.FlagsNetwork{
-		SocketTimeout: &cfg.Timeout,
+func handleDownloadErrorNative(info *downloadInfo, youtubeId string, err error, output string) error {
+	reason := err.Error()
+	if output != "" {
+		reason += " | output: " + output
 	}
-	// Try to enable impersonation if available
-	if shouldUseImpersonation() {
-		impersonate := getImpersonationTarget()
-		networkFlags.Impersonate = &impersonate
-	}
-	// Force progress output for logging
-	quiet := false
-	noprogress := false
-	return ytdlp.FlagConfig{
-		Network: networkFlags,
-		VerbositySimulation: ytdlp.FlagsVerbositySimulation{
-			Quiet:      &quiet,
-			NoProgress: &noprogress,
-		},
-		Subtitle: ytdlp.FlagsSubtitle{
-			WriteSubs:     &cfg.WriteSubs,
-			WriteAutoSubs: &cfg.WriteAutoSubs,
-			SubFormat:     &cfg.SubFormat,
-			SubLangs:      &cfg.SubLangs,
-		},
-		PostProcessing: ytdlp.FlagsPostProcessing{
-			EmbedSubs:  &cfg.EmbedSubs,
-			RemuxVideo: &cfg.RemuxVideo,
-		},
-		VideoFormat: ytdlp.FlagsVideoFormat{
-			Format: &cfg.RequestedFormats,
-		},
-		Workarounds: ytdlp.FlagsWorkarounds{
-			SleepInterval:    &cfg.SleepInterval,
-			SleepRequests:    &cfg.SleepRequests,
-			MaxSleepInterval: &cfg.MaxSleepInterval,
-		},
-		VideoSelection: ytdlp.FlagsVideoSelection{
-			MaxDownloads: &cfg.MaxDownloads,
-		},
-		Filesystem: ytdlp.FlagsFilesystem{
-			Output:  &info.TempFile,
-			Cookies: cookiesPath,
-		},
-		Download: ytdlp.FlagsDownload{
-			LimitRate: &cfg.LimitRate,
-		},
-	}
+
+	TrailarrLog(ERROR, "YouTube", "Download failed for %s: %s", youtubeId, reason)
+	addToRejectedExtras(info, youtubeId, reason)
+	return fmt.Errorf(reason+": %w", err)
 }
 
 func setupCookiesFile() *string {
@@ -503,28 +414,6 @@ func setupCookiesFile() *string {
 		TrailarrLog(ERROR, "YouTube", "Could not create cookies.txt at %s: %v", cookiesFile, createErr)
 		return nil
 	}
-}
-
-func handleDownloadError(info *downloadInfo, youtubeId string, err error, output *ytdlp.Result) error {
-	errStr := err.Error()
-	stdout := ""
-	stderr := ""
-	if output != nil {
-		stdout = output.Stdout
-		stderr = output.Stderr
-	}
-
-	reason := errStr
-	if stdout != "" {
-		reason += " | stdout: " + stdout
-	}
-	if stderr != "" {
-		reason += " | stderr: " + stderr
-	}
-
-	TrailarrLog(ERROR, "YouTube", "Download failed for %s: %s", youtubeId, reason)
-	addToRejectedExtras(info, youtubeId, reason)
-	return fmt.Errorf(reason+": %w", err)
 }
 
 func addToRejectedExtras(info *downloadInfo, youtubeId, reason string) {
