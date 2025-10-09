@@ -68,12 +68,15 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Git user
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
       - name: Bump version and create tag
         id: bump
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
           echo "Latest tag: $latest_tag"
@@ -90,6 +93,9 @@ jobs:
 
           echo "New tag: $new_tag"
           git tag $new_tag
+          
+          # Configure git to use the token for pushing
+          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
           git push origin $new_tag
           echo "tag=$new_tag" >> $GITHUB_OUTPUT
 
@@ -116,15 +122,102 @@ jobs:
           push: true
           tags: ghcr.io/${{ github.repository }}:${{ needs.tag.outputs.tag }},ghcr.io/${{ github.repository }}:latest
 
+  build-binaries:
+    runs-on: ubuntu-latest
+    needs: tag
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            platform: linux-x64
+          - goos: linux
+            goarch: arm64
+            platform: linux-arm64
+          - goos: linux
+            goarch: arm
+            goarm: 7
+            platform: linux-arm
+          - goos: linux
+            goarch: 386
+            platform: linux-x86
+          - goos: darwin
+            goarch: amd64
+            platform: macos-x64
+          - goos: darwin
+            goarch: arm64
+            platform: macos-arm64
+          - goos: windows
+            goarch: amd64
+            platform: windows-x64
+          - goos: windows
+            goarch: 386
+            platform: windows-x86
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21.x'
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+      - name: Build React frontend
+        run: |
+          cd web
+          npm ci
+          npm run build
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+        run: |
+          binary_name="trailarr"
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            binary_name="trailarr.exe"
+          fi
+          go build -ldflags="-s -w" -o $binary_name ./cmd/trailarr
+      - name: Create archive
+        run: |
+          binary_name="trailarr"
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            binary_name="trailarr.exe"
+          fi
+          archive_name="trailarr-${{ needs.tag.outputs.tag }}-${{ matrix.platform }}"
+          mkdir -p $archive_name
+          cp $binary_name $archive_name/
+          cp README.md $archive_name/ 2>/dev/null || true
+          cp LICENSE $archive_name/ 2>/dev/null || true
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            zip -r ${archive_name}.zip $archive_name
+          else
+            tar -czf ${archive_name}.tar.gz $archive_name
+          fi
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: trailarr-${{ matrix.platform }}
+          path: |
+            *.tar.gz
+            *.zip
+
   release:
     runs-on: ubuntu-latest
-    needs: [tag, publish]
+    needs: [tag, publish, build-binaries]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
       - name: Generate changelog
         id: changelog
         run: |
@@ -150,6 +243,12 @@ jobs:
             ```
             docker pull ghcr.io/${{ github.repository }}:${{ needs.tag.outputs.tag }}
             ```
+
+            ## Downloads
+            Download the appropriate binary for your platform below.
+          files: |
+            ./artifacts/**/*.tar.gz
+            ./artifacts/**/*.zip
           draft: false
           prerelease: false
         env:
