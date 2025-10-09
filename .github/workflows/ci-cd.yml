@@ -8,30 +8,29 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-frontend:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.21.x'
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20.x'
-      - name: Build Go backend
-        run: make build
       - name: Build React frontend
         run: |
           cd web
           npm ci
           npm run build
+      - name: Upload frontend build
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: web/dist/
 
   test:
     runs-on: ubuntu-latest
-    needs: build
+    needs: build-frontend
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -50,16 +49,15 @@ jobs:
           else
             echo "No Go tests found."
           fi
-      - name: Lint and build frontend
+      - name: Lint frontend
         run: |
           cd web
           npm ci
           npm run lint
-          npm run build
 
   tag:
     runs-on: ubuntu-latest
-    needs: [build, test]
+    needs: [build-frontend, test]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     outputs:
       tag: ${{ steps.bump.outputs.tag }}
@@ -93,7 +91,7 @@ jobs:
 
           echo "New tag: $new_tag"
           git tag $new_tag
-          
+
           # Configure git to use the token for pushing
           git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
           git push origin $new_tag
@@ -124,7 +122,7 @@ jobs:
 
   build-binaries:
     runs-on: ubuntu-latest
-    needs: tag
+    needs: [tag, build-frontend]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     strategy:
       matrix:
@@ -161,15 +159,11 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.21.x'
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Download frontend build
+        uses: actions/download-artifact@v4
         with:
-          node-version: '20.x'
-      - name: Build React frontend
-        run: |
-          cd web
-          npm ci
-          npm run build
+          name: frontend-build
+          path: web/dist/
       - name: Build binary
         env:
           GOOS: ${{ matrix.goos }}
@@ -192,18 +186,25 @@ jobs:
           cp $binary_name $archive_name/
           cp README.md $archive_name/ 2>/dev/null || true
           cp LICENSE $archive_name/ 2>/dev/null || true
+
+          echo "Creating archive for ${{ matrix.platform }}..."
           if [ "${{ matrix.goos }}" = "windows" ]; then
             zip -r ${archive_name}.zip $archive_name
+            echo "Created: ${archive_name}.zip"
+            ls -la ${archive_name}.zip
           else
             tar -czf ${archive_name}.tar.gz $archive_name
+            echo "Created: ${archive_name}.tar.gz"
+            ls -la ${archive_name}.tar.gz
           fi
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: trailarr-${{ matrix.platform }}
           path: |
-            *.tar.gz
-            *.zip
+            trailarr-${{ needs.tag.outputs.tag }}-${{ matrix.platform }}.tar.gz
+            trailarr-${{ needs.tag.outputs.tag }}-${{ matrix.platform }}.zip
+          if-no-files-found: ignore
 
   release:
     runs-on: ubuntu-latest
@@ -218,6 +219,11 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: ./artifacts
+          merge-multiple: true
+      - name: List downloaded files
+        run: |
+          echo "Downloaded files:"
+          find ./artifacts -type f -name "*.tar.gz" -o -name "*.zip" | sort
       - name: Generate changelog
         id: changelog
         run: |
@@ -247,8 +253,8 @@ jobs:
             ## Downloads
             Download the appropriate binary for your platform below.
           files: |
-            ./artifacts/**/*.tar.gz
-            ./artifacts/**/*.zip
+            ./artifacts/*.tar.gz
+            ./artifacts/*.zip
           draft: false
           prerelease: false
         env:
