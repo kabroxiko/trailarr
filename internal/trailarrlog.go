@@ -100,14 +100,6 @@ func TrailarrLog(level LogLevel, component, message string, args ...interface{})
 	}
 }
 
-// CheckErrLog logs the error with context and returns it (for propagation)
-func CheckErrLog(level LogLevel, component, context string, err error) error {
-	if err != nil {
-		TrailarrLog(level, component, "%s: %v", context, err)
-	}
-	return err
-}
-
 // Helper to get log level from config
 func GetLogLevel() LogLevel {
 	config, err := readConfigFile()

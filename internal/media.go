@@ -85,12 +85,12 @@ func fetchAndCachePoster(localPath, posterUrl, section string) error {
 		if resp != nil {
 			resp.Body.Close()
 		}
-		CheckErrLog(WARN, "CacheMediaPosters", "Failed to fetch poster image", err)
+		TrailarrLog(WARN, "CacheMediaPosters", "Failed to fetch poster image: %v", err)
 		return fmt.Errorf("failed to fetch poster image from %s", section)
 	}
 	defer resp.Body.Close()
 	out, err := os.Create(localPath)
-	if CheckErrLog(WARN, "CacheMediaPosters", "Failed to cache poster image", err) != nil {
+	if err != nil {
 		return fmt.Errorf("failed to cache poster image for %s", section)
 	}
 	_, _ = io.Copy(out, resp.Body)
@@ -117,7 +117,7 @@ func CacheMediaPosters(
 	for _, item := range idList {
 		id := fmt.Sprintf("%v", item[idKey])
 		settings, err := loadMediaSettings(section)
-		if CheckErrLog(WARN, "CacheMediaPosters", "Failed to load settings", err) != nil {
+		if err != nil {
 			continue
 		}
 		apiBase := trimTrailingSlash(settings.URL)
@@ -128,7 +128,7 @@ func CacheMediaPosters(
 			return posterJob{id, idDir, localPath, posterUrl}
 		})
 		for _, job := range jobs {
-			if err := os.MkdirAll(job.idDir, 0775); CheckErrLog(WARN, "CacheMediaPosters", "Failed to create dir", err) != nil {
+			if err := os.MkdirAll(job.idDir, 0775); err != nil {
 				continue
 			}
 			if _, err := os.Stat(job.localPath); err == nil {
@@ -147,7 +147,7 @@ func CacheMediaPosters(
 // Finds the media path for a given id in a cache file
 func FindMediaPathByID(cacheFile string, mediaId int) (string, error) {
 	items, err := loadCache(cacheFile)
-	if CheckErrLog(WARN, "FindMediaPathByID", "Failed to load cache", err) != nil {
+	if err != nil {
 		return "", err
 	}
 	for _, item := range items {
@@ -183,7 +183,7 @@ func trimTrailingSlash(url string) string {
 // Loads a JSON cache file into a generic slice
 func loadCache(path string) ([]map[string]interface{}, error) {
 	var items []map[string]interface{}
-	if err := ReadJSONFile(path, &items); CheckErrLog(WARN, "loadCache", "ReadJSONFile failed", err) != nil {
+	if err := ReadJSONFile(path, &items); err != nil {
 		return nil, err
 	}
 
@@ -220,7 +220,7 @@ func getTitleMap(mainCachePath, path string) map[string]string {
 	}
 	titleMap := make(map[string]string)
 	var mainItems []map[string]interface{}
-	if err := ReadJSONFile(mainCachePath, &mainItems); CheckErrLog(WARN, "getTitleMap", "ReadJSONFile failed", err) != nil {
+	if err := ReadJSONFile(mainCachePath, &mainItems); err != nil {
 		return nil
 	}
 	for _, item := range mainItems {
@@ -267,17 +267,17 @@ func updateItemTitle(item map[string]interface{}, titleMap map[string]string) {
 // Pass mediaType (MediaTypeMovie or MediaTypeTV), apiPath (e.g. "/api/v3/movie"), cacheFile, and a filter function for items
 func SyncMediaCacheJson(provider, apiPath, cacheFile string, filter func(map[string]interface{}) bool) error {
 	url, apiKey, err := GetProviderUrlAndApiKey(provider)
-	if CheckErrLog(WARN, "SyncMediaCacheJson", "settings not found", err) != nil {
+	if err != nil {
 		return fmt.Errorf("%s settings not found: %w", provider, err)
 	}
 	req, err := http.NewRequest("GET", url+apiPath, nil)
-	if CheckErrLog(WARN, "SyncMediaCacheJson", "error creating request", err) != nil {
+	if err != nil {
 		return fmt.Errorf("error creating request: %w", err)
 	}
 	req.Header.Set(HeaderApiKey, apiKey)
 	client := &http.Client{}
 	resp, err := client.Do(req)
-	if CheckErrLog(WARN, "SyncMediaCacheJson", "error fetching", err) != nil {
+	if err != nil {
 		return fmt.Errorf("error fetching %s: %w", provider, err)
 	}
 	defer resp.Body.Close()
@@ -286,7 +286,7 @@ func SyncMediaCacheJson(provider, apiPath, cacheFile string, filter func(map[str
 		return fmt.Errorf("%s API error: %d", provider, resp.StatusCode)
 	}
 	var allItems []map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&allItems); CheckErrLog(WARN, "SyncMediaCacheJson", "failed to decode response", err) != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&allItems); err != nil {
 		return fmt.Errorf("failed to decode %s response: %w", provider, err)
 	}
 	items := make([]map[string]interface{}, 0)
@@ -399,11 +399,11 @@ func respondJSON(c *gin.Context, code int, obj interface{}) {
 // Updates the main JSON file to mark items as wanted if they have no trailer
 func updateWantedStatusInMainJson(mediaType MediaType, cacheFile string) error {
 	items, err := loadCache(cacheFile)
-	if CheckErrLog(WARN, "updateWantedStatusInMainJson", "Failed to load cache", err) != nil {
+	if err != nil {
 		return err
 	}
 	mappings, err := GetPathMappings(mediaType)
-	if CheckErrLog(WARN, "updateWantedStatusInMainJson", "GetPathMappings failed", err) != nil {
+	if err != nil {
 		mappings = nil
 	}
 	var trailerPaths []string

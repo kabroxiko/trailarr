@@ -66,7 +66,7 @@ func RegisterRoutes(r *gin.Engine) {
 		}
 		testUrl := "https://api.themoviedb.org/3/configuration?api_key=" + apiKey
 		resp, err := http.Get(testUrl)
-		if CheckErrLog(WARN, "API", "TMDB testUrl http.Get failed", err) != nil {
+		if err != nil {
 			respondError(c, http.StatusOK, err.Error())
 			return
 		}
@@ -109,7 +109,7 @@ func RegisterRoutes(r *gin.Engine) {
 			return
 		}
 		folders, err := FetchRootFolders(url, apiKey)
-		if CheckErrLog(WARN, "API", "FetchRootFolders failed", err) != nil {
+		if err != nil {
 			respondError(c, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -125,7 +125,7 @@ func RegisterRoutes(r *gin.Engine) {
 			return
 		}
 		err := testMediaConnection(url, apiKey, provider)
-		if CheckErrLog(WARN, "API", "testMediaConnection "+provider+" failed", err) != nil {
+		if err != nil {
 			respondError(c, http.StatusOK, err.Error())
 		} else {
 			respondJSON(c, http.StatusOK, gin.H{"success": true})

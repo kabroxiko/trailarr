@@ -303,7 +303,7 @@ func writeConfigFile(config map[string]interface{}) error {
 // EnsureYtdlpFlagsConfigExists checks config.yml and writes defaults if missing
 func EnsureYtdlpFlagsConfigExists() error {
 	config, err := readConfigFile()
-	if CheckErrLog(WARN, "Settings", "readConfigFile failed", err) != nil {
+	if err != nil {
 		// If config file doesn't exist, create it with defaults
 		config = map[string]interface{}{
 			"ytdlpFlags": DefaultYtdlpFlagsConfig(),
@@ -323,11 +323,11 @@ func EnsureYtdlpFlagsConfigExists() error {
 // Loads yt-dlp flags config from config.yml
 func GetYtdlpFlagsConfig() (YtdlpFlagsConfig, error) {
 	data, err := os.ReadFile(ConfigPath)
-	if CheckErrLog(WARN, "Settings", "os.ReadFile ConfigPath failed", err) != nil {
+	if err != nil {
 		return DefaultYtdlpFlagsConfig(), err
 	}
 	var config map[string]interface{}
-	if err := yaml.Unmarshal(data, &config); CheckErrLog(WARN, "Settings", "yaml.Unmarshal failed", err) != nil {
+	if err := yaml.Unmarshal(data, &config); err != nil {
 		return DefaultYtdlpFlagsConfig(), err
 	}
 	sec, ok := config["ytdlpFlags"].(map[string]interface{})
@@ -400,7 +400,7 @@ func GetYtdlpFlagsConfig() (YtdlpFlagsConfig, error) {
 // Saves yt-dlp flags config to config.yml
 func SaveYtdlpFlagsConfig(cfg YtdlpFlagsConfig) error {
 	config, err := readConfigFile()
-	if CheckErrLog(WARN, "Settings", "readConfigFile failed", err) != nil {
+	if err != nil {
 		config = map[string]interface{}{}
 	}
 	config["ytdlpFlags"] = map[string]interface{}{
@@ -512,7 +512,7 @@ func GetExtraTypesConfig() (ExtraTypesConfig, error) {
 // SaveExtraTypesConfig saves extra types config to config.yml
 func SaveExtraTypesConfig(cfg ExtraTypesConfig) error {
 	config, err := readConfigFile()
-	if CheckErrLog(WARN, "Settings", "readConfigFile failed", err) != nil {
+	if err != nil {
 		config = map[string]interface{}{}
 	}
 	config["extraTypes"] = map[string]interface{}{
@@ -570,25 +570,25 @@ func EnsureSyncTimingsConfig() (map[string]int, error) {
 		// Create config with only syncTimings
 		cfg := map[string]interface{}{"syncTimings": defaultTimings}
 		out, err := yaml.Marshal(cfg)
-		if CheckErrLog(WARN, "Settings", "yaml.Marshal failed", err) != nil {
+		if err != nil {
 			return defaultTimings, err
 		}
 		// Ensure parent dir exists
-		if err := os.MkdirAll(TrailarrRoot+"/config", 0775); CheckErrLog(WARN, "Settings", "os.MkdirAll failed", err) != nil {
+		if err := os.MkdirAll(TrailarrRoot+"/config", 0775); err != nil {
 			return defaultTimings, err
 		}
-		if err := os.WriteFile(ConfigPath, out, 0644); CheckErrLog(WARN, "Settings", "os.WriteFile failed", err) != nil {
+		if err := os.WriteFile(ConfigPath, out, 0644); err != nil {
 			return defaultTimings, err
 		}
 		return defaultTimings, nil
 	}
 	// Load config
 	data, err := os.ReadFile(ConfigPath)
-	if CheckErrLog(WARN, "Settings", "os.ReadFile ConfigPath failed", err) != nil {
+	if err != nil {
 		return defaultTimings, err
 	}
 	var cfg map[string]interface{}
-	if err := yaml.Unmarshal(data, &cfg); CheckErrLog(WARN, "Settings", "yaml.Unmarshal failed", err) != nil {
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return defaultTimings, err
 	}
 	timings, ok := cfg["syncTimings"].(map[string]interface{})
@@ -644,12 +644,12 @@ func EnsureSyncTimingsConfig() (map[string]int, error) {
 // Loads settings for a given section ("radarr" or "sonarr")
 func loadMediaSettings(section string) (MediaSettings, error) {
 	data, err := os.ReadFile(ConfigPath)
-	if CheckErrLog(WARN, "Settings", "os.ReadFile ConfigPath failed", err) != nil {
+	if err != nil {
 		TrailarrLog(WARN, "Settings", "settings not found: %v", err)
 		return MediaSettings{}, fmt.Errorf("settings not found: %w", err)
 	}
 	var allSettings map[string]interface{}
-	if err := yaml.Unmarshal(data, &allSettings); CheckErrLog(WARN, "Settings", "yaml.Unmarshal failed", err) != nil {
+	if err := yaml.Unmarshal(data, &allSettings); err != nil {
 		TrailarrLog(WARN, "Settings", "invalid settings: %v", err)
 		return MediaSettings{}, fmt.Errorf("invalid settings: %w", err)
 	}
@@ -680,11 +680,11 @@ func GetPathMappings(mediaType MediaType) ([][]string, error) {
 		section = "sonarr"
 	}
 	data, err := os.ReadFile(ConfigPath)
-	if CheckErrLog(WARN, "Settings", "os.ReadFile ConfigPath failed", err) != nil {
+	if err != nil {
 		return nil, err
 	}
 	var config map[string]interface{}
-	if err := yaml.Unmarshal(data, &config); CheckErrLog(WARN, "Settings", "yaml.Unmarshal failed", err) != nil {
+	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, err
 	}
 	sec, _ := config[section].(map[string]interface{})
@@ -709,11 +709,11 @@ func GetPathMappings(mediaType MediaType) ([][]string, error) {
 // Returns url and apiKey for a given section (radarr/sonarr) from config.yml
 func GetProviderUrlAndApiKey(provider string) (string, string, error) {
 	data, err := os.ReadFile(ConfigPath)
-	if CheckErrLog(WARN, "Settings", "os.ReadFile ConfigPath failed", err) != nil {
+	if err != nil {
 		return "", "", err
 	}
 	var config map[string]interface{}
-	if err := yaml.Unmarshal(data, &config); CheckErrLog(WARN, "Settings", "yaml.Unmarshal failed", err) != nil {
+	if err := yaml.Unmarshal(data, &config); err != nil {
 		return "", "", err
 	}
 	sec, ok := config[provider].(map[string]interface{})
@@ -728,12 +728,12 @@ func GetProviderUrlAndApiKey(provider string) (string, string, error) {
 func GetSettingsHandler(section string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		data, err := os.ReadFile(ConfigPath)
-		if CheckErrLog(WARN, "Settings", "os.ReadFile ConfigPath failed", err) != nil {
+		if err != nil {
 			respondJSON(c, http.StatusOK, gin.H{"url": "", "apiKey": ""})
 			return
 		}
 		var config map[string]interface{}
-		if err := yaml.Unmarshal(data, &config); CheckErrLog(WARN, "Settings", "yaml.Unmarshal failed", err) != nil {
+		if err := yaml.Unmarshal(data, &config); err != nil {
 			respondJSON(c, http.StatusOK, gin.H{"url": "", "apiKey": "", "pathMappings": []interface{}{}})
 			return
 		}
@@ -809,12 +809,12 @@ func SaveSettingsHandler(section string) gin.HandlerFunc {
 				To   string `yaml:"to"`
 			} `yaml:"pathMappings"`
 		}
-		if err := c.BindJSON(&req); CheckErrLog(WARN, "Settings", "BindJSON failed", err) != nil {
+		if err := c.BindJSON(&req); err != nil {
 			respondError(c, http.StatusBadRequest, ErrInvalidRequest)
 			return
 		}
 		config, err := readConfigFile()
-		if CheckErrLog(WARN, "Settings", "readConfigFile failed", err) != nil {
+		if err != nil {
 			config = map[string]interface{}{}
 		}
 		sectionData := map[string]interface{}{
@@ -830,7 +830,7 @@ func SaveSettingsHandler(section string) gin.HandlerFunc {
 				Config[section] = sectionData
 			}
 		}
-		if CheckErrLog(WARN, "Settings", "writeConfigFile failed", err) != nil {
+		if err != nil {
 			respondError(c, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -840,7 +840,7 @@ func SaveSettingsHandler(section string) gin.HandlerFunc {
 
 func getGeneralSettingsHandler(c *gin.Context) {
 	data, err := os.ReadFile(ConfigPath)
-	if CheckErrLog(WARN, "Settings", "os.ReadFile ConfigPath failed", err) != nil {
+	if err != nil {
 		respondJSON(c, http.StatusOK, gin.H{"tmdbKey": "", "autoDownloadExtras": true})
 		return
 	}
@@ -869,13 +869,13 @@ func saveGeneralSettingsHandler(c *gin.Context) {
 		AutoDownloadExtras *bool  `json:"autoDownloadExtras" yaml:"autoDownloadExtras"`
 		LogLevel           string `json:"logLevel" yaml:"logLevel"`
 	}
-	if err := c.BindJSON(&req); CheckErrLog(WARN, "Settings", "BindJSON failed", err) != nil {
+	if err := c.BindJSON(&req); err != nil {
 		respondError(c, http.StatusBadRequest, ErrInvalidRequest)
 		return
 	}
 	// Read existing settings as map[string]interface{} to preserve all keys
 	config, err := readConfigFile()
-	if CheckErrLog(WARN, "Settings", "readConfigFile failed", err) != nil {
+	if err != nil {
 		config = map[string]interface{}{}
 	}
 	if config["general"] == nil {
@@ -909,7 +909,7 @@ func saveGeneralSettingsHandler(c *gin.Context) {
 			Config["general"] = general
 		}
 	}
-	if CheckErrLog(WARN, "Settings", "writeConfigFile failed", err) != nil {
+	if err != nil {
 		respondError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -919,13 +919,13 @@ func saveGeneralSettingsHandler(c *gin.Context) {
 // Fetch root folders from Radarr or Sonarr API
 func FetchRootFolders(apiURL, apiKey string) ([]map[string]interface{}, error) {
 	req, err := http.NewRequest("GET", apiURL+"/api/v3/rootfolder", nil)
-	if CheckErrLog(WARN, "Settings", "http.NewRequest failed", err) != nil {
+	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("X-Api-Key", apiKey)
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
-	if CheckErrLog(WARN, "Settings", "client.Do failed", err) != nil {
+	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -934,7 +934,7 @@ func FetchRootFolders(apiURL, apiKey string) ([]map[string]interface{}, error) {
 		return nil, fmt.Errorf("API returned status %d", resp.StatusCode)
 	}
 	var folders []map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&folders); CheckErrLog(WARN, "Settings", "json.Decode folders failed", err) != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&folders); err != nil {
 		return nil, err
 	}
 	// Only return root folder paths
@@ -951,13 +951,13 @@ func FetchRootFolders(apiURL, apiKey string) ([]map[string]interface{}, error) {
 func testMediaConnection(url, apiKey, _ string) error {
 	endpoint := "/api/v3/system/status"
 	req, err := http.NewRequest("GET", url+endpoint, nil)
-	if CheckErrLog(WARN, "Settings", "http.NewRequest failed", err) != nil {
+	if err != nil {
 		return err
 	}
 	req.Header.Set("X-Api-Key", apiKey)
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
-	if CheckErrLog(WARN, "Settings", "client.Do failed", err) != nil {
+	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()

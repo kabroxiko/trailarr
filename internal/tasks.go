@@ -453,7 +453,10 @@ func getExtrasInterval() int {
 
 func processExtras(ctx context.Context) {
 	extraTypesCfg, err := GetExtraTypesConfig()
-	CheckErrLog(WARN, "Tasks", "Could not load extra types config", err)
+	if err != nil {
+		TrailarrLog(WARN, "Tasks", "Could not load extra types config: %v", err)
+		return
+	}
 	TrailarrLog(INFO, "Tasks", "[TASK] Searching for missing movie extras...")
 	downloadMissingExtrasWithTypeFilter(ctx, extraTypesCfg, MediaTypeMovie, MoviesJSONPath)
 	TrailarrLog(INFO, "Tasks", "[TASK] Searching for missing series extras...")

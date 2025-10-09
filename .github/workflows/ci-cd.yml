@@ -211,7 +211,7 @@ jobs:
           cp $binary_name $archive_name/
           cp README.md $archive_name/ 2>/dev/null || true
           cp LICENSE $archive_name/ 2>/dev/null || true
-          
+
           # Include web/dist folder for frontend assets
           if [ -d "web/dist" ]; then
             echo "Including web/dist folder in archive..."

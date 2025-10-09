@@ -71,7 +71,7 @@ func resolveCachePath(mediaType MediaType) (string, error) {
 
 func lookupMediaTitle(cacheFile string, mediaId int) string {
 	items, err := loadCache(cacheFile)
-	if CheckErrLog(WARN, "lookupMediaTitle", "Failed to load cache", err) != nil {
+	if err != nil {
 		return ""
 	}
 	for _, m := range items {
@@ -92,7 +92,6 @@ func deleteExtraFiles(mediaPath, extraType, extraTitle string) error {
 	err1 := os.Remove(extraFile)
 	err2 := os.Remove(metaFile)
 	if err1 != nil && err2 != nil {
-		CheckErrLog(WARN, "Extras", "Failed to delete extra files", err1)
 		return fmt.Errorf("file error: %v, meta error: %v", err1, err2)
 	}
 	return nil
@@ -187,7 +186,7 @@ func existingExtrasHandler(c *gin.Context) {
 	// Scan subfolders for .mkv files and their metadata
 	var existing []map[string]interface{}
 	entries, err := os.ReadDir(moviePath)
-	if CheckErrLog(WARN, "existingExtrasHandler", "ReadDir failed", err) != nil {
+	if err != nil {
 		respondJSON(c, http.StatusOK, gin.H{"existing": []map[string]interface{}{}})
 		return
 	}
@@ -234,7 +233,7 @@ func downloadExtraHandler(c *gin.Context) {
 		ExtraTitle string    `json:"extraTitle"`
 		YoutubeId  string    `json:"youtubeId"`
 	}
-	if err := c.BindJSON(&req); CheckErrLog(WARN, "Extras", "[downloadExtraHandler] Invalid request", err) != nil {
+	if err := c.BindJSON(&req); err != nil {
 		respondError(c, http.StatusBadRequest, ErrInvalidRequest)
 		return
 	}
@@ -244,7 +243,7 @@ func downloadExtraHandler(c *gin.Context) {
 	// Convert MediaId (int) to string for DownloadYouTubeExtra
 	meta, err := DownloadYouTubeExtra(req.MediaType, req.MediaId, req.ExtraType, req.ExtraTitle, req.YoutubeId, true)
 	TrailarrLog(INFO, "Extras", "[downloadExtraHandler] DownloadYouTubeExtra returned: meta=%v, err=%v", meta, err)
-	if CheckErrLog(WARN, "Extras", "[downloadExtraHandler] Download error", err) != nil {
+	if err != nil {
 		respondError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -283,7 +282,7 @@ func findMediaWithTrailers(baseDirs ...string) map[string]bool {
 
 func walkMediaDirs(baseDir string, found map[string]bool) {
 	_ = filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
-		if CheckErrLog(WARN, "walkMediaDirs", "filepath.Walk error", err) != nil || !info.IsDir() {
+		if err != nil || !info.IsDir() {
 			return nil
 		}
 		if isTrailerDir(path) && hasVideoFiles(path) {
@@ -344,7 +343,7 @@ func ScanExistingExtras(mediaPath string) map[string]bool {
 		return existing
 	}
 	entries, err := os.ReadDir(mediaPath)
-	if CheckErrLog(WARN, "ScanExistingExtras", "ReadDir failed", err) != nil {
+	if err != nil {
 		return existing
 	}
 	for _, entry := range entries {
@@ -386,7 +385,7 @@ func DownloadMissingExtras(mediaType MediaType, cacheFile string) error {
 	TrailarrLog(INFO, "DownloadMissingExtras", "DownloadMissingExtras: mediaType=%s, cacheFile=%s", mediaType, cacheFile)
 
 	items, err := loadCache(cacheFile)
-	if CheckErrLog(WARN, "DownloadMissingExtras", "Failed to load cache", err) != nil {
+	if err != nil {
 		TrailarrLog(ERROR, "QUEUE", "[EXTRAS] Failed to load cache for %s: %v", mediaType, err)
 		return err
 	}
@@ -456,7 +455,9 @@ func filterAndDownloadExtras(mediaType MediaType, mediaId int, extras []Extra, c
 	})
 	for _, extra := range filtered {
 		err := handleExtraDownload(mediaType, mediaId, extra)
-		CheckErrLog(WARN, "DownloadMissingExtras", "Failed to download", err)
+		if err != nil {
+			TrailarrLog(WARN, "Extras", "Failed to download extra: %v", err)
+		}
 	}
 }
 

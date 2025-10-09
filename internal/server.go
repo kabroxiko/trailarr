@@ -31,7 +31,7 @@ func ListServerFoldersHandler(c *gin.Context) {
 	}
 	// List subfolders
 	entries, err := os.ReadDir(reqPath)
-	if cerr := CheckErrLog(ERROR, "Server", "ReadDir failed", err); cerr != nil {
+	if cerr := err; cerr != nil {
 		respondError(c, 500, cerr.Error())
 		return
 	}

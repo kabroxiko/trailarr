@@ -59,7 +59,7 @@ func GetTMDBId(mediaType MediaType, id int, tmdbKey string) (int, error) {
 
 func GetMovieTMDBId(id int) (int, error) {
 	var movies []map[string]interface{}
-	if err := ReadJSONFile(MoviesJSONPath, &movies); CheckErrLog(WARN, "TMDB", "failed to read or decode Radarr cache", err) != nil {
+	if err := ReadJSONFile(MoviesJSONPath, &movies); err != nil {
 		return 0, fmt.Errorf("failed to read or decode Radarr cache: %w", err)
 	}
 	for _, m := range movies {
@@ -76,7 +76,7 @@ func GetMovieTMDBId(id int) (int, error) {
 
 func GetTVTMDBId(id int, tmdbKey string) (int, error) {
 	var series []map[string]interface{}
-	if err := ReadJSONFile(SeriesJSONPath, &series); CheckErrLog(WARN, "TMDB", "failed to read or decode Sonarr cache", err) != nil {
+	if err := ReadJSONFile(SeriesJSONPath, &series); err != nil {
 		return 0, fmt.Errorf("failed to read or decode Sonarr cache: %w", err)
 	}
 	var title string
@@ -94,12 +94,12 @@ func GetTVTMDBId(id int, tmdbKey string) (int, error) {
 	}
 	tmdbSearchURL := fmt.Sprintf("https://api.themoviedb.org/3/search/tv?api_key=%s&query=%s", tmdbKey, url.QueryEscape(title))
 	resp, err := http.Get(tmdbSearchURL)
-	if CheckErrLog(WARN, "TMDB", "http.Get tmdbSearchURL failed", err) != nil {
+	if err != nil {
 		return 0, err
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
-	if CheckErrLog(WARN, "TMDB", "io.ReadAll resp.Body failed", err) != nil {
+	if err != nil {
 		return 0, err
 	}
 	var tmdbResult struct {
@@ -107,7 +107,7 @@ func GetTVTMDBId(id int, tmdbKey string) (int, error) {
 			ID int `json:"id"`
 		} `json:"results"`
 	}
-	if err := json.Unmarshal(body, &tmdbResult); CheckErrLog(WARN, "TMDB", "json.Unmarshal tmdbResult failed", err) != nil {
+	if err := json.Unmarshal(body, &tmdbResult); err != nil {
 		return 0, err
 	}
 	if len(tmdbResult.Results) == 0 {
@@ -120,12 +120,12 @@ func GetTVTMDBId(id int, tmdbKey string) (int, error) {
 func FetchTMDBExtras(mediaType MediaType, tmdbId int, tmdbKey string) ([]Extra, error) {
 	videosURL := fmt.Sprintf("https://api.themoviedb.org/3/%s/%d/videos?api_key=%s", mediaType, tmdbId, tmdbKey)
 	resp, err := http.Get(videosURL)
-	if CheckErrLog(WARN, "TMDB", "http.Get videosURL failed", err) != nil {
+	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
-	if CheckErrLog(WARN, "TMDB", "io.ReadAll resp.Body failed", err) != nil {
+	if err != nil {
 		return nil, err
 	}
 	var result struct {
@@ -137,7 +137,7 @@ func FetchTMDBExtras(mediaType MediaType, tmdbId int, tmdbKey string) ([]Extra, 
 			Type string `json:"type"`
 		} `json:"results"`
 	}
-	if err := json.Unmarshal(body, &result); CheckErrLog(WARN, "TMDB", "json.Unmarshal result failed", err) != nil {
+	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, err
 	}
 	extras := make([]Extra, 0)
