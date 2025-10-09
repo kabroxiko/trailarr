@@ -138,9 +138,10 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
     setSearchLoading(true);
     setError('');
     try {
-      const res = await getExtras({ mediaType, id: media.id });
+      const api = await import('../api');
+      const res = await api.getExtras({ mediaType, id: media.id });
       setExtras(res.extras || []);
-    } catch (e) {
+    } catch {
       setError('Failed to fetch extras');
     } finally {
       setSearchLoading(false);

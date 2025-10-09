@@ -50,7 +50,7 @@ function BlacklistPage({ darkMode }) {
 
   // Group items by normalized reason (replace YouTube ID with XXXXXXXX)
   const groups = {};
-  const youtubeIdRegex = /([A-Za-z0-9_-]{8,20})/g;
+  // const youtubeIdRegex = /([A-Za-z0-9_-]{8,20})/g;
   const countryPhrase = 'The uploader has not made this video available in your country';
   const countryGroupKey = 'Not available in your country (all)';
   const signinPhrase = "Sign in if you've been granted access to this video";

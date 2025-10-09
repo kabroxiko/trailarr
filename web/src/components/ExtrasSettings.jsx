@@ -55,20 +55,18 @@ export default function ExtrasSettings({ darkMode }) {
     return () => {
       window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', setColors);
     };
-  }, [darkMode]);
+  }, [darkMode, isDark]);
   const [settings, setSettings] = useState({});
   const [ytFlags, setYtFlags] = useState({});
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [ytError, setYtError] = useState('');
-  const [ytSaving, setYtSaving] = useState(false);
   const [tmdbTypes, setTmdbTypes] = useState([]);
   const [plexTypes, setPlexTypes] = useState([]);
   const [mapping, setMapping] = useState({});
 
+  // Removed unused loading and ytSaving
   useEffect(() => {
-    setLoading(true);
     Promise.all([
       axios.get('/api/tmdb/extratypes'),
       axios.get('/api/settings/extratypes'),
@@ -87,21 +85,19 @@ export default function ExtrasSettings({ darkMode }) {
         setMapping(initialMapping);
         setSettings(plexRes.data);
         setYtFlags(ytRes.data);
-        setLoading(false);
       })
       .catch(() => {
         setError('Failed to load settings');
-        setLoading(false);
       });
-  }, [darkMode]);
+  }, [darkMode, isDark]);
 
   const handleMappingChange = (newMapping) => {
     setMapping(newMapping);
   };
 
-  const handleChange = (key) => {
-    setSettings(prev => ({ ...prev, [key]: !prev[key] }));
-  };
+  // const handleChange = (key) => {
+  //   setSettings(prev => ({ ...prev, [key]: !prev[key] }));
+  // }; // removed unused
 
   const handleYtFlagChange = (key, value) => {
     setYtFlags(prev => ({ ...prev, [key]: value }));
@@ -128,14 +124,12 @@ export default function ExtrasSettings({ darkMode }) {
       setYtError('Max Sleep Interval must not be lower than Sleep Interval.');
       return;
     }
-    setYtSaving(true);
     axios.post('/api/settings/ytdlpflags', ytFlags)
       .then(() => {
-        setYtSaving(false);
+        // success
       })
       .catch(() => {
         setYtError('Failed to save yt-dlp flags');
-        setYtSaving(false);
       });
   };
 

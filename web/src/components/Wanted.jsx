@@ -20,7 +20,7 @@ export default function Wanted({ darkMode, type }) {
           return a.title.localeCompare(b.title);
         });
         setItems(sorted);
-      } catch (e) {
+      } catch {
         setError('Failed to fetch wanted ' + (type === 'movie' ? 'movies' : 'series'));
       }
       setLoading(false);

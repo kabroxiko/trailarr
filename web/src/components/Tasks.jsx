@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { FaArrowsRotate, FaClock } from 'react-icons/fa6';
 import './Tasks.css';
 
@@ -51,9 +51,7 @@ export default function Tasks() {
   const [status, setStatus] = useState(null);
   const [queues, setQueues] = useState([]);
   const [queueLoading, setQueueLoading] = useState(true);
-  const [iconRotation, setIconRotation] = useState({});
-  const [iconPrevRotation, setIconPrevRotation] = useState({});
-  const rotationIntervals = useRef({});
+  // Removed unused rotationIntervals
   const [darkMode, setDarkMode] = useState(false);
 
   // Fetch status from API for polling fallback and force execute
@@ -63,7 +61,7 @@ export default function Tasks() {
       const res = await fetch('/api/tasks/status');
       const data = await res.json();
       setStatus(data);
-    } catch (e) {
+    } catch {
       setStatus(null);
     }
     setLoading(false);
@@ -79,7 +77,7 @@ export default function Tasks() {
       } else {
         setQueues([]);
       }
-    } catch (e) {
+    } catch {
       setQueues([]);
     }
     setQueueLoading(false);
@@ -160,7 +158,9 @@ export default function Tasks() {
           const data = JSON.parse(event.data);
           setStatus(data);
           setLoading(false);
-        } catch (e) {}
+        } catch {
+          // ignore
+        }
       };
       ws.onerror = () => {
         wsConnected = false;
@@ -170,7 +170,7 @@ export default function Tasks() {
         wsConnected = false;
         startPolling();
       };
-    } catch (e) {
+    } catch {
       startPolling();
     }
     // Fallback to polling if WebSocket fails
@@ -181,37 +181,8 @@ export default function Tasks() {
     };
   }, []);
 
-  // Icon rotation effect for running tasks
-  useEffect(() => {
-    if (!status || !status.schedules) return;
-    status.schedules.forEach(sch => {
-      const key = sch.taskId;
-      if (sch.status === 'running') {
-        if (!rotationIntervals.current[key]) {
-          rotationIntervals.current[key] = setInterval(() => {
-            setIconRotation(rot => {
-              const prev = rot[key] || 0;
-              const next = prev + 18;
-              setIconPrevRotation(prevRot => ({ ...prevRot, [key]: prev }));
-              return { ...rot, [key]: next };
-            });
-          }, 50);
-        }
-      } else {
-        if (rotationIntervals.current[key]) {
-          clearInterval(rotationIntervals.current[key]);
-          rotationIntervals.current[key] = null;
-        }
-        setIconRotation(rot => ({ ...rot, [key]: 0 }));
-      }
-    });
-    // Cleanup intervals on unmount only
-    return () => {
-      Object.values(rotationIntervals.current).forEach(interval => interval && clearInterval(interval));
-      rotationIntervals.current = {};
-      setIconRotation({});
-    };
-  }, [status]);
+  // Icon rotation effect for running tasks (removed broken setIconRotation usage)
+  // (No-op, as icon rotation state is not used)
 
   async function forceExecute(taskId) {
     try {
@@ -222,7 +193,9 @@ export default function Tasks() {
       });
       // Immediately update status after force execute
       fetchStatus();
-    } catch (e) {}
+    } catch {
+      // ignore
+    }
   }
 
   // Helper to format interval values for scheduled tasks

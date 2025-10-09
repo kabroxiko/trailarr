@@ -1,6 +1,6 @@
+import React, { useEffect, useState } from 'react';
 import IconButton from './IconButton.jsx';
 import SectionHeader from './SectionHeader.jsx';
-import React, { useEffect, useState } from 'react';
 import DirectoryPicker from './DirectoryPicker';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faFolderOpen, faPlug, faCheckCircle, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
@@ -14,7 +14,6 @@ export default function SettingsPage({ type }) {
   // type: 'radarr' or 'sonarr'
   const [originalSettings, setOriginalSettings] = useState(null);
   const [settings, setSettings] = useState({ url: '', apiKey: '', pathMappings: [] });
-  const [rootFolders, setRootFolders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -45,20 +44,21 @@ export default function SettingsPage({ type }) {
     fetch(`/api/settings/${type}`)
       .then(res => res.json())
       .then(async data => {
-        // Fetch root folders
+        // Fetch root folders (removed setRootFolders)
         let folders = [];
         if (data.url && data.apiKey) {
           try {
             const res = await fetch(`/api/rootfolders?url=${encodeURIComponent(data.url)}&apiKey=${encodeURIComponent(data.apiKey)}&type=${type}`);
             folders = await res.json();
-          } catch {}
+          } catch {
+            // ignore
+          }
         }
-        setRootFolders(folders);
         // Create pathMappings for each root folder if not present
         let pathMappings = Array.isArray(data.pathMappings) ? data.pathMappings : [];
         if (folders.length > 0) {
           const folderPaths = folders.map(f => f.path || f);
-          pathMappings = folderPaths.map((path, idx) => {
+          pathMappings = folderPaths.map((path) => {
             const existing = pathMappings.find(m => m.from === path);
             return existing || { from: path, to: '' };
           });
@@ -129,12 +129,11 @@ export default function SettingsPage({ type }) {
         const data = await res.json();
         if (data.success) {
           setTestResult('Connection successful!');
-          // Refresh path mappings after successful test
+          // Refresh path mappings after successful test (removed setRootFolders)
           try {
             const foldersRes = await fetch(`/api/rootfolders?url=${encodeURIComponent(settings.url)}&apiKey=${encodeURIComponent(settings.apiKey)}&type=${type}`);
             if (foldersRes.ok) {
               const folders = await foldersRes.json();
-              setRootFolders(folders);
               // Update pathMappings in settings and originalSettings
               const folderPaths = folders.map(f => f.path || f);
               let pathMappings = Array.isArray(settings.pathMappings) ? settings.pathMappings : [];
@@ -145,7 +144,9 @@ export default function SettingsPage({ type }) {
               setSettings(s => ({ ...s, pathMappings }));
               setOriginalSettings(s => ({ ...s, pathMappings }));
             }
-          } catch {}
+          } catch {
+            // ignore
+          }
         } else {
           setTestResult(data.error || 'Connection failed.');
         }
@@ -257,16 +258,16 @@ export default function SettingsPage({ type }) {
                 </tr>
               </thead>
               <tbody>
-                {(Array.isArray(settings.pathMappings) ? settings.pathMappings : []).map((m, idx) => (
-                  <tr key={m.from + '-' + idx}>
+                {(Array.isArray(settings.pathMappings) ? settings.pathMappings : []).map((m, i) => (
+                  <tr key={m.from + '-' + i}>
                     <td style={{ textAlign: 'left' }}>
-                      <input value={m.from} onChange={e => handleMappingChange(idx, 'from', e.target.value)} placeholder={type === 'radarr' ? 'Radarr path' : 'Sonarr path'} style={{ width: '90%', minWidth: 210, maxWidth: 500, padding: '0.4rem', borderRadius: 4, border: '1px solid #bbb', background: 'var(--settings-input-bg, #f5f5f5)', color: 'var(--settings-input-text, #222)' }} />
+                      <input value={m.from} onChange={e => handleMappingChange(i, 'from', e.target.value)} placeholder={type === 'radarr' ? 'Radarr path' : 'Sonarr path'} style={{ width: '90%', minWidth: 210, maxWidth: 500, padding: '0.4rem', borderRadius: 4, border: '1px solid #bbb', background: 'var(--settings-input-bg, #f5f5f5)', color: 'var(--settings-input-text, #222)' }} />
                     </td>
                     <td style={{ textAlign: 'left' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', height: '100%' }}>
                         <DirectoryPicker
                           value={m.to}
-                          onChange={path => handleMappingChange(idx, 'to', path)}
+                          onChange={path => handleMappingChange(i, 'to', path)}
                           label={null}
                           disabled={saving || loading}
                           icon={<IconButton icon={<FontAwesomeIcon icon={faFolderOpen} style={{ fontSize: 20, background: 'none', padding: 0, margin: 0, border: 'none' }} />} disabled style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} />}
@@ -275,7 +276,7 @@ export default function SettingsPage({ type }) {
                     </td>
                     <td style={{ textAlign: 'left' }}>
                         <IconButton
-                          onClick={() => removeMapping(idx)}
+                          onClick={() => removeMapping(i)}
                           title="Remove"
                           aria-label="Remove path mapping"
                           style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', height: '100%', justifyContent: 'center', verticalAlign: 'middle' }}

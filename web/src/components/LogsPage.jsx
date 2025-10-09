@@ -1,17 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-// Fetch real log list from backend
-const fetchLogs = async () => {
-  const res = await fetch('/api/logs/list');
-  if (!res.ok) return [];
-  const data = await res.json();
-  return (data.logs || []).map(log => ({
-    filename: log.Filename || log.filename,
-    lastWrite: log.LastWrite || log.lastWrite,
-    url: `/logs/${log.Filename || log.filename}`
-  }));
-};
 
 export default function LogsPage() {
   // Helper to format date

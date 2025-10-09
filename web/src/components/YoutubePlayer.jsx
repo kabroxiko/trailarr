@@ -19,7 +19,6 @@ export default function YoutubePlayer({ videoId, onReady }) {
   const playerRef = useRef();
   const ytPlayer = useRef();
   const [error, setError] = useState('');
-  const [created, setCreated] = useState(false);
 
   useEffect(() => {
     let destroyed = false;
@@ -27,7 +26,6 @@ export default function YoutubePlayer({ videoId, onReady }) {
     let playerCreated = false;
     let timeoutId;
     setError('');
-    setCreated(false);
     function tryCreatePlayer() {
       if (destroyed || playerCreated) return;
       if (!videoId) {
@@ -55,7 +53,6 @@ export default function YoutubePlayer({ videoId, onReady }) {
               modestbranding: 1,
             },
           });
-          setCreated(true);
           console.log('YouTube Player created for', videoId);
         } catch (err) {
           setError('Failed to create YouTube Player: ' + err.message);

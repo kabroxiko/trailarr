@@ -3,7 +3,7 @@ import IconButton from './IconButton.jsx';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faBookmark } from '@fortawesome/free-regular-svg-icons';
 
-export default function MediaCard({ media, mediaType, darkMode, error }) {
+export default function MediaCard({ media, mediaType, error }) {
   if (!media) return null;
 
   let background;

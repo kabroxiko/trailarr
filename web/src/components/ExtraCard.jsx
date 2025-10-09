@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import YoutubePlayer from './YoutubePlayer.jsx';
 import IconButton from './IconButton.jsx';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTrashCan, faCheckSquare } from '@fortawesome/free-regular-svg-icons';
@@ -15,7 +14,7 @@ export default function ExtraCard({
   setExtras,
   setModalMsg,
   setShowModal,
-  YoutubeEmbed,
+  // YoutubeEmbed, // removed unused
   rejected: rejectedProp,
   onPlay,
   onDownloaded,
@@ -39,7 +38,7 @@ export default function ExtraCard({
             setImgError(true);
           }
         })
-        .catch(err => {
+        .catch(() => {
           if (!cancelled) {
             setImgError(true);
           }
@@ -84,8 +83,8 @@ export default function ExtraCard({
       });
       if (res.ok) {
         if (typeof setExtras === 'function') {
-          setExtras(prev => prev.map((e, i) =>
-            e.Title === extra.Title && e.Type === extra.Type ? { ...e, Status: 'downloaded' } : e
+          setExtras(prev => prev.map((ex) =>
+            ex.Title === extra.Title && ex.Type === extra.Type ? { ...ex, Status: 'downloaded' } : ex
           ));
         }
         if (typeof onDownloaded === 'function') {
@@ -96,8 +95,8 @@ export default function ExtraCard({
         const data = await res.json();
         showErrorModal(data?.error || 'Download failed');
       }
-    } catch (e) {
-      showErrorModal(e.message || e);
+    } catch (error) {
+      showErrorModal(error.message || error);
     } finally {
       setDownloading(false);
     }
@@ -183,7 +182,7 @@ export default function ExtraCard({
               key={posterUrl}
               src={posterUrl}
               alt={displayTitle}
-              onError={e => {
+              onError={() => {
                 setImgError(true);
               }}
             />
@@ -196,26 +195,26 @@ export default function ExtraCard({
               <IconButton
                 icon={<FontAwesomeIcon icon={faCircleXmark} color="#ef4444" size="lg" />}
                 title="Remove ban"
-                onClick={async e => {
-                  e.stopPropagation();
-                  try {
-                    await fetch('/api/blacklist/extras/remove', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        mediaType,
-                        mediaId: media.id,
-                        extraType: extra.Type,
-                        extraTitle: extra.Title,
-                        youtubeId: extra.YoutubeId
-                      })
-                    });
-                    setUnbanned(true);
-                  } catch (err) {
-                    setModalMsg('Failed to remove ban.');
-                    setShowModal(true);
-                  }
-                }}
+                  onClick={async event => {
+                    event.stopPropagation();
+                    try {
+                      await fetch('/api/blacklist/extras/remove', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          mediaType,
+                          mediaId: media.id,
+                          extraType: extra.Type,
+                          extraTitle: extra.Title,
+                          youtubeId: extra.YoutubeId
+                        })
+                      });
+                      setUnbanned(true);
+                    } catch {
+                      setModalMsg('Failed to remove ban.');
+                      setShowModal(true);
+                    }
+                  }}
                 aria-label="Remove ban"
               />
             </div>
@@ -260,8 +259,8 @@ export default function ExtraCard({
                 <IconButton
                   icon={<FontAwesomeIcon icon={faTrashCan} color="#ef4444" size="md" />}
                   title="Delete"
-                  onClick={async (e) => {
-                    e.stopPropagation();
+                  onClick={async (event) => {
+                    event.stopPropagation();
                     if (!window.confirm('Delete this extra?')) return;
                     try {
                       const { deleteExtra } = await import('../api');
@@ -272,12 +271,12 @@ export default function ExtraCard({
                         extraTitle: extra.Title
                       };
                       await deleteExtra(payload);
-                      setExtras(prev => prev.map((e, i) =>
-                        e.Title === extra.Title && e.Type === extra.Type ? { ...e, Status: 'missing' } : e
+                      setExtras(prev => prev.map((ex) =>
+                        ex.Title === extra.Title && ex.Type === extra.Type ? { ...ex, Status: 'missing' } : ex
                       ));
-                    } catch (e) {
-                      let msg = e?.message || e;
-                      if (e?.detail) msg += `\n${e.detail}`;
+                    } catch (error) {
+                      let msg = error?.message || error;
+                      if (error?.detail) msg += `\n${error.detail}`;
                       showErrorModal(msg || 'Delete failed');
                     }
                   }}

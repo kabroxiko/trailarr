@@ -26,6 +26,6 @@ Add new tasks below as needed:
 - [x] history must show tasks downloads
 - [x] history title must be clickable
 - [ ] show progress
-- [ ] fix queue history
+- [x] fix queue history
 - [ ] rejecte extra on over must show reason
 - [x] remove youtube doppler effect

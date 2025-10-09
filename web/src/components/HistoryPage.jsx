@@ -18,10 +18,6 @@ function formatDate(date) {
   return `${diff} days ago`;
 }
 
-function getActionIcon(action) {
-  // Deprecated, not used anymore
-  return null;
-}
 
 const HistoryPage = () => {
   const [history, setHistory] = useState([]);

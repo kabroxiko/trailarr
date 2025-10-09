@@ -134,7 +134,7 @@ export default function Sidebar({ darkMode }) {
               )}
               {name === 'Settings' && isOpen('Settings') && (
                 <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0 0', background: darkMode ? '#23232a' : '#f3f4f6', borderRadius: 6, color: darkMode ? '#e5e7eb' : '#222', textAlign: 'left' }}>
-                  {['General', 'Radarr', 'Sonarr', 'Extras'].map((submenu, idx) => (
+                  {['General', 'Radarr', 'Sonarr', 'Extras'].map((submenu) => (
                     <li key={submenu} style={{ padding: '0.5em 1em', borderLeft: selectedSettingsSub === submenu ? '3px solid #a855f7' : '3px solid transparent', background: 'none', color: selectedSettingsSub === submenu ? (darkMode ? '#a855f7' : '#6d28d9') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSettingsSub === submenu ? 'bold' : 'normal', cursor: 'pointer', textAlign: 'left' }}>
                       <Link
                         to={`/settings/${submenu.toLowerCase()}`}

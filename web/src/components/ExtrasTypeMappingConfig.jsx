@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import {
   Typography,
   Box,
@@ -91,41 +91,14 @@ function PlexTypeBox({ plexType, onDropChip, children, isDark }) {
   );
 }
 
-const fetchTMDBTypes = async () => {
-  const res = await fetch("/api/tmdb/extratypes");
-  const data = await res.json();
-  return data.tmdbExtraTypes || [];
-};
-
-const fetchPlexTypes = async () => {
-  const res = await fetch("/api/settings/extratypes");
-  const data = await res.json();
-  // Use all keys as Plex types, even if disabled
-  return Object.keys(data);
-};
-
-const fetchMapping = async () => {
-  const res = await fetch("/api/settings/canonicalizeextratype");
-  const data = await res.json();
-  return data.mapping || {};
-};
-
-const saveMapping = async (mapping) => {
-  await fetch("/api/settings/canonicalizeextratype", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mapping }),
-  });
-};
+// Removed unused fetchTMDBTypes, fetchPlexTypes, fetchMapping, saveMapping
 
 export default function ExtrasTypeMappingConfig({ mapping, onMappingChange, tmdbTypes, plexTypes, isDark = false }) {
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  // Removed unused error and loading state
 
   // Only local error/loading, all mapping state is controlled by parent
 
-  // Only allow each Plex type to be assigned once
-  const usedPlexTypes = Object.values(mapping);
+  // Removed unused usedPlexTypes
 
   const handleMoveChip = (tmdbType, newPlexType) => {
     if (onMappingChange) {
@@ -133,13 +106,7 @@ export default function ExtrasTypeMappingConfig({ mapping, onMappingChange, tmdb
     }
   };
 
-  if (loading) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight={200}>
-        <CircularProgress color={isDark ? "secondary" : "primary"} />
-      </Box>
-    );
-  }
+  // Removed undefined loading check
 
   return (
     <DndProvider backend={HTML5Backend}>
@@ -147,11 +114,7 @@ export default function ExtrasTypeMappingConfig({ mapping, onMappingChange, tmdb
         <SectionHeader>
           TMDB to Plex Extra Type Mapping
         </SectionHeader>
-        {error && (
-          <Typography color="error" gutterBottom>
-            {error}
-          </Typography>
-        )}
+        {/* Removed undefined error display */}
         <Paper sx={{
           mt: 2,
           p: 1,

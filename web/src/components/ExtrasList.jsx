@@ -11,7 +11,6 @@ function ExtrasList({
   setExtras,
   setModalMsg,
   setShowModal,
-  youtubeModal,
   setYoutubeModal,
   YoutubeEmbed,
 }) {

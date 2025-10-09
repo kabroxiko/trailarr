@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import BlacklistPage from './components/BlacklistPage';
-import { useRef } from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import './App.css';
 

@@ -19,7 +19,7 @@ export default function DirectoryPicker({ value, onChange, label, disabled }) {
 		if (showBrowser) {
 			fetchFolders(currentPath);
 		}
-		// eslint-disable-next-line
+	// (removed unused eslint-disable-next-line)
 	}, [showBrowser, currentPath]);
 
 	function fetchFolders(path) {
@@ -31,7 +31,7 @@ export default function DirectoryPicker({ value, onChange, label, disabled }) {
 				setFolders(data.folders || []);
 				setLoading(false);
 			})
-			.catch(e => {
+			.catch(() => {
 				setError("Failed to load folders");
 				setLoading(false);
 			});
