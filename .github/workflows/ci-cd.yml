@@ -215,6 +215,7 @@ jobs:
           # Include web/dist folder for frontend assets
           if [ -d "web/dist" ]; then
             echo "Including web/dist folder in archive..."
+            mkdir -p $archive_name/web
             cp -r web/dist $archive_name/web/
             echo "Web assets included:"
             ls -la $archive_name/web/dist/
