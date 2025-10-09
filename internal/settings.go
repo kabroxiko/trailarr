@@ -261,7 +261,7 @@ func EnsureConfigDefaults() error {
 // Raw config file reader (no defaults)
 func readConfigFileRaw() (map[string]interface{}, error) {
 	data, err := os.ReadFile(ConfigPath)
-	if CheckErrLog(WARN, "Settings", "os.ReadFile ConfigPath failed", err) != nil {
+	if err != nil {
 		return nil, err
 	}
 	var config map[string]interface{}
@@ -270,7 +270,7 @@ func readConfigFileRaw() (map[string]interface{}, error) {
 		return nil, fmt.Errorf("empty config file")
 	}
 	err = yaml.Unmarshal(data, &config)
-	if CheckErrLog(WARN, "Settings", "yaml.Unmarshal failed", err) != nil {
+	if err != nil {
 		return nil, err
 	}
 	return config, nil
@@ -280,12 +280,12 @@ func readConfigFileRaw() (map[string]interface{}, error) {
 func readConfigFile() (map[string]interface{}, error) {
 	_ = EnsureConfigDefaults()
 	data, err := os.ReadFile(ConfigPath)
-	if CheckErrLog(WARN, "Settings", "os.ReadFile ConfigPath failed", err) != nil {
+	if err != nil {
 		return nil, err
 	}
 	var config map[string]interface{}
 	err = yaml.Unmarshal(data, &config)
-	if CheckErrLog(WARN, "Settings", "yaml.Unmarshal failed", err) != nil {
+	if err != nil {
 		return nil, err
 	}
 	return config, nil
@@ -294,7 +294,7 @@ func readConfigFile() (map[string]interface{}, error) {
 // Helper to write config map to file
 func writeConfigFile(config map[string]interface{}) error {
 	out, err := yaml.Marshal(config)
-	if CheckErrLog(WARN, "Settings", "yaml.Marshal failed", err) != nil {
+	if err != nil {
 		return err
 	}
 	return os.WriteFile(ConfigPath, out, 0644)
