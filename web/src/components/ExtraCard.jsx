@@ -18,6 +18,7 @@ export default function ExtraCard({
   rejected: rejectedProp,
   onPlay,
   onDownloaded,
+  showToast, // new prop for toast/modal
 }) {
   const [imgError, setImgError] = useState(false);
   const baseTitle = extra.Title;
@@ -56,13 +57,17 @@ export default function ExtraCard({
   const rejected = !unbanned && (typeof rejectedProp === 'boolean' ? rejectedProp : extra.Status === 'rejected');
   const [errorCard, setErrorCard] = useState(null);
   const isError = errorCard === idx;
-  // Helper to show modal with error message
+  // Helper to show error as toast/modal
   const showErrorModal = (msg) => {
     if (msg.includes('UNPLAYABLE') || msg.includes('no se encuentra disponible')) {
       msg = 'This YouTube video is unavailable and cannot be downloaded.';
     }
-    setModalMsg(msg);
-    setShowModal(true);
+    if (typeof showToast === 'function') {
+      showToast(msg);
+    } else {
+      setModalMsg(msg);
+      setShowModal(true);
+    }
     setErrorCard(idx);
   };
 
@@ -93,10 +98,18 @@ export default function ExtraCard({
         setErrorCard(null);
       } else {
         const data = await res.json();
-        showErrorModal(data?.error || 'Download failed');
+        if (typeof showToast === 'function') {
+          showToast(data?.error || 'Download failed');
+        } else {
+          showErrorModal(data?.error || 'Download failed');
+        }
       }
     } catch (error) {
-      showErrorModal(error.message || error);
+      if (typeof showToast === 'function') {
+        showToast(error.message || error);
+      } else {
+        showErrorModal(error.message || error);
+      }
     } finally {
       setDownloading(false);
     }
