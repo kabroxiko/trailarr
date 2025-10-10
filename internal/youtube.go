@@ -4,10 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 type YtdlpFlagsConfig struct {
@@ -27,6 +32,289 @@ type YtdlpFlagsConfig struct {
 	SleepRequests      float64 `yaml:"sleepRequests" json:"sleepRequests"`
 	MaxSleepInterval   float64 `yaml:"maxSleepInterval" json:"maxSleepInterval"`
 	CookiesFromBrowser string  `yaml:"cookiesFromBrowser" json:"cookiesFromBrowser"`
+}
+
+// DownloadQueueItem represents a single download request
+type DownloadQueueItem struct {
+	MediaType  MediaType `json:"mediaType"`
+	MediaId    int       `json:"mediaId"`
+	MediaTitle string    `json:"mediaTitle"`
+	ExtraType  string    `json:"extraType"`
+	ExtraTitle string    `json:"extraTitle"`
+	YouTubeID  string    `json:"youtubeId"`
+	QueuedAt   time.Time `json:"queuedAt"`
+	Status     string    `json:"status"` // "queued", "downloading", etc.
+}
+
+// DownloadStatus holds the status of a download
+type DownloadStatus struct {
+	Status    string // e.g. "queued", "downloading", "downloaded", "failed", "exists", "rejected"
+	UpdatedAt time.Time
+	Error     string
+}
+
+var downloadStatusMap = make(map[string]*DownloadStatus) // keyed by YouTubeID
+var queueMutex sync.Mutex
+var queueReady = false
+
+// BatchStatusRequest is the request body for batch status queries
+type BatchStatusRequest struct {
+	YoutubeIds []string `json:"youtubeIds"`
+}
+
+// BatchStatusResponse is the response body for batch status queries
+type BatchStatusResponse struct {
+	Statuses map[string]*DownloadStatus `json:"statuses"`
+}
+
+// GetBatchDownloadStatusHandler returns the status for multiple YouTube IDs
+func GetBatchDownloadStatusHandler(c *gin.Context) {
+	var req BatchStatusRequest
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.YoutubeIds) == 0 {
+		TrailarrLog(WARN, "BATCH", "/api/extras/status/batch invalid request: %v, body: %v", err, c.Request.Body)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+	TrailarrLog(INFO, "BATCH", "/api/extras/status/batch request: %+v", req)
+	statuses := make(map[string]*DownloadStatus, len(req.YoutubeIds))
+	queueMutex.Lock()
+	// Load persistent queue from disk
+	var queue []DownloadQueueItem
+	_ = ReadJSONFile(DownloadQueuePath, &queue)
+	queueMutex.Unlock()
+	// Load rejected extras from disk
+	var rejected []RejectedExtra
+	_ = ReadJSONFile(RejectedExtrasPath, &rejected)
+	// Build a map for quick lookup
+	rejectedMap := make(map[string]RejectedExtra)
+	for _, r := range rejected {
+		rejectedMap[r.YoutubeId] = r
+	}
+	// Load cache files (movies/series)
+	var movieCache, seriesCache []map[string]interface{}
+	_ = ReadJSONFile(MoviesJSONPath, &movieCache)
+	_ = ReadJSONFile(SeriesJSONPath, &seriesCache)
+	// Helper to check existence in cache
+	existsInCache := func(yid string) bool {
+		for _, m := range movieCache {
+			if v, ok := m["youtubeId"]; ok && v == yid {
+				return true
+			}
+		}
+		for _, m := range seriesCache {
+			if v, ok := m["youtubeId"]; ok && v == yid {
+				return true
+			}
+		}
+		return false
+	}
+	queueMutex.Lock()
+	for _, id := range req.YoutubeIds {
+		// 1. In-memory status
+		if st, ok := downloadStatusMap[id]; ok {
+			statuses[id] = st
+			continue
+		}
+		// 2. Persistent queue file (last known status)
+		found := false
+		for i := len(queue) - 1; i >= 0; i-- {
+			if queue[i].YouTubeID == id {
+				statuses[id] = &DownloadStatus{Status: queue[i].Status, UpdatedAt: queue[i].QueuedAt}
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+		// 3. Rejected file
+		if r, ok := rejectedMap[id]; ok {
+			statuses[id] = &DownloadStatus{Status: "rejected", UpdatedAt: time.Now(), Error: r.Reason}
+			continue
+		}
+		// 4. Cache files (exists)
+		if existsInCache(id) {
+			statuses[id] = &DownloadStatus{Status: "exists", UpdatedAt: time.Now()}
+			continue
+		}
+		// 5. Fallback to missing
+		statuses[id] = &DownloadStatus{Status: "missing"}
+	}
+	queueMutex.Unlock()
+	// Log actual status values, not just pointers
+	statusLog := make(map[string]DownloadStatus)
+	for k, v := range statuses {
+		if v != nil {
+			statusLog[k] = *v
+		}
+	}
+	TrailarrLog(INFO, "BATCH", "/api/extras/status/batch response: %+v", statusLog)
+	c.JSON(http.StatusOK, BatchStatusResponse{Statuses: statuses})
+}
+
+// AddToDownloadQueue adds a new download request to the queue and persists
+// source: "task" (block if queue not empty), "api" (always append)
+func AddToDownloadQueue(item DownloadQueueItem, source string) {
+	for {
+		queueMutex.Lock()
+		ready := queueReady
+		queueMutex.Unlock()
+		if ready {
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if source == "task" {
+		for {
+			queueMutex.Lock()
+			// Read queue from file
+			var queue []DownloadQueueItem
+			_ = ReadJSONFile(DownloadQueuePath, &queue)
+			busy := false
+			for _, q := range queue {
+				if q.Status == "queued" || q.Status == "downloading" {
+					busy = true
+					break
+				}
+			}
+			queueMutex.Unlock()
+			if !busy {
+				break
+			}
+			time.Sleep(2 * time.Second)
+		}
+	}
+	queueMutex.Lock()
+	// Read queue from file
+	var queue []DownloadQueueItem
+	_ = ReadJSONFile(DownloadQueuePath, &queue)
+	// Lookup media title if not set
+	if item.MediaTitle == "" {
+		cacheFile, _ := resolveCachePath(item.MediaType)
+		if cacheFile != "" {
+			items, _ := loadCache(cacheFile)
+			for _, m := range items {
+				idInt, ok := parseMediaID(m["id"])
+				if ok && idInt == item.MediaId {
+					if t, ok := m["title"].(string); ok {
+						item.MediaTitle = t
+						break
+					}
+				}
+			}
+		}
+	}
+	item.Status = "queued"
+	item.QueuedAt = time.Now()
+	queue = append(queue, item)
+	downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: "queued", UpdatedAt: time.Now()}
+	TrailarrLog(INFO, "QUEUE", "[AddToDownloadQueue] Enqueued: mediaType=%v, mediaId=%v, extraType=%s, extraTitle=%s, youtubeId=%s, source=%s", item.MediaType, item.MediaId, item.ExtraType, item.ExtraTitle, item.YouTubeID, source)
+	_ = WriteJSONFile(DownloadQueuePath, queue)
+	queueMutex.Unlock()
+}
+
+// GetDownloadStatus returns the status for a YouTube ID
+func GetDownloadStatus(youtubeID string) *DownloadStatus {
+	queueMutex.Lock()
+	defer queueMutex.Unlock()
+	if status, ok := downloadStatusMap[youtubeID]; ok {
+		return status
+	}
+	return nil
+}
+
+// PopDownloadQueue removes and returns the next item in the queue, persists after pop
+// Find the next item with status 'queued' and return its index and value
+func NextQueuedItem() (int, DownloadQueueItem, bool) {
+	queueMutex.Lock()
+	defer queueMutex.Unlock()
+	var queue []DownloadQueueItem
+	_ = ReadJSONFile(DownloadQueuePath, &queue)
+	for i, item := range queue {
+		if item.Status == "queued" {
+			return i, item, true
+		}
+	}
+	return -1, DownloadQueueItem{}, false
+}
+
+// persistDownloadQueue writes the queue to disk
+// persistDownloadQueue is now unused, as all queue operations write directly to file
+
+// loadDownloadQueue loads the queue from disk, removing any items with status 'queued' (stale)
+func loadDownloadQueue() {
+	queueMutex.Lock()
+	defer queueMutex.Unlock()
+	var queue []DownloadQueueItem
+	if err := ReadJSONFile(DownloadQueuePath, &queue); err == nil {
+		filtered := make([]DownloadQueueItem, 0, len(queue))
+		for _, item := range queue {
+			if item.Status != "queued" && item.Status != "downloading" {
+				filtered = append(filtered, item)
+			} else {
+				TrailarrLog(INFO, "YouTube", "Removing stale item from download queue at startup: youtubeId=%s, status=%s", item.YouTubeID, item.Status)
+			}
+		}
+		_ = WriteJSONFile(DownloadQueuePath, filtered)
+	}
+	queueReady = true
+}
+
+// StartDownloadQueueWorker starts a goroutine to process the download queue
+func StartDownloadQueueWorker() {
+	loadDownloadQueue()
+	go func() {
+		for {
+			idx, item, ok := NextQueuedItem()
+			if !ok {
+				time.Sleep(2 * time.Second)
+				continue
+			}
+			// Mark as downloading
+			queueMutex.Lock()
+			var queue []DownloadQueueItem
+			_ = ReadJSONFile(DownloadQueuePath, &queue)
+			if idx >= 0 && idx < len(queue) {
+				queue[idx].Status = "downloading"
+				downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: "downloading", UpdatedAt: time.Now()}
+				_ = WriteJSONFile(DownloadQueuePath, queue)
+			}
+			queueMutex.Unlock()
+			// Perform the download
+			meta, err := DownloadYouTubeExtra(item.MediaType, item.MediaId, item.ExtraType, item.ExtraTitle, item.YouTubeID)
+			queueMutex.Lock()
+			_ = ReadJSONFile(DownloadQueuePath, &queue)
+			var finalStatus string
+			if err != nil {
+				finalStatus = "failed"
+				downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: finalStatus, UpdatedAt: time.Now(), Error: err.Error()}
+			} else if meta != nil {
+				finalStatus = meta.Status
+				downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: finalStatus, UpdatedAt: time.Now()}
+			} else {
+				finalStatus = "unknown"
+				downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: finalStatus, UpdatedAt: time.Now()}
+			}
+			if idx >= 0 && idx < len(queue) {
+				queue[idx].Status = finalStatus
+				_ = WriteJSONFile(DownloadQueuePath, queue)
+			}
+			queueMutex.Unlock()
+			// Wait 120 seconds before next download
+			time.Sleep(120 * time.Second)
+		}
+	}()
+}
+
+// GetDownloadStatusHandler returns the status of a download by YouTube ID
+func GetDownloadStatusHandler(c *gin.Context) {
+	youtubeId := c.Param("youtubeId")
+	status := GetDownloadStatus(youtubeId)
+	if status == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": status})
 }
 
 func DefaultYtdlpFlagsConfig() YtdlpFlagsConfig {
@@ -311,11 +599,7 @@ func performDownload(info *downloadInfo, youtubeId string) (*ExtraDownloadMetada
 
 	// Build yt-dlp command args
 	args := buildYtDlpArgs(info, youtubeId, true)
-
-	// Debug: print the full yt-dlp command line
-	fullCmd := "yt-dlp " + strings.Join(args, " ")
-	TrailarrLog(INFO, "YouTube", "yt-dlp command: %s", fullCmd)
-
+	// Execute yt-dlp command
 	cmd := exec.Command("yt-dlp", args...)
 	cmd.Dir = info.TempDir
 	output, err := cmd.CombinedOutput()
@@ -448,7 +732,6 @@ func moveDownloadedFile(info *downloadInfo) error {
 	}
 
 	if moveErr := os.Rename(info.TempFile, info.OutFile); moveErr != nil {
-		TrailarrLog(WARN, "YouTube", "Rename failed, attempting cross-device move: %v", moveErr)
 		return handleCrossDeviceMove(info.TempFile, info.OutFile, moveErr)
 	}
 
@@ -457,7 +740,6 @@ func moveDownloadedFile(info *downloadInfo) error {
 
 func handleCrossDeviceMove(tempFile, outFile string, moveErr error) error {
 	if linkErr, ok := moveErr.(*os.LinkError); ok && strings.Contains(linkErr.Error(), "cross-device link") {
-		TrailarrLog(WARN, "YouTube", "Cross-device link error, copying file instead: %v", moveErr)
 		return copyFileAcrossDevices(tempFile, outFile)
 	}
 	TrailarrLog(ERROR, "YouTube", "Failed to move downloaded file to output dir: %v", moveErr)

@@ -10,6 +10,12 @@ import (
 )
 
 func RegisterRoutes(r *gin.Engine) {
+	// Download status by YouTube ID
+	r.GET("/api/extras/status/:youtubeId", GetDownloadStatusHandler)
+	// Batch status endpoint
+	r.POST("/api/extras/status/batch", GetBatchDownloadStatusHandler)
+	// Start the download queue worker
+	StartDownloadQueueWorker()
 	r.GET("/api/blacklist/extras", BlacklistExtrasHandler)
 	r.POST("/api/blacklist/extras/remove", RemoveBlacklistExtraHandler)
 	// --- WebSocket for real-time task status ---

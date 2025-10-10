@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import IconButton from './IconButton.jsx';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTrashCan, faCheckSquare } from '@fortawesome/free-regular-svg-icons';
-import { faPlay, faDownload, faBan, faCircleXmark } from '@fortawesome/free-solid-svg-icons';
+import { faPlay, faDownload, faBan, faCircleXmark, faClock } from '@fortawesome/free-solid-svg-icons';
 
 export default function ExtraCard({
   extra,
@@ -51,10 +51,16 @@ export default function ExtraCard({
   if (displayTitle.length > 22) titleFontSize = 14;
   if (displayTitle.length > 32) titleFontSize = 12;
   const downloaded = extra.Status === 'downloaded';
+  const isDownloading = extra.Status === 'downloading';
+  const isQueued = extra.Status === 'queued';
+  const failed = extra.Status === 'failed' || extra.Status === 'rejected' || extra.Status === 'unknown' || extra.Status === 'error';
+  const exists = extra.Status === 'exists';
   const [downloading, setDownloading] = useState(false);
+  const [polling, setPolling] = useState(false);
   // Use the rejected prop if provided, otherwise fallback to extra.Status
   const [unbanned, setUnbanned] = useState(false);
-  const rejected = !unbanned && (typeof rejectedProp === 'boolean' ? rejectedProp : extra.Status === 'rejected');
+  // Treat 'failed' as 'rejected' for UI
+  const rejected = !unbanned && (typeof rejectedProp === 'boolean' ? rejectedProp : extra.Status === 'rejected' || extra.Status === 'failed');
   const [errorCard, setErrorCard] = useState(null);
   const isError = errorCard === idx;
   // Helper to show error as toast/modal
@@ -87,14 +93,7 @@ export default function ExtraCard({
         })
       });
       if (res.ok) {
-        if (typeof setExtras === 'function') {
-          setExtras(prev => prev.map((ex) =>
-            ex.Title === extra.Title && ex.Type === extra.Type ? { ...ex, Status: 'downloaded' } : ex
-          ));
-        }
-        if (typeof onDownloaded === 'function') {
-          onDownloaded();
-        }
+        setPolling(true);
         setErrorCard(null);
       } else {
         const data = await res.json();
@@ -114,6 +113,36 @@ export default function ExtraCard({
       setDownloading(false);
     }
   };
+
+  // Poll for status after requesting download
+  React.useEffect(() => {
+    let intervalId;
+    if (polling) {
+      intervalId = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/extras/status/${extra.YoutubeId}`);
+          if (res.ok) {
+            const data = await res.json();
+            const status = data?.status?.Status || data?.status;
+            if (status && status !== 'queued' && status !== 'downloading') {
+              setPolling(false);
+              if (typeof setExtras === 'function') {
+                setExtras(prev => prev.map((ex) =>
+                  ex.Title === extra.Title && ex.Type === extra.Type ? { ...ex, Status: status } : ex
+                ));
+              }
+              if (typeof onDownloaded === 'function' && status === 'downloaded') {
+                onDownloaded();
+              }
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }, 3000);
+    }
+    return () => intervalId && clearInterval(intervalId);
+  }, [polling, extra.YoutubeId, extra.Title, extra.Type, setExtras, onDownloaded]);
   // Poster image or fallback factory
   function PosterImage({ src, alt, onError, fallbackIcon }) {
     return (
@@ -148,6 +177,15 @@ export default function ExtraCard({
     );
   }
 
+  // Determine border color based on status
+  let borderColor = '2px solid transparent';
+  if (rejected || isError || failed) {
+    borderColor = '2.5px solid #ef4444';
+  } else if (downloaded) {
+    borderColor = '2px solid #22c55e';
+  } else if (exists) {
+    borderColor = '2px solid #8888';
+  }
   return (
     <div style={{
       width: 180,
@@ -161,11 +199,7 @@ export default function ExtraCard({
       alignItems: 'center',
       padding: '0 0 0 0',
       position: 'relative',
-      border: (rejected || isError)
-        ? '2.5px solid #ef4444'
-        : downloaded
-          ? '2px solid #22c55e'
-          : '2px solid transparent',
+      border: borderColor,
     }}>
       <div
         style={{ width: '100%', background: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}
@@ -202,14 +236,22 @@ export default function ExtraCard({
           ) : (
             <PosterImage src={null} alt="Denied" fallbackIcon={faBan} />
           )}
-          {/* Remove Ban Button (Unban) */}
-          {rejected && !unbanned && (
+          {/* Failed/Rejected Icon (always show for failed/rejected) */}
+          {(extra.Status === 'failed' || extra.Status === 'rejected' || extra.Status === 'unknown' || extra.Status === 'error') && (
             <div style={{ position: 'absolute', top: 8, left: 8, zIndex: 2 }}>
               <IconButton
                 icon={<FontAwesomeIcon icon={faCircleXmark} color="#ef4444" size="lg" />}
-                title="Remove ban"
-                  onClick={async event => {
-                    event.stopPropagation();
+                title={extra.Status === 'failed' ? 'Remove failed status' : 'Remove ban'}
+                onClick={async event => {
+                  event.stopPropagation();
+                  // Remove from blacklist if rejected, or just clear failed status if failed/unknown/error
+                  if (extra.Status === 'failed' || extra.Status === 'unknown' || extra.Status === 'error') {
+                    if (typeof setExtras === 'function') {
+                      setExtras(prev => prev.map((ex) =>
+                        ex.Title === extra.Title && ex.Type === extra.Type ? { ...ex, Status: '' } : ex
+                      ));
+                    }
+                  } else {
                     try {
                       await fetch('/api/blacklist/extras/remove', {
                         method: 'POST',
@@ -222,13 +264,13 @@ export default function ExtraCard({
                           youtubeId: extra.YoutubeId
                         })
                       });
-                      setUnbanned(true);
                     } catch {
                       setModalMsg('Failed to remove ban.');
                       setShowModal(true);
                     }
-                  }}
-                aria-label="Remove ban"
+                  }
+                }}
+                aria-label={extra.Status === 'failed' ? 'Remove failed status' : 'Remove ban'}
               />
             </div>
           )}
@@ -237,7 +279,7 @@ export default function ExtraCard({
             <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 2 }}>
               <IconButton
                 icon={
-                  downloading ? (
+                  isDownloading ? (
                     <span className="download-spinner" style={{ display: 'inline-block', width: 22, height: 22, background: 'transparent' }}>
                       <svg viewBox="0 0 50 50" style={{ width: 22, height: 22, background: 'transparent' }}>
                         <circle cx="25" cy="25" r="20" fill="none" stroke="#fff" strokeWidth="5" strokeDasharray="31.4 31.4" strokeLinecap="round">
@@ -245,20 +287,22 @@ export default function ExtraCard({
                         </circle>
                       </svg>
                     </span>
+                  ) : isQueued ? (
+                    <FontAwesomeIcon icon={faClock} color="#fff" size="lg" />
                   ) : (
                     <FontAwesomeIcon icon={faDownload} color="#fff" size="lg" />
                   )
                 }
-                title={rejected ? (extra.reason ? `Rejected: ${extra.reason}` : 'Rejected (cannot download)') : (downloading ? 'Downloading...' : 'Download')}
-                onClick={rejected || downloading
+                title={rejected ? (extra.reason ? `Rejected: ${extra.reason}` : 'Rejected (cannot download)') : isDownloading ? 'Downloading...' : isQueued ? 'Queued' : 'Download'}
+                onClick={rejected || isDownloading || isQueued
                   ? undefined
                   : (e => {
                       e.stopPropagation();
                       handleDownloadClick();
                     })}
-                disabled={rejected || downloading}
+                disabled={rejected || isDownloading || isQueued}
                 aria-label="Download"
-                style={{ opacity: rejected ? 0.5 : (downloading ? 0.7 : 1), background: 'transparent', borderRadius: downloading ? 8 : 0, transition: 'background 0.2s, opacity 0.2s' }}
+                style={{ opacity: rejected ? 0.5 : (isDownloading || isQueued ? 0.7 : 1), background: 'transparent', borderRadius: (isDownloading || isQueued) ? 8 : 0, transition: 'background 0.2s, opacity 0.2s' }}
               />
             </div>
           )}
