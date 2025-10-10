@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import BlacklistPage from './components/BlacklistPage';
+import Toast from './components/Toast';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import './App.css';
 
@@ -38,6 +39,9 @@ function App() {
   }, []);
   const [selectedSection, setSelectedSection] = useState('Movies');
   const [selectedSystemSub, setSelectedSystemSub] = useState('Tasks');
+
+  // Toast state
+  const [toastMessage, setToastMessage] = useState('');
 
   // Reset search when changing main section (Movies/Series)
   useEffect(() => {
@@ -278,6 +282,13 @@ function App() {
           </div>
         </main>
       </div>
+
+      {/* Toast Modal */}
+      <Toast
+        message={toastMessage}
+        onClose={() => setToastMessage('')}
+        darkMode={darkMode}
+      />
     </div>
   );
 }

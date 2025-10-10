@@ -1,30 +1,129 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 
-function Toast({ message, onClose, darkMode }) {
+function Toast({ message, onClose, darkMode, autoClose = true, duration = 4000 }) {
+  useEffect(() => {
+    if (message && autoClose) {
+      const timer = setTimeout(() => {
+        onClose();
+      }, duration);
+      return () => clearTimeout(timer);
+    }
+  }, [message, autoClose, duration, onClose]);
+
   if (!message) return null;
+
   return (
-    <div style={{
-      position: 'fixed',
-      left: 24,
-      bottom: 24,
-      zIndex: 99999,
-      background: darkMode ? '#222' : '#fff',
-      color: darkMode ? '#fff' : '#222',
-      border: '2px solid #ef4444',
-      borderRadius: 8,
-      padding: '16px 24px',
-      minWidth: 240,
-      boxShadow: '0 2px 16px rgba(0,0,0,0.18)',
-      fontSize: 16,
-      fontWeight: 500,
-      display: 'flex',
-      alignItems: 'center',
-      gap: 16,
-      animation: 'fadein 0.2s',
-    }}>
-      <span style={{ flex: 1 }}>{message}</span>
-      <button onClick={onClose} style={{ background: 'none', border: 'none', color: darkMode ? '#fff' : '#222', fontSize: 22, cursor: 'pointer', marginLeft: 8 }} title="Close">×</button>
-    </div>
+    <>
+      {/* Modal backdrop */}
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.1)',
+        zIndex: 99998,
+        pointerEvents: 'none'
+      }} />
+
+      {/* Toast modal */}
+      <div style={{
+        position: 'fixed',
+        left: 20,
+        bottom: 20,
+        zIndex: 99999,
+        background: darkMode ? '#1f1f23' : '#ffffff',
+        color: darkMode ? '#e5e7eb' : '#1f2937',
+        border: `2px solid ${darkMode ? '#ef4444' : '#dc2626'}`,
+        borderRadius: 12,
+        padding: '20px 24px',
+        minWidth: 300,
+        maxWidth: 400,
+        boxShadow: darkMode
+          ? '0 10px 25px rgba(0, 0, 0, 0.5), 0 4px 10px rgba(0, 0, 0, 0.3)'
+          : '0 10px 25px rgba(0, 0, 0, 0.15), 0 4px 10px rgba(0, 0, 0, 0.1)',
+        fontSize: 15,
+        fontWeight: 500,
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 16,
+        animation: 'toastSlideIn 0.3s ease-out',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+      }}>
+        {/* Icon */}
+        <div style={{
+          width: 20,
+          height: 20,
+          borderRadius: '50%',
+          backgroundColor: '#ef4444',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'white',
+          fontSize: 12,
+          fontWeight: 'bold',
+          flexShrink: 0,
+          marginTop: 2
+        }}>
+          !
+        </div>
+
+        {/* Message */}
+        <div style={{
+          flex: 1,
+          lineHeight: 1.4,
+          wordWrap: 'break-word'
+        }}>
+          {message}
+        </div>
+
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: darkMode ? '#9ca3af' : '#6b7280',
+            fontSize: 18,
+            cursor: 'pointer',
+            padding: 4,
+            borderRadius: 4,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 24,
+            height: 24,
+            flexShrink: 0,
+            transition: 'all 0.2s ease'
+          }}
+          title="Close"
+          onMouseOver={(e) => {
+            e.target.style.backgroundColor = darkMode ? '#374151' : '#f3f4f6';
+            e.target.style.color = darkMode ? '#e5e7eb' : '#1f2937';
+          }}
+          onMouseOut={(e) => {
+            e.target.style.backgroundColor = 'transparent';
+            e.target.style.color = darkMode ? '#9ca3af' : '#6b7280';
+          }}
+        >
+          ×
+        </button>
+      </div>
+
+      <style>{`
+        @keyframes toastSlideIn {
+          from {
+            transform: translateX(-100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+      `}</style>
+    </>
   );
 }
 
