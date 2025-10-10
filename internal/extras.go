@@ -240,35 +240,18 @@ func downloadExtraHandler(c *gin.Context) {
 	TrailarrLog(INFO, "Extras", "[downloadExtraHandler] Download request: mediaType=%s, mediaId=%d, extraType=%s, extraTitle=%s, youtubeId=%s",
 		req.MediaType, req.MediaId, req.ExtraType, req.ExtraTitle, req.YoutubeId)
 
-	// Convert MediaId (int) to string for DownloadYouTubeExtra
-	meta, err := DownloadYouTubeExtra(req.MediaType, req.MediaId, req.ExtraType, req.ExtraTitle, req.YoutubeId, true)
-	TrailarrLog(INFO, "Extras", "[downloadExtraHandler] DownloadYouTubeExtra returned: meta=%v, err=%v", meta, err)
-	if err != nil {
-		respondError(c, http.StatusInternalServerError, err.Error())
-		return
+	// Enqueue the download request
+	item := DownloadQueueItem{
+		MediaType:  req.MediaType,
+		MediaId:    req.MediaId,
+		ExtraType:  req.ExtraType,
+		ExtraTitle: req.ExtraTitle,
+		YouTubeID:  req.YoutubeId,
+		QueuedAt:   time.Now(),
 	}
-
-	// Lookup media title from cache for history
-	recordDownloadHistory(req.MediaType, req.MediaId, req.ExtraType, req.ExtraTitle)
-	respondJSON(c, http.StatusOK, gin.H{"status": "downloaded", "meta": meta})
-}
-
-func recordDownloadHistory(mediaType MediaType, mediaId int, extraType, extraTitle string) {
-	cacheFile, _ := resolveCachePath(mediaType)
-	mediaTitle := lookupMediaTitle(cacheFile, mediaId)
-	if mediaTitle == "" {
-		mediaTitle = "Unknown"
-	}
-	event := HistoryEvent{
-		Action:     "download",
-		Title:      mediaTitle,
-		MediaType:  mediaType,
-		MediaId:    mediaId,
-		ExtraType:  extraType,
-		ExtraTitle: extraTitle,
-		Date:       time.Now(),
-	}
-	_ = AppendHistoryEvent(event)
+	AddToDownloadQueue(item, "api")
+	TrailarrLog(INFO, "Extras", "[downloadExtraHandler] Enqueued download: mediaType=%s, mediaId=%d, extraType=%s, extraTitle=%s, youtubeId=%s", req.MediaType, req.MediaId, req.ExtraType, req.ExtraTitle, req.YoutubeId)
+	respondJSON(c, http.StatusOK, gin.H{"status": "queued"})
 }
 
 // Utility: Recursively find all media paths with Trailers containing video files (with debug logging)
@@ -332,8 +315,18 @@ func handleExtraDownload(mediaType MediaType, mediaId int, extra Extra) error {
 		TrailarrLog(INFO, "DownloadMissingExtras", "Skipping rejected extra: mediaType=%v, mediaId=%v, type=%s, title=%s, youtubeId=%s", mediaType, mediaId, extra.Type, extra.Title, extra.YoutubeId)
 		return nil
 	}
-	_, err := DownloadYouTubeExtra(mediaType, mediaId, extra.Type, extra.Title, extra.YoutubeId)
-	return err
+	// Enqueue the extra for download using the queue system
+	item := DownloadQueueItem{
+		MediaType:  mediaType,
+		MediaId:    mediaId,
+		ExtraType:  extra.Type,
+		ExtraTitle: extra.Title,
+		YouTubeID:  extra.YoutubeId,
+		QueuedAt:   time.Now(),
+	}
+	AddToDownloadQueue(item, "task")
+	TrailarrLog(INFO, "QUEUE", "[handleExtraDownload] Enqueued extra: mediaType=%v, mediaId=%v, type=%s, title=%s, youtubeId=%s", mediaType, mediaId, extra.Type, extra.Title, extra.YoutubeId)
+	return nil
 }
 
 // Scans a media path and returns a map of existing extras (type|title)

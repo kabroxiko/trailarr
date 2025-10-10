@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import useExtrasLiveStatus from '../hooks/useExtrasLiveStatus';
 import ExtraCard from './ExtraCard.jsx';
 import SectionHeader from './SectionHeader.jsx';
 import Toast from './Toast';
@@ -15,6 +16,10 @@ function ExtrasList({
   YoutubeEmbed,
 }) {
   const [toastMsg, setToastMsg] = useState('');
+
+  // Flatten all extras for polling
+  const allExtras = useMemo(() => Object.values(extrasByType).flat(), [extrasByType]);
+  useExtrasLiveStatus(allExtras, setExtras);
 
   // Helper for rendering a group of extras
   const renderExtrasGroup = (type, typeExtras) => (

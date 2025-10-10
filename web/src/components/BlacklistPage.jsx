@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import useBlacklistLiveStatus from '../hooks/useBlacklistLiveStatus.js';
 import ExtraCard from './ExtraCard.jsx';
 import YoutubePlayer from './YoutubePlayer.jsx';
 import Container from './Container.jsx';
@@ -37,6 +38,9 @@ function BlacklistPage({ darkMode }) {
         setLoading(false);
       });
   }, []);
+
+  // Live status polling for blacklist items
+  useBlacklistLiveStatus(Array.isArray(blacklist) ? blacklist : Object.values(blacklist || {}), setBlacklist);
 
   if (loading) return <div style={{ padding: 32 }}>Loading blacklist...</div>;
   if (error) return <div style={{ color: 'red', padding: 32 }}>{error}</div>;
@@ -132,7 +136,6 @@ function BlacklistPage({ darkMode }) {
             <SectionHeader darkMode={darkMode} style={{ fontWeight: 600, fontSize: '1.1em', margin: '0 0 16px 8px', color: '#ef4444', textAlign: 'left', wordBreak: 'break-word' }}>{displayReason}</SectionHeader>
             <div style={{ ...gridStyle, justifyContent: 'start' }}>
               {groupItems.map((item, idx) => {
-                console.log('Blacklist item:', item);
                 const extra = {
                   Title: item.extra_title || item.extraTitle || '',
                   Type: item.extra_type || item.extraType || '',
@@ -144,7 +147,6 @@ function BlacklistPage({ darkMode }) {
                   id: item.media_id || item.mediaId || '',
                   title: item.media_title || item.mediaTitle || '',
                 };
-                console.log('Mapped media:', media);
                 const mediaType = item.media_type || item.mediaType || '';
                 // Unique key for this card
                 return (

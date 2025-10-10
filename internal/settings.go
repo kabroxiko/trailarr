@@ -19,6 +19,7 @@ const (
 	MoviesJSONPath           = TrailarrRoot + "/movies.json"
 	SeriesJSONPath           = TrailarrRoot + "/series.json"
 	QueueFile                = TrailarrRoot + "/queue.json"
+	DownloadQueuePath        = TrailarrRoot + "/download_queue.json"
 	CookiesFile              = TrailarrRoot + "/.config/google-chrome/cookies.txt"
 	LogsDir                  = TrailarrRoot + "/logs"
 	HistoryFile              = TrailarrRoot + "/history.json"

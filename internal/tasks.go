@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -406,8 +405,6 @@ func StartBackgroundTasks() {
 }
 
 func StartExtrasDownloadTask() {
-	TrailarrLog(INFO, "Tasks", "[EXTRAS-TRIGGER] StartExtrasDownloadTask called. PID=%d, time=%s", os.Getpid(), time.Now().Format(time.RFC3339Nano))
-	TrailarrLog(INFO, "Tasks", "[EXTRAS-TRIGGER] Call stack: %s", getStackTrace())
 	TrailarrLog(INFO, "Tasks", "Starting extras download task (manual trigger)...")
 	// Manual/forced run: runTaskAsync with the actual sync logic
 	states := make(TaskStates)
@@ -418,19 +415,10 @@ func StartExtrasDownloadTask() {
 }
 
 func handleExtrasDownloadLoop(ctx context.Context) bool {
-	TrailarrLog(INFO, "Tasks", "[EXTRAS-TRIGGER] handleExtrasDownloadLoop entered. PID=%d, time=%s", os.Getpid(), time.Now().Format(time.RFC3339Nano))
-	TrailarrLog(INFO, "Tasks", "[EXTRAS-TRIGGER] Call stack: %s", getStackTrace())
 	interval := getExtrasInterval()
 	processExtras(ctx)
 	result := waitOrDone(ctx, time.Duration(interval)*time.Minute)
 	return result
-}
-
-// getStackTrace returns a string with the current call stack for debugging triggers
-func getStackTrace() string {
-	buf := make([]byte, 2048)
-	n := runtime.Stack(buf, false)
-	return string(buf[:n])
 }
 
 func waitOrDone(ctx context.Context, d time.Duration) bool {
@@ -549,40 +537,18 @@ func downloadMissingExtrasWithTypeFilter(ctx context.Context, cfg ExtraTypesConf
 
 // Handles downloading a single extra and appending to history if successful
 func handleTypeFilteredExtraDownload(mediaType MediaType, mediaId int, extra Extra) error {
-	_, err := DownloadYouTubeExtra(mediaType, mediaId, extra.Type, extra.Title, extra.YoutubeId)
-	if err != nil {
-		TrailarrLog(WARN, "Tasks", "DownloadYouTubeExtra failed: %v", err)
-		return err
-	}
-	// Add to history if download succeeded
-	AppendHistoryEvent(HistoryEvent{
-		Action: "download",
-
-		Title:      getMediaTitleFromCache(mediaType, mediaId),
+	// Enqueue the extra for download using the queue system
+	item := DownloadQueueItem{
 		MediaType:  mediaType,
 		MediaId:    mediaId,
 		ExtraType:  extra.Type,
 		ExtraTitle: extra.Title,
-		Date:       time.Now(),
-	})
-	return nil
-}
-
-// Helper to get media title from cache
-func getMediaTitleFromCache(mediaType MediaType, mediaId int) string {
-	cacheFile, _ := resolveCachePath(mediaType)
-	if cacheFile != "" {
-		items, _ := loadCache(cacheFile)
-		for _, m := range items {
-			idInt, ok := parseMediaID(m["id"])
-			if ok && idInt == mediaId {
-				if t, ok := m["title"].(string); ok {
-					return t
-				}
-			}
-		}
+		YouTubeID:  extra.YoutubeId,
+		QueuedAt:   time.Now(),
 	}
-	return ""
+	AddToDownloadQueue(item, "task")
+	TrailarrLog(INFO, "QUEUE", "[handleTypeFilteredExtraDownload] Enqueued extra: mediaType=%v, mediaId=%v, type=%s, title=%s, youtubeId=%s", mediaType, mediaId, extra.Type, extra.Title, extra.YoutubeId)
+	return nil
 }
 
 // Helper: check if extra type is enabled in config
