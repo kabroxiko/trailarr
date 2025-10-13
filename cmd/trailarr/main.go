@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,21 @@ import (
 var timings map[string]int
 
 func main() {
+	// Only log backend/server logs to file. Gin (frontend HTTP) logs go to stdout only.
+	logDir := internal.LogsDir
+	logFile := logDir + "/trailarr.txt"
+	_ = os.MkdirAll(logDir, 0775)
+	internal.InitTrailarrLogWriter(logFile)
+	gin.DefaultWriter = os.Stdout
+	gin.DefaultErrorWriter = os.Stderr
+
+	// Check Redis connectivity at startup
+	if err := internal.PingRedis(context.Background()); err != nil {
+		// Log and exit if Redis is not available
+		internal.TrailarrLog(internal.FATAL, "Startup", "Could not connect to Redis: %v", err)
+		os.Exit(1)
+	}
+
 	// Clean up yt-dlp-tmp directories at startup
 	cleanYTDLPTmpDirs()
 
@@ -24,13 +40,6 @@ func main() {
 	if err := internal.LoadConfig(); err != nil {
 		internal.TrailarrLog(internal.WARN, "Startup", "Could not load config.yml: %v", err)
 	}
-	// Only log backend/server logs to file. Gin (frontend HTTP) logs go to stdout only.
-	logDir := internal.LogsDir
-	logFile := logDir + "/trailarr.txt"
-	_ = os.MkdirAll(logDir, 0775)
-	internal.InitTrailarrLogWriter(logFile)
-	gin.DefaultWriter = os.Stdout
-	gin.DefaultErrorWriter = os.Stderr
 
 	var err error
 	timings, err = internal.EnsureSyncTimingsConfig()

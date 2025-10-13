@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin" // ...existing imports...
 )
 
 type YtdlpFlagsConfig struct {
@@ -92,8 +93,8 @@ func GetBatchDownloadStatusHandler(c *gin.Context) {
 	}
 	// Load cache files (movies/series)
 	var movieCache, seriesCache []map[string]interface{}
-	_ = ReadJSONFile(MoviesJSONPath, &movieCache)
-	_ = ReadJSONFile(SeriesJSONPath, &seriesCache)
+	movieCache, _ = LoadMediaFromRedis(MoviesJSONPath)
+	seriesCache, _ = LoadMediaFromRedis(SeriesJSONPath)
 	// Helper to check existence in cache
 	existsInCache := func(yid string) bool {
 		for _, m := range movieCache {
@@ -677,6 +678,11 @@ func handleDownloadErrorNative(info *downloadInfo, youtubeId string, err error, 
 
 	TrailarrLog(ERROR, "YouTube", "Download failed for %s: %s", youtubeId, reason)
 	addToRejectedExtras(info, youtubeId, reason)
+	// Also update the unified extras collection in Redis
+	errMark := MarkExtraRejected(info.MediaType, info.MediaId, info.ExtraType, info.ExtraTitle, youtubeId, reason)
+	if errMark != nil {
+		TrailarrLog(ERROR, "YouTube", "Failed to mark extra as rejected in Redis: %v", errMark)
+	}
 	return fmt.Errorf(reason+": %w", err)
 }
 
@@ -780,6 +786,21 @@ func copyFileAcrossDevices(tempFile, outFile string) error {
 
 func createSuccessMetadata(info *downloadInfo, youtubeId string) (*ExtraDownloadMetadata, error) {
 	meta := NewExtraDownloadMetadata(info, youtubeId, "downloaded")
+
+	// Add/update the extra in the unified collection in Redis
+	entry := ExtrasEntry{
+		MediaType:  info.MediaType,
+		MediaId:    info.MediaId,
+		ExtraTitle: info.ExtraTitle,
+		ExtraType:  info.ExtraType,
+		FileName:   info.OutFile,
+		YoutubeId:  youtubeId,
+		Status:     "downloaded",
+	}
+	ctx := context.Background()
+	if err := AddOrUpdateExtra(ctx, entry); err != nil {
+		TrailarrLog(WARN, "YouTube", "Failed to add/update extra in Redis after download: %v", err)
+	}
 
 	metaFile := info.OutFile + ".json"
 	metaBytes, _ := json.MarshalIndent(meta, "", "  ")

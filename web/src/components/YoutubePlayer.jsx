@@ -19,6 +19,7 @@ export default function YoutubePlayer({ videoId, onReady }) {
   const playerRef = useRef();
   const ytPlayer = useRef();
   const [error, setError] = useState('');
+  const [hide, setHide] = useState(false);
 
   useEffect(() => {
     let destroyed = false;
@@ -26,6 +27,7 @@ export default function YoutubePlayer({ videoId, onReady }) {
     let playerCreated = false;
     let timeoutId;
     setError('');
+    setHide(false);
     function tryCreatePlayer() {
       if (destroyed || playerCreated) return;
       if (!videoId) {
@@ -43,7 +45,12 @@ export default function YoutubePlayer({ videoId, onReady }) {
                 if (onReady) onReady(event);
               },
               onError: (e) => {
-                setError('YouTube Player error: ' + JSON.stringify(e.data));
+                // YouTube error 150: embedding not allowed
+                if (e.data === 150) {
+                  setError(''); // Do not show error, do not hide
+                } else {
+                  setError('YouTube Player error: ' + JSON.stringify(e.data));
+                }
                 console.error('YouTube Player error', e);
               }
             },

@@ -44,6 +44,7 @@ var (
 	INFO  = LogLevel{"Info", 2}
 	WARN  = LogLevel{"Warn", 3}
 	ERROR = LogLevel{"Error", 4}
+	FATAL = LogLevel{"Fatal", 5}
 )
 
 func TrailarrLog(level LogLevel, component, message string, args ...interface{}) {

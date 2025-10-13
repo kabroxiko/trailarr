@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,7 +12,89 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
+
+// Sanitize filename for OS conflicts (remove/replace invalid chars)
+func SanitizeFilename(name string) string {
+	// Remove any character not allowed in filenames
+	// Windows: \/:*?"<>|, Linux: /
+	re := regexp.MustCompile(`[\\/:*?"<>|]`)
+	name = re.ReplaceAllString(name, "_")
+	name = strings.TrimSpace(name)
+	return name
+}
+
+const ExtrasCollectionKey = "trailarr:extras"
+
+// ExtrasEntry is the flat structure for each extra in the new collection
+type ExtrasEntry struct {
+	MediaType  MediaType `json:"mediaType"`
+	MediaId    int       `json:"mediaId"`
+	ExtraTitle string    `json:"extraTitle"`
+	ExtraType  string    `json:"extraType"`
+	FileName   string    `json:"fileName"`
+	YoutubeId  string    `json:"youtubeId"`
+	Status     string    `json:"status"`
+	Reason     string    `json:"reason,omitempty"`
+}
+
+// AddOrUpdateExtra stores or updates an extra in the unified collection
+func AddOrUpdateExtra(ctx context.Context, entry ExtrasEntry) error {
+	client := GetRedisClient()
+	key := ExtrasCollectionKey
+	// Use YoutubeId+MediaType+MediaId as unique identifier
+	entryKey := fmt.Sprintf("%s:%s:%d", entry.YoutubeId, entry.MediaType, entry.MediaId)
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return err
+	}
+	return client.HSet(ctx, key, entryKey, data).Err()
+}
+
+// GetExtraByYoutubeId fetches an extra by YoutubeId, MediaType, and MediaId
+func GetExtraByYoutubeId(ctx context.Context, youtubeId string, mediaType MediaType, mediaId int) (*ExtrasEntry, error) {
+	client := GetRedisClient()
+	key := ExtrasCollectionKey
+	entryKey := fmt.Sprintf("%s:%s:%d", youtubeId, mediaType, mediaId)
+	val, err := client.HGet(ctx, key, entryKey).Result()
+	if err == redis.Nil {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+	var entry ExtrasEntry
+	if err := json.Unmarshal([]byte(val), &entry); err != nil {
+		return nil, err
+	}
+	return &entry, nil
+}
+
+// GetAllExtras returns all extras in the collection
+func GetAllExtras(ctx context.Context) ([]ExtrasEntry, error) {
+	client := GetRedisClient()
+	key := ExtrasCollectionKey
+	vals, err := client.HVals(ctx, key).Result()
+	if err != nil {
+		return nil, err
+	}
+	var result []ExtrasEntry
+	for _, v := range vals {
+		var entry ExtrasEntry
+		if err := json.Unmarshal([]byte(v), &entry); err == nil {
+			result = append(result, entry)
+		}
+	}
+	return result, nil
+}
+
+// RemoveExtra removes an extra from the collection
+func RemoveExtra(ctx context.Context, youtubeId string, mediaType MediaType, mediaId int) error {
+	client := GetRedisClient()
+	key := ExtrasCollectionKey
+	entryKey := fmt.Sprintf("%s:%s:%d", youtubeId, mediaType, mediaId)
+	return client.HDel(ctx, key, entryKey).Err()
+}
 
 type Extra struct {
 	ID        string
@@ -21,22 +104,207 @@ type Extra struct {
 	Status    string
 }
 
-// GetRejectedExtrasForMedia returns rejected extras for a given media type and id
+// GetRejectedExtrasForMedia returns rejected extras for a given media type and id, using Redis cache
 func GetRejectedExtrasForMedia(mediaType MediaType, id int) []RejectedExtra {
+	ctx := context.Background()
+	extras, err := GetAllExtras(ctx)
+	if err != nil {
+		return nil
+	}
 	var rejected []RejectedExtra
-	_ = ReadJSONFile(RejectedExtrasPath, &rejected)
-	return Filter(rejected, func(r RejectedExtra) bool {
-		return r.MediaType == mediaType && r.MediaId == id
-	})
+	for _, e := range extras {
+		if e.MediaType == mediaType && e.MediaId == id && e.Status == "rejected" {
+			rejected = append(rejected, RejectedExtra{
+				MediaType:  e.MediaType,
+				MediaId:    e.MediaId,
+				MediaTitle: "", // MediaTitle not stored in unified collection
+				ExtraType:  e.ExtraType,
+				ExtraTitle: e.ExtraTitle,
+				YoutubeId:  e.YoutubeId,
+				Reason:     e.Reason,
+			})
+		}
+	}
+	return rejected
+}
+
+// MarkExtraRejected sets the Status of an extra to "rejected" in Redis, adding it if not present
+func MarkExtraRejected(mediaType MediaType, mediaId int, extraType, extraTitle, youtubeId, reason string) error {
+	TrailarrLog(INFO, "MarkExtraRejected", "Attempting to mark rejected: mediaType=%s, mediaId=%d, extraType=%s, extraTitle=%s, youtubeId=%s, reason=%s", mediaType, mediaId, extraType, extraTitle, youtubeId, reason)
+	ctx := context.Background()
+	// Try to fetch the extra from the unified collection
+	entry, _ := GetExtraByYoutubeId(ctx, youtubeId, mediaType, mediaId)
+	if entry != nil {
+		TrailarrLog(INFO, "MarkExtraRejected", "Found existing extra, updating status to rejected: %+v", entry)
+		entry.Status = "rejected"
+		entry.Reason = reason
+		err := AddOrUpdateExtra(ctx, *entry)
+		if err != nil {
+			TrailarrLog(WARN, "MarkExtraRejected", "Failed to update extra: %v", err)
+		}
+		return err
+	}
+	TrailarrLog(INFO, "MarkExtraRejected", "No existing extra found, creating new rejected entry.")
+	newEntry := ExtrasEntry{
+		MediaType:  mediaType,
+		MediaId:    mediaId,
+		ExtraTitle: extraTitle,
+		ExtraType:  extraType,
+		FileName:   "",
+		YoutubeId:  youtubeId,
+		Status:     "rejected",
+		Reason:     reason,
+	}
+	err := AddOrUpdateExtra(ctx, newEntry)
+	if err != nil {
+		TrailarrLog(WARN, "MarkExtraRejected", "Failed to add new rejected extra: %v", err)
+	}
+	return err
+}
+
+// UnmarkExtraRejected clears the Status of an extra if it is "rejected" in Redis, but keeps the extra in the array
+func UnmarkExtraRejected(mediaType MediaType, mediaId int, extraType, extraTitle, youtubeId string) error {
+	cacheFile, _ := resolveCachePath(mediaType)
+	items, err := loadCache(cacheFile)
+	if err != nil {
+		return err
+	}
+	updated := false
+	for _, m := range items {
+		idInt, ok := parseMediaID(m["id"])
+		if !ok || idInt != mediaId {
+			continue
+		}
+		extras, ok := m["extras"].([]interface{})
+		if !ok {
+			continue
+		}
+		for _, e := range extras {
+			em, ok := e.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if toString(em["Type"]) == extraType && toString(em["Title"]) == extraTitle && toString(em["YoutubeId"]) == youtubeId {
+				if em["Status"] == "rejected" {
+					em["Status"] = ""
+					em["reason"] = ""
+					updated = true
+				}
+			}
+		}
+	}
+	if updated {
+		return SaveMediaToRedis(cacheFile, items)
+	}
+	return nil
+}
+
+// MarkExtraDownloaded sets the Status of an extra to "downloaded" in Redis, adding it if not present
+func MarkExtraDownloaded(mediaType MediaType, mediaId int, extraType, extraTitle, youtubeId string) error {
+	cacheFile, _ := resolveCachePath(mediaType)
+	items, err := loadCache(cacheFile)
+	if err != nil {
+		return err
+	}
+	updated := false
+	for _, m := range items {
+		idInt, ok := parseMediaID(m["id"])
+		if !ok || idInt != mediaId {
+			continue
+		}
+		extras, ok := m["extras"].([]interface{})
+		if !ok {
+			continue
+		}
+		found := false
+		for _, e := range extras {
+			em, ok := e.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if toString(em["Type"]) == extraType && toString(em["Title"]) == extraTitle && toString(em["YoutubeId"]) == youtubeId {
+				em["Status"] = "downloaded"
+				updated = true
+				found = true
+			}
+		}
+		if !found {
+			newExtra := map[string]interface{}{
+				"Type":      extraType,
+				"Title":     extraTitle,
+				"YoutubeId": youtubeId,
+				"Status":    "downloaded",
+			}
+			m["extras"] = append(extras, newExtra)
+			updated = true
+		}
+	}
+	if updated {
+		return SaveMediaToRedis(cacheFile, items)
+	}
+	return nil
+}
+
+// MarkExtraDeleted sets the Status of an extra to "deleted" in Redis, adding it if not present
+// MarkExtraDeleted removes the extra from the 'extras' array in Redis for the corresponding movie/series
+func MarkExtraDeleted(mediaType MediaType, mediaId int, extraType, extraTitle, youtubeId string) error {
+	cacheFile, _ := resolveCachePath(mediaType)
+	items, err := loadCache(cacheFile)
+	if err != nil {
+		return err
+	}
+	updated := false
+	for _, m := range items {
+		idInt, ok := parseMediaID(m["id"])
+		if !ok || idInt != mediaId {
+			continue
+		}
+		extras, ok := m["extras"].([]interface{})
+		if !ok {
+			continue
+		}
+		newExtras := make([]interface{}, 0, len(extras))
+		for _, e := range extras {
+			em, ok := e.(map[string]interface{})
+			if !ok {
+				newExtras = append(newExtras, e)
+				continue
+			}
+			if youtubeId != "" && toString(em["YoutubeId"]) == youtubeId {
+				updated = true
+				continue // skip (delete)
+			}
+			newExtras = append(newExtras, em)
+		}
+		m["extras"] = newExtras
+	}
+	if updated {
+		return SaveMediaToRedis(cacheFile, items)
+	}
+	return nil
+}
+
+// Helper to safely convert interface{} to string
+func toString(v interface{}) string {
+	if v == nil {
+		return ""
+	}
+	switch t := v.(type) {
+	case string:
+		return t
+	case fmt.Stringer:
+		return t.String()
+	default:
+		return fmt.Sprintf("%v", t)
+	}
 }
 
 // Handler to delete an extra and record history
 func deleteExtraHandler(c *gin.Context) {
 	var req struct {
-		MediaType  MediaType `json:"mediaType"`
-		MediaId    int       `json:"mediaId"`
-		ExtraType  string    `json:"extraType"`
-		ExtraTitle string    `json:"extraTitle"`
+		MediaType MediaType `json:"mediaType"`
+		MediaId   int       `json:"mediaId"`
+		YoutubeId string    `json:"youtubeId"`
 	}
 	if err := c.BindJSON(&req); err != nil {
 		respondError(c, http.StatusBadRequest, ErrInvalidRequest)
@@ -50,12 +318,22 @@ func deleteExtraHandler(c *gin.Context) {
 		return
 	}
 
-	if err := deleteExtraFiles(mediaPath, req.ExtraType, req.ExtraTitle); err != nil {
-		respondError(c, http.StatusInternalServerError, "Failed to delete extra: "+err.Error())
+	// Find the extra's type and title by YoutubeId from the unified collection
+	ctx := context.Background()
+	entry, err := GetExtraByYoutubeId(ctx, req.YoutubeId, req.MediaType, req.MediaId)
+	if err != nil || entry == nil {
+		respondError(c, http.StatusNotFound, "Extra not found in collection")
 		return
 	}
+	// Try to delete files, but do not fail if missing
+	_ = deleteExtraFiles(mediaPath, entry.ExtraType, entry.ExtraTitle)
 
-	recordDeleteHistory(req.MediaType, req.MediaId, req.ExtraType, req.ExtraTitle)
+	// Remove from the unified collection in Redis
+	if err := RemoveExtra(ctx, req.YoutubeId, req.MediaType, req.MediaId); err != nil {
+		TrailarrLog(WARN, "Extras", "Failed to remove extra from Redis: %v", err)
+	}
+
+	recordDeleteHistory(req.MediaType, req.MediaId, entry.ExtraType, entry.ExtraTitle)
 	respondJSON(c, http.StatusOK, gin.H{"status": "deleted"})
 }
 
@@ -164,16 +442,6 @@ func SearchExtras(mediaType MediaType, id int) ([]Extra, error) {
 		extras[i].Type = canonicalizeExtraType(extras[i].Type, extras[i].Title)
 	}
 	return extras, nil
-}
-
-// Sanitize filename for OS conflicts (remove/replace invalid chars)
-func SanitizeFilename(name string) string {
-	// Remove any character not allowed in filenames
-	// Windows: \/:*?"<>|, Linux: /
-	re := regexp.MustCompile(`[\\/:*?"<>|]`)
-	name = re.ReplaceAllString(name, "_")
-	name = strings.TrimSpace(name)
-	return name
 }
 
 // Handler to list existing extras for a movie path
@@ -486,19 +754,24 @@ func scanExtrasInfo(mediaPath string) map[string][]map[string]interface{} {
 }
 
 // Handler for serving the rejected extras blacklist
+// BlacklistExtrasHandler aggregates all rejected extras from Redis for both movies and series
 func BlacklistExtrasHandler(c *gin.Context) {
-	file, err := os.Open(RejectedExtrasPath)
+	ctx := context.Background()
+	extras, err := GetAllExtras(ctx)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, "Could not open rejected_extras.json: "+err.Error())
+		respondError(c, http.StatusInternalServerError, "Failed to fetch extras: "+err.Error())
 		return
 	}
-	defer file.Close()
-	var data interface{}
-	if err := json.NewDecoder(file).Decode(&data); err != nil {
-		respondError(c, http.StatusInternalServerError, "Could not decode rejected_extras.json: "+err.Error())
-		return
+	var rejected []ExtrasEntry
+	for _, e := range extras {
+		if e.Status == "rejected" {
+			rejected = append(rejected, e)
+		}
 	}
-	respondJSON(c, http.StatusOK, data)
+	if rejected == nil {
+		rejected = make([]ExtrasEntry, 0)
+	}
+	respondJSON(c, http.StatusOK, rejected)
 }
 
 // Handler to remove an entry from the rejected extras blacklist
@@ -514,39 +787,20 @@ func RemoveBlacklistExtraHandler(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, ErrInvalidRequest)
 		return
 	}
-	// Read current blacklist as []RejectedExtra
-	var blacklist []RejectedExtra
-	f, err := os.Open(RejectedExtrasPath)
-	if err == nil {
-		_ = json.NewDecoder(f).Decode(&blacklist)
-		f.Close()
-	}
-	// Remove only the matching entry (all fields must match)
-	newList := make([]RejectedExtra, 0, len(blacklist))
-	removed := false
-	for _, entry := range blacklist {
-		if !removed &&
-			string(entry.MediaType) == req.MediaType &&
-			entry.MediaId == req.MediaId &&
-			entry.ExtraType == req.ExtraType &&
-			entry.ExtraTitle == req.ExtraTitle &&
-			entry.YoutubeId == req.YoutubeId {
-			removed = true
-			continue
-		}
-		newList = append(newList, entry)
-	}
-	// Write updated blacklist, pretty-printed
-	f2, err := os.Create(RejectedExtrasPath)
-	if err != nil {
-		respondError(c, http.StatusInternalServerError, "Could not update rejected_extras.json: "+err.Error())
+	var mt MediaType
+	switch req.MediaType {
+	case string(MediaTypeMovie):
+		mt = MediaTypeMovie
+	case string(MediaTypeTV):
+		mt = MediaTypeTV
+	default:
+		respondError(c, http.StatusBadRequest, "Invalid mediaType")
 		return
 	}
-	defer f2.Close()
-	enc := json.NewEncoder(f2)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(newList); err != nil {
-		respondError(c, http.StatusInternalServerError, "Could not encode rejected_extras.json: "+err.Error())
+	// Remove the extra from the unified collection in Redis
+	err := RemoveExtra(context.Background(), req.YoutubeId, mt, req.MediaId)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "Could not remove extra from collection: "+err.Error())
 		return
 	}
 	respondJSON(c, http.StatusOK, gin.H{"status": "removed"})

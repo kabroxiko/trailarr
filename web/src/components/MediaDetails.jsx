@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import MediaInfoLane from './MediaInfoLane.jsx';
 import MediaCard from './MediaCard.jsx';
 import ExtrasList from './ExtrasList';
@@ -108,6 +108,44 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
         .finally(() => setSearchLoading(false));
     });
   }, [media, mediaType]);
+
+  // WebSocket for real-time extras status
+  const wsRef = useRef(null);
+  useEffect(() => {
+    if (!media) return;
+    const wsUrl = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws/download-queue';
+    const ws = new window.WebSocket(wsUrl);
+    wsRef.current = ws;
+    ws.onopen = () => {
+      console.debug('[WebSocket] Connected to download queue (MediaDetails)');
+    };
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'download_queue_update' && Array.isArray(msg.queue)) {
+          // Only update extras that match this media
+          setExtras(prev => prev.map(ex => {
+            const found = msg.queue.find(q => q.MediaId == media.id && q.YouTubeID === ex.YoutubeId);
+            if (found && found.Status && ex.Status !== found.Status) {
+              return { ...ex, Status: found.Status };
+            }
+            return ex;
+          }));
+        }
+      } catch (err) {
+        console.debug('[WebSocket] Error parsing message', err);
+      }
+    };
+    ws.onerror = (e) => {
+      console.debug('[WebSocket] Error', e);
+    };
+    ws.onclose = () => {
+      console.debug('[WebSocket] Closed (MediaDetails)');
+    };
+    return () => {
+      ws.close();
+    };
+  }, [media]);
 
   useEffect(() => {
     if (showModal && modalMsg) {

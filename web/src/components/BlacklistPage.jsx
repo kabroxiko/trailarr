@@ -1,6 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
-import useBlacklistLiveStatus from '../hooks/useBlacklistLiveStatus.js';
+import React, { useState, useEffect, useRef } from 'react';
 import ExtraCard from './ExtraCard.jsx';
 import YoutubePlayer from './YoutubePlayer.jsx';
 import Container from './Container.jsx';
@@ -22,6 +21,20 @@ function BlacklistPage({ darkMode }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [youtubeModal, setYoutubeModal] = useState({ open: false, videoId: '' });
+  // Helper to preload images
+  function preloadImages(urls) {
+    return Promise.all(
+      urls.map(
+        url =>
+          new Promise(resolve => {
+            if (!url) return resolve();
+            const img = new window.Image();
+            img.onload = img.onerror = () => resolve();
+            img.src = url;
+          })
+      )
+    );
+  }
 
   useEffect(() => {
     fetch('/api/blacklist/extras')
@@ -29,8 +42,15 @@ function BlacklistPage({ darkMode }) {
         if (!res.ok) throw new Error('Failed to fetch blacklist');
         return res.json();
       })
-      .then(data => {
+      .then(async data => {
         setBlacklist(data);
+        // Collect all image URLs from blacklist items (adjust property as needed)
+        let items = Array.isArray(data) ? data : Object.values(data).flat();
+        // Try to get thumbnail, poster, or other image field
+        const urls = items.map(item => item.thumbnail || item.poster || item.image || null).filter(Boolean);
+        if (urls.length > 0) {
+          await preloadImages(urls);
+        }
         setLoading(false);
       })
       .catch(e => {
@@ -39,15 +59,64 @@ function BlacklistPage({ darkMode }) {
       });
   }, []);
 
-  // Live status polling for blacklist items
-  useBlacklistLiveStatus(Array.isArray(blacklist) ? blacklist : Object.values(blacklist || {}), setBlacklist);
+  // WebSocket for real-time blacklist status
+  const wsRef = useRef(null);
+  useEffect(() => {
+    const wsUrl = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws/download-queue';
+    const ws = new window.WebSocket(wsUrl);
+    wsRef.current = ws;
+    ws.onopen = () => {
+      console.debug('[WebSocket] Connected to download queue (BlacklistPage)');
+    };
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'download_queue_update' && Array.isArray(msg.queue)) {
+          setBlacklist(prev => {
+            if (!prev) return prev;
+            // Update status for matching blacklist items
+            const update = (arr) => arr.map(item2 => {
+              const found = msg.queue.find(q => (q.YouTubeID === (item2.youtube_id || item2.youtubeId)));
+              if (found && found.Status && item2.Status !== found.Status) {
+                return { ...item2, status: found.Status, Status: found.Status };
+              }
+              return item2;
+            });
+            if (Array.isArray(prev)) return update(prev);
+            const updated = {};
+            for (const k in prev) updated[k] = update(prev[k]);
+            return updated;
+          });
+        }
+      } catch (err) {
+        console.debug('[WebSocket] Error parsing message', err);
+      }
+    };
+    ws.onerror = (e) => {
+      console.debug('[WebSocket] Error', e);
+    };
+    ws.onclose = () => {
+      console.debug('[WebSocket] Closed (BlacklistPage)');
+    };
+    return () => {
+      ws.close();
+    };
+  }, []);
+
 
   if (loading) return <div style={{ padding: 32 }}>Loading blacklist...</div>;
   if (error) return <div style={{ color: 'red', padding: 32 }}>{error}</div>;
-  if (!blacklist || (Array.isArray(blacklist) && blacklist.length === 0)) return <div style={{ padding: 32 }}>No rejected extras found.</div>;
+  if (!blacklist || (Array.isArray(blacklist) && blacklist.length === 0)) return <div style={{ padding: 32 }}>No blacklisted extras found.</div>;
 
   // If the blacklist is an object, convert to array for display
-  let items = Array.isArray(blacklist) ? blacklist : Object.values(blacklist);
+  let items;
+  if (Array.isArray(blacklist)) {
+    items = blacklist;
+  } else if (blacklist && typeof blacklist === 'object') {
+    items = Object.values(blacklist);
+  } else {
+    return <div style={{ padding: 32, color: 'red' }}>Unexpected data format<br /><pre>{JSON.stringify(blacklist, null, 2)}</pre></div>;
+  }
   if (!Array.isArray(items)) {
     return <div style={{ padding: 32, color: 'red' }}>Unexpected data format<br /><pre>{JSON.stringify(blacklist, null, 2)}</pre></div>;
   }
@@ -99,6 +168,12 @@ function BlacklistPage({ darkMode }) {
     if (!groups[groupKey]) groups[groupKey] = [];
     groups[groupKey].push(item);
   });
+
+  // If all groups are empty, show a message
+  const totalItems = Object.values(groups).reduce((acc, arr) => acc + arr.length, 0);
+  if (totalItems === 0) {
+    return <div style={{ padding: 32 }}>No blacklisted extras found.</div>;
+  }
 
   const gridStyle = {
     display: 'grid',
@@ -169,9 +244,7 @@ function BlacklistPage({ darkMode }) {
                           if (!prev) return prev;
                           // Update the correct item in the blacklist
                           const update = (arr) => arr.map((item2) => {
-                            if ((item2.extra_title || item2.extraTitle) === extra.Title &&
-                                (item2.extra_type || item2.extraType) === extra.Type &&
-                                (item2.youtube_id || item2.youtubeId) === extra.YoutubeId) {
+                            if ((item2.youtube_id || item2.youtubeId) === extra.YoutubeId) {
                               return { ...item2, status: 'downloaded', Status: 'downloaded' };
                             }
                             return item2;

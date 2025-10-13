@@ -1,5 +1,5 @@
-export async function deleteExtra({ mediaType, mediaId, extraType, extraTitle }) {
-	const payload = { mediaType, mediaId: Number(mediaId), extraType, extraTitle };
+export async function deleteExtra({ mediaType, mediaId, youtubeId }) {
+	const payload = { mediaType, mediaId: Number(mediaId), youtubeId };
 	const res = await fetch('/api/extras', {
 		method: 'DELETE',
 		headers: { 'Content-Type': 'application/json' },
