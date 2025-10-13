@@ -1,9 +1,6 @@
 package internal
 
 import (
-	"os"
-	"path/filepath"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -29,17 +26,10 @@ func ListServerFoldersHandler(c *gin.Context) {
 		respondError(c, 400, "Invalid path")
 		return
 	}
-	// List subfolders
-	entries, err := os.ReadDir(reqPath)
-	if cerr := err; cerr != nil {
-		respondError(c, 500, cerr.Error())
+	folders, err := ListSubdirectories(reqPath)
+	if err != nil {
+		respondError(c, 500, err.Error())
 		return
-	}
-	var folders []string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			folders = append(folders, filepath.Join(reqPath, entry.Name()))
-		}
 	}
 	respondJSON(c, 200, gin.H{"folders": folders})
 }

@@ -46,9 +46,9 @@ export default function SettingsPage({ type }) {
       .then(async data => {
         // Fetch root folders (removed setRootFolders)
         let folders = [];
-        if (data.url && data.apiKey) {
+        if (data.providerURL && data.apiKey) {
           try {
-            const res = await fetch(`/api/rootfolders?url=${encodeURIComponent(data.url)}&apiKey=${encodeURIComponent(data.apiKey)}&type=${type}`);
+            const res = await fetch(`/api/rootfolders?providerURL=${encodeURIComponent(data.providerURL)}&apiKey=${encodeURIComponent(data.apiKey)}&type=${type}`);
             folders = await res.json();
           } catch {
             // ignore
@@ -131,7 +131,7 @@ export default function SettingsPage({ type }) {
           setTestResult('Connection successful!');
           // Refresh path mappings after successful test (removed setRootFolders)
           try {
-            const foldersRes = await fetch(`/api/rootfolders?url=${encodeURIComponent(settings.url)}&apiKey=${encodeURIComponent(settings.apiKey)}&type=${type}`);
+            const foldersRes = await fetch(`/api/rootfolders?providerURL=${encodeURIComponent(settings.providerURL)}&apiKey=${encodeURIComponent(settings.apiKey)}&type=${type}`);
             if (foldersRes.ok) {
               const folders = await foldersRes.json();
               // Update pathMappings in settings and originalSettings
@@ -171,7 +171,7 @@ export default function SettingsPage({ type }) {
             <div style={{ marginBottom: '1.5rem', display: 'block', width: '100%' }}>
               <div style={{ width: '100%', marginBottom: '1.2rem' }}>
                 <label style={{ fontWeight: 600, fontSize: '1.15em', marginBottom: 6, display: 'block', textAlign: 'left' }}>{type === 'radarr' ? 'Radarr URL' : 'Sonarr URL'}<br />
-                  <input name="url" value={settings.url} onChange={handleChange} style={{ width: '60%', minWidth: 220, maxWidth: 600, padding: '0.5rem', borderRadius: 6, border: '1px solid #bbb', background: 'var(--settings-input-bg, #f5f5f5)', color: 'var(--settings-input-text, #222)' }} />
+                  <input name="providerURL" value={settings.providerURL} onChange={handleChange} style={{ width: '60%', minWidth: 220, maxWidth: 600, padding: '0.5rem', borderRadius: 6, border: '1px solid #bbb', background: 'var(--settings-input-bg, #f5f5f5)', color: 'var(--settings-input-text, #222)' }} />
                 </label>
               </div>
               <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.7rem' }}>

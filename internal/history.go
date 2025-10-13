@@ -10,7 +10,7 @@ import (
 
 type HistoryEvent struct {
 	Action     string    `json:"action"`
-	Title      string    `json:"title"`
+	MediaTitle string    `json:"mediaTitle"`
 	MediaType  MediaType `json:"mediaType"`
 	MediaId    int       `json:"mediaId"`
 	ExtraType  string    `json:"extraType"`

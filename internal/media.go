@@ -122,7 +122,7 @@ func CacheMediaPosters(
 		if err != nil {
 			continue
 		}
-		apiBase := trimTrailingSlash(settings.URL)
+		apiBase := trimTrailingSlash(settings.ProviderURL)
 		jobs := Map(posterSuffixes, func(suffix string) posterJob {
 			idDir := baseDir + "/" + id
 			localPath := idDir + suffix
@@ -170,8 +170,8 @@ func FindMediaPathByID(cacheFile string, mediaId int) (string, error) {
 // Common settings struct for both Radarr and Sonarr
 // Use this for loading settings generically
 type MediaSettings struct {
-	URL    string `yaml:"url"`
-	APIKey string `yaml:"apiKey"`
+	ProviderURL string `yaml:"url"`
+	APIKey      string `yaml:"apiKey"`
 }
 
 // Trims trailing slash from a URL
@@ -200,6 +200,18 @@ func loadCache(path string) ([]map[string]interface{}, error) {
 			for _, item := range items {
 				updateItemPath(item, mappings)
 				updateItemTitle(item, titleMap)
+				// Attach extras from collection
+				mediaPath, _ := item["path"].(string)
+				if mediaPath != "" {
+					extrasRaw := scanExtrasInfo(mediaPath)
+					extras := make(map[string]interface{})
+					for k, v := range extrasRaw {
+						extras[k] = v
+					}
+					item["extras"] = extras
+				} else {
+					item["extras"] = map[string]interface{}{}
+				}
 			}
 		}
 		return items, nil
@@ -219,6 +231,14 @@ func loadCache(path string) ([]map[string]interface{}, error) {
 		for _, item := range items {
 			updateItemPath(item, mappings)
 			updateItemTitle(item, titleMap)
+			// Attach extras from collection
+			mediaPath, _ := item["path"].(string)
+			if mediaPath != "" {
+				extras := scanExtrasInfo(mediaPath)
+				item["extras"] = extras
+			} else {
+				item["extras"] = map[string]interface{}{}
+			}
 		}
 	}
 	return items, nil
@@ -334,11 +354,11 @@ func updateItemTitle(item map[string]interface{}, titleMap map[string]string) {
 // Syncs only the JSON cache for Radarr/Sonarr, not the media files themselves
 // Pass mediaType (MediaTypeMovie or MediaTypeTV), apiPath (e.g. "/api/v3/movie"), cacheFile, and a filter function for items
 func SyncMediaCacheJson(provider, apiPath, cacheFile string, filter func(map[string]interface{}) bool) error {
-	url, apiKey, err := GetProviderUrlAndApiKey(provider)
+	providerURL, apiKey, err := GetProviderUrlAndApiKey(provider)
 	if err != nil {
 		return fmt.Errorf("%s settings not found: %w", provider, err)
 	}
-	req, err := http.NewRequest("GET", url+apiPath, nil)
+	req, err := http.NewRequest("GET", providerURL+apiPath, nil)
 	if err != nil {
 		return fmt.Errorf("error creating request: %w", err)
 	}
@@ -371,34 +391,11 @@ func SyncMediaCacheJson(provider, apiPath, cacheFile string, filter func(map[str
 			mediaId, _ := parseMediaID(m["id"])
 			for extraType, extras := range extrasByType {
 				for _, extra := range extras {
-					title := ""
-					if t, ok := extra["Title"].(string); ok && t != "" {
-						title = t
-					} else if t, ok := extra["title"].(string); ok && t != "" {
-						title = t
-					} else if t, ok := extra["ExtraTitle"].(string); ok && t != "" {
-						title = t
-					}
-					fileName := ""
-					if f, ok := extra["FileName"].(string); ok && f != "" {
-						fileName = f
-					} else if f, ok := extra["fileName"].(string); ok && f != "" {
-						fileName = f
-					}
-					youtubeId := ""
-					if y, ok := extra["YoutubeId"].(string); ok && y != "" {
-						youtubeId = y
-					} else if y, ok := extra["youtubeId"].(string); ok && y != "" {
-						youtubeId = y
-					} else if y, ok := extra["YouTubeID"].(string); ok && y != "" {
-						youtubeId = y
-					}
-					status := ""
-					if s, ok := extra["Status"].(string); ok && s != "" {
-						status = s
-					} else if s, ok := extra["status"].(string); ok && s != "" {
-						status = s
-					} else {
+					title, _ := extra["Title"].(string)
+					fileName, _ := extra["FileName"].(string)
+					youtubeId, _ := extra["YoutubeId"].(string)
+					status, _ := extra["Status"].(string)
+					if status == "" {
 						status = "downloaded"
 					}
 					entry := ExtrasEntry{
@@ -453,9 +450,11 @@ func GetMissingExtrasHandler(wantedPath string) gin.HandlerFunc {
 		}
 		// Map config keys to canonical Plex type names
 		requiredTypes := GetEnabledCanonicalExtraTypes(cfg)
-		missing := Filter(items, func(m map[string]interface{}) bool {
-			return !HasAnyEnabledExtras(m, requiredTypes)
+		TrailarrLog(INFO, "GetMissingExtrasHandler", "Required extra types: %v", requiredTypes)
+		missing := Filter(items, func(media map[string]interface{}) bool {
+			return !HasAnyEnabledExtras(media, requiredTypes)
 		})
+		TrailarrLog(INFO, "GetMissingExtrasHandler", "Found %d items missing extras of types: %v", len(missing), requiredTypes)
 		respondJSON(c, http.StatusOK, gin.H{"items": missing})
 	}
 }
@@ -484,27 +483,24 @@ func sharedExtrasHandler(mediaType MediaType) gin.HandlerFunc {
 		for _, extra := range extras {
 			youtubeIdInResults[extra.YoutubeId] = struct{}{}
 		}
-		// Set status to "rejected" for any extra whose URL matches a rejected extra
-		rejectedYoutubeIds := make(map[string]RejectedExtra)
+		// Set status to "rejected" for any extra whose YoutubeId matches a rejected extra
+		rejectedYoutubeIds := make(map[string]struct{})
 		for _, rejected := range rejectedExtras {
-			rejectedYoutubeIds[rejected.YoutubeId] = rejected
+			rejectedYoutubeIds[rejected.YoutubeId] = struct{}{}
 		}
-		for i, extra := range extras {
-			if _, exists := rejectedYoutubeIds[extra.YoutubeId]; exists {
-				extras[i].Status = "rejected"
-			}
-		}
+		MarkRejectedExtras(extras, rejectedYoutubeIds)
 		// Also append any rejected extras not already present in extras
 		for _, rejected := range rejectedExtras {
 			if _, exists := youtubeIdInResults[rejected.YoutubeId]; !exists {
 				extras = append(extras, Extra{
-					Type:      rejected.ExtraType,
-					Title:     rejected.ExtraTitle,
-					YoutubeId: rejected.YoutubeId,
-					Status:    "rejected",
+					ExtraType:  rejected.ExtraType,
+					ExtraTitle: rejected.ExtraTitle,
+					YoutubeId:  rejected.YoutubeId,
+					Status:     "rejected",
 				})
 			}
 		}
+		TrailarrLog(DEBUG, "sharedExtrasHandler", "Final extras: %+v", extras)
 		respondJSON(c, http.StatusOK, gin.H{"extras": extras})
 	}
 }
@@ -587,9 +583,9 @@ func GetMediaByIdHandler(cacheFile, key string) gin.HandlerFunc {
 	}
 }
 
-// Returns true if the item has any extras of the enabled types (case/plural robust)
-func HasAnyEnabledExtras(item map[string]interface{}, enabledTypes []string) bool {
-	extras, ok := item["extras"]
+// Returns true if the media has any extras of the enabled types (case/plural robust)
+func HasAnyEnabledExtras(media map[string]interface{}, enabledTypes []string) bool {
+	extras, ok := media["extras"]
 	if !ok {
 		return false
 	}
@@ -606,7 +602,8 @@ func HasAnyEnabledExtras(item map[string]interface{}, enabledTypes []string) boo
 		key, found := lowerKeys[tLower]
 		if !found && strings.HasSuffix(tLower, "s") {
 			key, found = lowerKeys[tLower[:len(tLower)-1]]
-		} else if !found {
+		}
+		if !found && !strings.HasSuffix(tLower, "s") {
 			key, found = lowerKeys[tLower+"s"]
 		}
 		if found {
@@ -616,10 +613,55 @@ func HasAnyEnabledExtras(item map[string]interface{}, enabledTypes []string) boo
 				if len(vv) > 0 {
 					return true
 				}
+			case string:
+				if strings.TrimSpace(vv) != "" {
+					return true
+				}
+			case nil:
+				// skip nil
 			default:
-				return true
+				// Only return true for non-nil, non-empty values
+				if vv != nil {
+					return true
+				}
 			}
 		}
 	}
 	return false
+}
+
+// SyncMediaType syncs Radarr or Sonarr depending on mediaType
+func SyncMediaType(mediaType MediaType) error {
+	switch mediaType {
+	case MediaTypeMovie:
+		return SyncMedia(
+			"radarr",
+			"/api/v3/movie",
+			MoviesJSONPath,
+			func(m map[string]interface{}) bool {
+				hasFile, ok := m["hasFile"].(bool)
+				return ok && hasFile
+			},
+			MediaCoverPath+"/Movies",
+			[]string{"/poster-500.jpg", "/fanart-1280.jpg"},
+		)
+	case MediaTypeTV:
+		return SyncMedia(
+			"sonarr",
+			"/api/v3/series",
+			SeriesJSONPath,
+			func(m map[string]interface{}) bool {
+				stats, ok := m["statistics"].(map[string]interface{})
+				if !ok {
+					return false
+				}
+				episodeFileCount, ok := stats["episodeFileCount"].(float64)
+				return ok && episodeFileCount >= 1
+			},
+			MediaCoverPath+"/Series",
+			[]string{"/poster-500.jpg", "/fanart-1280.jpg"},
+		)
+	default:
+		return fmt.Errorf("unknown media type: %v", mediaType)
+	}
 }

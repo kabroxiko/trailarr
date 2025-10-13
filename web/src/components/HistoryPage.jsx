@@ -112,7 +112,7 @@ const HistoryPage = () => {
           </thead>
           <tbody>
             {paginatedHistory.map((item, idx) => {
-              const key = item.date + '-' + item.title + '-' + item.extraTitle + '-' + item.action;
+              const key = item.date + '-' + item.mediaTitle + '-' + item.extraTitle + '-' + item.action;
               let icon = null;
               if (item.action === 'download') {
                 icon = <FaDownload title="Downloaded" style={{ fontSize: 20, color: 'var(--history-icon-color, #111)' }} />;
@@ -129,10 +129,10 @@ const HistoryPage = () => {
                         to={getMediaLink(item)}
                         style={{ color: '#6d28d9', textDecoration: 'none', fontWeight: 100 }}
                       >
-                        {item.title}
+                        {item.mediaTitle}
                       </Link>
                     ) : (
-                      item.title
+                      item.mediaTitle
                     )}
                   </td>
                   <td style={{ ...tdStyles, color: 'var(--history-table-extra-type, #6d28d9)', fontWeight: 'normal' }}>{item.extraType}</td>

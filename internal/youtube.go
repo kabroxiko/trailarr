@@ -417,7 +417,6 @@ type ExtraDownloadMetadata struct {
 	YouTubeID  string
 	FileName   string
 	Status     string
-	URL        string
 }
 
 // NewExtraDownloadMetadata constructs an ExtraDownloadMetadata with status and all fields
@@ -431,17 +430,16 @@ func NewExtraDownloadMetadata(info *downloadInfo, youtubeId string, status strin
 		YouTubeID:  info.YouTubeID,
 		FileName:   info.OutFile,
 		Status:     status,
-		URL:        youtubeId,
 	}
 }
 
 type RejectedExtra struct {
-	MediaType  MediaType `json:"media_type"`
-	MediaId    int       `json:"media_id"`
-	MediaTitle string    `json:"media_title"`
-	ExtraType  string    `json:"extra_type"`
-	ExtraTitle string    `json:"extra_title"`
-	YoutubeId  string    `json:"youtube_id"`
+	MediaType  MediaType `json:"mediaType"`
+	MediaId    int       `json:"mediaId"`
+	MediaTitle string    `json:"mediaTitle"`
+	ExtraType  string    `json:"extraType"`
+	ExtraTitle string    `json:"extraTitle"`
+	YoutubeId  string    `json:"youtubeId"`
 	Reason     string    `json:"reason"`
 }
 
@@ -571,7 +569,7 @@ func prepareDownloadInfo(mediaType MediaType, mediaId int, extraType, extraTitle
 		}
 	}
 
-	canonicalType := canonicalizeExtraType(extraType, extraTitle)
+	canonicalType := canonicalizeExtraType(extraType)
 	outDir := filepath.Join(basePath, canonicalType)
 
 	// Sanitize title for filename
@@ -635,7 +633,7 @@ func checkRejectedExtras(info *downloadInfo, youtubeId string) *ExtraDownloadMet
 		for _, itemStr := range items {
 			var r map[string]string
 			if err := json.Unmarshal([]byte(itemStr), &r); err == nil {
-				if r["url"] == youtubeId {
+				if r["youtubeId"] == youtubeId {
 					TrailarrLog(INFO, "YouTube", "Extra is in rejected list, skipping: %s", info.ExtraTitle)
 					return NewExtraDownloadMetadata(info, youtubeId, "rejected")
 				}

@@ -126,13 +126,13 @@ func RegisterRoutes(r *gin.Engine) {
 
 	// Endpoint to fetch root folders for Radarr/Sonarr
 	r.GET("/api/rootfolders", func(c *gin.Context) {
-		url := c.Query("url")
+		providerURL := c.Query("providerURL")
 		apiKey := c.Query("apiKey")
-		if url == "" || apiKey == "" {
-			respondError(c, http.StatusBadRequest, "Missing url or apiKey")
+		if providerURL == "" || apiKey == "" {
+			respondError(c, http.StatusBadRequest, "Missing providerURL or apiKey")
 			return
 		}
-		folders, err := FetchRootFolders(url, apiKey)
+		folders, err := FetchRootFolders(providerURL, apiKey)
 		if err != nil {
 			respondError(c, http.StatusInternalServerError, err.Error())
 			return

@@ -121,8 +121,8 @@ func init() {
 		}
 	}
 	tasksMeta = map[TaskID]TaskMeta{
-		"radarr": {ID: "radarr", Name: "Sync with Radarr", Function: wrapWithQueue("radarr", func() error { SyncRadarr(); return nil }), Order: 1},
-		"sonarr": {ID: "sonarr", Name: "Sync with Sonarr", Function: wrapWithQueue("sonarr", func() error { SyncSonarr(); return nil }), Order: 2},
+		"radarr": {ID: "radarr", Name: "Sync with Radarr", Function: wrapWithQueue("radarr", func() error { return SyncMediaType(MediaTypeMovie) }), Order: 1},
+		"sonarr": {ID: "sonarr", Name: "Sync with Sonarr", Function: wrapWithQueue("sonarr", func() error { return SyncMediaType(MediaTypeTV) }), Order: 2},
 		"extras": {ID: "extras", Name: "Search for Missing Extras", Function: wrapWithQueue("extras", func() error { handleExtrasDownloadLoop(context.Background()); return nil }), Order: 3},
 	}
 }
@@ -507,18 +507,14 @@ func downloadMissingExtrasWithTypeFilter(ctx context.Context, cfg ExtraTypesConf
 		for _, r := range rejectedExtras {
 			rejectedYoutubeIds[r.YoutubeId] = struct{}{}
 		}
-		for i := range extras {
-			if _, exists := rejectedYoutubeIds[extras[i].YoutubeId]; exists {
-				extras[i].Status = "rejected"
-			}
-		}
+		MarkRejectedExtras(extras, rejectedYoutubeIds)
 		// For each extra, download sequentially
 		for _, extra := range extras {
 			if ctx != nil && ctx.Err() != nil {
 				TrailarrLog(INFO, "Tasks", "Extras download cancelled before processing extra.")
 				break
 			}
-			typ := canonicalizeExtraType(extra.Type, extra.Type)
+			typ := canonicalizeExtraType(extra.ExtraType)
 			if !isExtraTypeEnabled(cfg, typ) {
 				continue
 			}
@@ -541,13 +537,13 @@ func handleTypeFilteredExtraDownload(mediaType MediaType, mediaId int, extra Ext
 	item := DownloadQueueItem{
 		MediaType:  mediaType,
 		MediaId:    mediaId,
-		ExtraType:  extra.Type,
-		ExtraTitle: extra.Title,
+		ExtraType:  extra.ExtraType,
+		ExtraTitle: extra.ExtraTitle,
 		YouTubeID:  extra.YoutubeId,
 		QueuedAt:   time.Now(),
 	}
 	AddToDownloadQueue(item, "task")
-	TrailarrLog(INFO, "QUEUE", "[handleTypeFilteredExtraDownload] Enqueued extra: mediaType=%v, mediaId=%v, type=%s, title=%s, youtubeId=%s", mediaType, mediaId, extra.Type, extra.Title, extra.YoutubeId)
+	TrailarrLog(INFO, "QUEUE", "[handleTypeFilteredExtraDownload] Enqueued extra: mediaType=%v, mediaId=%v, type=%s, title=%s, youtubeId=%s", mediaType, mediaId, extra.ExtraType, extra.ExtraTitle, extra.YoutubeId)
 	return nil
 }
 

@@ -126,7 +126,6 @@ export default function Sidebar({ darkMode }) {
                       <Link
                         to={`/wanted/${submenu.toLowerCase()}`}
                         style={{ color: 'inherit', textDecoration: 'none', display: 'block', width: '100%', textAlign: 'left' }}
-                        // No-op: selection is now URL-based
                       >{submenu}</Link>
                     </li>
                   ))}
@@ -139,7 +138,6 @@ export default function Sidebar({ darkMode }) {
                       <Link
                         to={`/settings/${submenu.toLowerCase()}`}
                         style={{ color: 'inherit', textDecoration: 'none', display: 'block', width: '100%', textAlign: 'left' }}
-                        // No-op: selection is now URL-based
                       >{submenu}</Link>
                     </li>
                   ))}
