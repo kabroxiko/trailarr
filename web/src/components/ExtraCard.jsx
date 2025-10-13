@@ -21,6 +21,7 @@ export default function ExtraCard({
   showToast, // new prop for toast/modal
 }) {
   const [imgError, setImgError] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
   const baseTitle = extra.Title;
   const totalCount = typeExtras.filter(e => e.Title === baseTitle).length;
   let displayTitle = totalCount > 1 ? `${baseTitle} (${typeExtras.slice(0, idx + 1).filter(e => e.Title === baseTitle).length})` : baseTitle;
@@ -32,18 +33,16 @@ export default function ExtraCard({
   React.useEffect(() => {
     let cancelled = false;
     setImgError(false);
+    setImgLoaded(false);
     if (posterUrl) {
-      fetch(posterUrl, { method: 'HEAD' })
-        .then(res => {
-          if (!res.ok && !cancelled) {
-            setImgError(true);
-          }
-        })
-        .catch(() => {
-          if (!cancelled) {
-            setImgError(true);
-          }
-        });
+      const img = new window.Image();
+      img.onload = () => {
+        if (!cancelled) setImgLoaded(true);
+      };
+      img.onerror = () => {
+        if (!cancelled) setImgError(true);
+      };
+      img.src = posterUrl;
     }
     return () => { cancelled = true; };
   }, [posterUrl]);
@@ -56,7 +55,6 @@ export default function ExtraCard({
   const failed = extra.Status === 'failed' || extra.Status === 'rejected' || extra.Status === 'unknown' || extra.Status === 'error';
   const exists = extra.Status === 'exists';
   const [downloading, setDownloading] = useState(false);
-  const [polling, setPolling] = useState(false);
   // Use the rejected prop if provided, otherwise fallback to extra.Status
   const [unbanned, setUnbanned] = useState(false);
   // Treat 'failed' as 'rejected' for UI
@@ -93,7 +91,6 @@ export default function ExtraCard({
         })
       });
       if (res.ok) {
-        setPolling(true);
         setErrorCard(null);
       } else {
         const data = await res.json();
@@ -114,40 +111,11 @@ export default function ExtraCard({
     }
   };
 
-  // Poll for status after requesting download
-  React.useEffect(() => {
-    let intervalId;
-    if (polling) {
-      intervalId = setInterval(async () => {
-        try {
-          const res = await fetch(`/api/extras/status/${extra.YoutubeId}`);
-          if (res.ok) {
-            const data = await res.json();
-            const status = data?.status?.Status || data?.status;
-            if (status && status !== 'queued' && status !== 'downloading') {
-              setPolling(false);
-              if (typeof setExtras === 'function') {
-                setExtras(prev => prev.map((ex) =>
-                  ex.Title === extra.Title && ex.Type === extra.Type ? { ...ex, Status: status } : ex
-                ));
-              }
-              if (typeof onDownloaded === 'function' && status === 'downloaded') {
-                onDownloaded();
-              }
-            }
-          }
-        } catch (e) {
-          // ignore
-        }
-      }, 3000);
-    }
-    return () => intervalId && clearInterval(intervalId);
-  }, [polling, extra.YoutubeId, extra.Title, extra.Type, setExtras, onDownloaded]);
   // Poster image or fallback factory
-  function PosterImage({ src, alt, onError, fallbackIcon }) {
+  function PosterImage({ src, alt, onError, onLoad, fallbackIcon, loaded }) {
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {src ? (
+        {src && loaded ? (
           <img
             src={src}
             alt={alt}
@@ -159,9 +127,8 @@ export default function ExtraCard({
               objectFit: 'contain',
               background: '#222222'
             }}
-            onError={onError}
           />
-        ) : (
+        ) : !src || imgError ? (
           <span style={{
             display: 'flex',
             alignItems: 'center',
@@ -172,6 +139,18 @@ export default function ExtraCard({
           }}>
             <FontAwesomeIcon icon={fallbackIcon} color="#888" size="4x" />
           </span>
+        ) : (
+          // Skeleton placeholder while loading
+          <span style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '100%',
+            height: 135,
+            background: '#333',
+            animation: 'pulse 1.2s infinite',
+            color: '#444'
+          }}>Loading...</span>
         )}
       </div>
     );
@@ -201,147 +180,137 @@ export default function ExtraCard({
       position: 'relative',
       border: borderColor,
     }}>
-      <div
-        style={{ width: '100%', background: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}
-      >
-        <div
-          style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: extra.YoutubeId && !imgError ? 'pointer' : 'default' }}
-          onClick={() => {
-            if (extra.YoutubeId && !imgError && onPlay) onPlay(extra.YoutubeId);
-          }}
-        >
-          {/** Play button overlay */}
-          {extra.YoutubeId && !imgError && (
-            <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 2 }}>
-              <IconButton
-                icon={<FontAwesomeIcon icon={faPlay} color="#fff" size="lg" style={{ filter: 'drop-shadow(0 2px 8px #000)' }} />}
-                title="Play"
-                onClick={e => {
-                  e.stopPropagation();
-                  if (onPlay) onPlay(extra.YoutubeId);
-                }}
-              />
-            </div>
-          )}
-          {/* Poster Image or Fallback */}
-          {!imgError && posterUrl ? (
-            <PosterImage
-              key={posterUrl}
-              src={posterUrl}
-              alt={displayTitle}
-              onError={() => {
-                setImgError(true);
+      {/* Image or poster rendering restored */}
+      <div style={{ width: '100%', height: 135, background: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+        {/* Play button overlay (with image) */}
+        {extra.YoutubeId && !imgError && (
+          <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 2 }}>
+            <IconButton
+              icon={<FontAwesomeIcon icon={faPlay} color="#fff" size="lg" style={{ filter: 'drop-shadow(0 2px 8px #000)' }} />}
+              title="Play"
+              onClick={e => {
+                e.stopPropagation();
+                if (onPlay) onPlay(extra.YoutubeId);
               }}
             />
-          ) : (
-            <PosterImage src={null} alt="Denied" fallbackIcon={faBan} />
-          )}
-          {/* Failed/Rejected Icon (always show for failed/rejected) */}
-          {(extra.Status === 'failed' || extra.Status === 'rejected' || extra.Status === 'unknown' || extra.Status === 'error') && (
-            <div style={{ position: 'absolute', top: 8, left: 8, zIndex: 2 }}>
-              <IconButton
-                icon={<FontAwesomeIcon icon={faCircleXmark} color="#ef4444" size="lg" />}
-                title={extra.Status === 'failed' ? 'Remove failed status' : 'Remove ban'}
-                onClick={async event => {
-                  event.stopPropagation();
-                  // Remove from blacklist if rejected, or just clear failed status if failed/unknown/error
-                  if (extra.Status === 'failed' || extra.Status === 'unknown' || extra.Status === 'error') {
-                    if (typeof setExtras === 'function') {
-                      setExtras(prev => prev.map((ex) =>
-                        ex.Title === extra.Title && ex.Type === extra.Type ? { ...ex, Status: '' } : ex
-                      ));
-                    }
-                  } else {
-                    try {
-                      await fetch('/api/blacklist/extras/remove', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          mediaType,
-                          mediaId: media.id,
-                          extraType: extra.Type,
-                          extraTitle: extra.Title,
-                          youtubeId: extra.YoutubeId
-                        })
-                      });
-                    } catch {
-                      setModalMsg('Failed to remove ban.');
-                      setShowModal(true);
-                    }
+          </div>
+        )}
+        {/* Poster Image or Fallback */}
+        {!imgError && posterUrl ? (
+          <PosterImage
+            key={posterUrl}
+            src={posterUrl}
+            alt={displayTitle}
+            fallbackIcon={faBan}
+            loaded={imgLoaded}
+          />
+        ) : (
+          <PosterImage src={null} alt="Denied" fallbackIcon={faBan} loaded={false} />
+        )}
+        {/* Failed/Rejected Icon (always show for failed/rejected) */}
+        {(extra.Status === 'failed' || extra.Status === 'rejected' || extra.Status === 'unknown' || extra.Status === 'error') && (
+          <div style={{ position: 'absolute', top: 8, left: 8, zIndex: 2 }}>
+            <IconButton
+              icon={<FontAwesomeIcon icon={faCircleXmark} color="#ef4444" size="lg" />}
+              title={extra.Status === 'failed' ? 'Remove failed status' : 'Remove ban'}
+              onClick={async event => {
+                event.stopPropagation();
+                // Remove from blacklist if rejected, or just clear failed status if failed/unknown/error
+                if (extra.Status === 'failed' || extra.Status === 'unknown' || extra.Status === 'error') {
+                  if (typeof setExtras === 'function') {
+                    setExtras(prev => prev.map((ex) =>
+                      ex.Title === extra.Title && ex.Type === extra.Type ? { ...ex, Status: '' } : ex
+                    ));
                   }
-                }}
-                aria-label={extra.Status === 'failed' ? 'Remove failed status' : 'Remove ban'}
-              />
-            </div>
-          )}
-          {/* Download or Delete Buttons */}
-          {extra.YoutubeId && !downloaded && !imgError && (
-            <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 2 }}>
-              <IconButton
-                icon={
-                  isDownloading ? (
-                    <span className="download-spinner" style={{ display: 'inline-block', width: 22, height: 22, background: 'transparent' }}>
-                      <svg viewBox="0 0 50 50" style={{ width: 22, height: 22, background: 'transparent' }}>
-                        <circle cx="25" cy="25" r="20" fill="none" stroke="#fff" strokeWidth="5" strokeDasharray="31.4 31.4" strokeLinecap="round">
-                          <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="0.8s" repeatCount="indefinite" />
-                        </circle>
-                      </svg>
-                    </span>
-                  ) : isQueued ? (
-                    <FontAwesomeIcon icon={faClock} color="#fff" size="lg" />
-                  ) : (
-                    <FontAwesomeIcon icon={faDownload} color="#fff" size="lg" />
-                  )
-                }
-                title={rejected ? (extra.reason ? `Rejected: ${extra.reason}` : 'Rejected (cannot download)') : isDownloading ? 'Downloading...' : isQueued ? 'Queued' : 'Download'}
-                onClick={rejected || isDownloading || isQueued
-                  ? undefined
-                  : (e => {
-                      e.stopPropagation();
-                      handleDownloadClick();
-                    })}
-                disabled={rejected || isDownloading || isQueued}
-                aria-label="Download"
-                style={{ opacity: rejected ? 0.5 : (isDownloading || isQueued ? 0.7 : 1), background: 'transparent', borderRadius: (isDownloading || isQueued) ? 8 : 0, transition: 'background 0.2s, opacity 0.2s' }}
-              />
-            </div>
-          )}
-          {/* Downloaded Checkmark and Delete Button */}
-          {downloaded && (
-            <>
-              <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 2 }}>
-                <IconButton icon={<FontAwesomeIcon icon={faCheckSquare} color="#22c55e" size="lg" />} title="Downloaded" disabled />
-              </div>
-              <div style={{ position: 'absolute', bottom: 8, right: 8, zIndex: 2 }}>
-                <IconButton
-                  icon={<FontAwesomeIcon icon={faTrashCan} color="#ef4444" size="md" />}
-                  title="Delete"
-                  onClick={async (event) => {
-                    event.stopPropagation();
-                    if (!window.confirm('Delete this extra?')) return;
-                    try {
-                      const { deleteExtra } = await import('../api');
-                      const payload = {
+                } else {
+                  try {
+                    await fetch('/api/blacklist/extras/remove', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
                         mediaType,
                         mediaId: media.id,
                         extraType: extra.Type,
-                        extraTitle: extra.Title
-                      };
-                      await deleteExtra(payload);
-                      setExtras(prev => prev.map((ex) =>
-                        ex.Title === extra.Title && ex.Type === extra.Type ? { ...ex, Status: 'missing' } : ex
-                      ));
-                    } catch (error) {
-                      let msg = error?.message || error;
-                      if (error?.detail) msg += `\n${error.detail}`;
-                      showErrorModal(msg || 'Delete failed');
-                    }
-                  }}
-                />
-              </div>
-            </>
-          )}
-        </div>
+                        extraTitle: extra.Title,
+                        youtubeId: extra.YoutubeId
+                      })
+                    });
+                  } catch {
+                    setModalMsg('Failed to remove ban.');
+                    setShowModal(true);
+                  }
+                }
+              }}
+              aria-label={extra.Status === 'failed' ? 'Remove failed status' : 'Remove ban'}
+            />
+          </div>
+        )}
+        {/* Download or Delete Buttons */}
+        {extra.YoutubeId && !downloaded && !imgError && (
+          <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 2 }}>
+            <IconButton
+              icon={
+                isDownloading ? (
+                  <span className="download-spinner" style={{ display: 'inline-block', width: 22, height: 22, background: 'transparent' }}>
+                    <svg viewBox="0 0 50 50" style={{ width: 22, height: 22, background: 'transparent' }}>
+                      <circle cx="25" cy="25" r="20" fill="none" stroke="#fff" strokeWidth="5" strokeDasharray="31.4 31.4" strokeLinecap="round">
+                        <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="0.8s" repeatCount="indefinite" />
+                      </circle>
+                    </svg>
+                  </span>
+                ) : isQueued ? (
+                  <FontAwesomeIcon icon={faClock} color="#fff" size="lg" />
+                ) : (
+                  <FontAwesomeIcon icon={faDownload} color="#fff" size="lg" />
+                )
+              }
+              title={rejected ? (extra.reason ? `Rejected: ${extra.reason}` : 'Rejected (cannot download)') : isDownloading ? 'Downloading...' : isQueued ? 'Queued' : 'Download'}
+              onClick={rejected || isDownloading || isQueued
+                ? undefined
+                : (e => {
+                    e.stopPropagation();
+                    handleDownloadClick();
+                  })}
+              disabled={rejected || isDownloading || isQueued}
+              aria-label="Download"
+              style={{ opacity: rejected ? 0.5 : (isDownloading || isQueued ? 0.7 : 1), background: 'transparent', borderRadius: (isDownloading || isQueued) ? 8 : 0, transition: 'background 0.2s, opacity 0.2s' }}
+            />
+          </div>
+        )}
+        {/* Downloaded Checkmark and Delete Button */}
+        {downloaded && (
+          <>
+            <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 2 }}>
+              <IconButton icon={<FontAwesomeIcon icon={faCheckSquare} color="#22c55e" size="lg" />} title="Downloaded" disabled />
+            </div>
+            <div style={{ position: 'absolute', bottom: 8, right: 8, zIndex: 2 }}>
+              <IconButton
+                icon={<FontAwesomeIcon icon={faTrashCan} color="#ef4444" size="md" />}
+                title="Delete"
+                onClick={async (event) => {
+                  event.stopPropagation();
+                  if (!window.confirm('Delete this extra?')) return;
+                  try {
+                    const { deleteExtra } = await import('../api');
+                    const payload = {
+                      mediaType,
+                      mediaId: media.id,
+                      youtubeId: extra.YoutubeId
+                    };
+                    await deleteExtra(payload);
+                    setExtras(prev => prev.map((ex) =>
+                      ex.Title === extra.Title && ex.Type === extra.Type ? { ...ex, Status: 'missing' } : ex
+                    ));
+                  } catch (error) {
+                    let msg = error?.message || error;
+                    if (error?.detail) msg += `\n${error.detail}`;
+                    showErrorModal(msg || 'Delete failed');
+                  }
+                }}
+              />
+            </div>
+          </>
+        )}
       </div>
       <div style={{ width: '100%', padding: '12px 10px 0 10px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <div style={{ fontWeight: 600, fontSize: titleFontSize, color: darkMode ? '#e5e7eb' : '#222', textAlign: 'center', marginBottom: 4, height: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', width: '100%' }}>{displayTitle}</div>

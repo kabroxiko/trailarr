@@ -10,12 +10,34 @@ import (
 )
 
 func RegisterRoutes(r *gin.Engine) {
+	// WebSocket for real-time download queue updates
+	r.GET("/ws/download-queue", func(c *gin.Context) {
+		wsUpgrader := getWebSocketUpgrader()
+		conn, err := wsUpgrader.Upgrade(c.Writer, c.Request, nil)
+		if err != nil {
+			TrailarrLog(WARN, "WS", "WebSocket upgrade failed: %v", err)
+			return
+		}
+		AddDownloadQueueClient(conn)
+		for {
+			_, _, err := conn.ReadMessage()
+			if err != nil {
+				break
+			}
+		}
+		RemoveDownloadQueueClient(conn)
+		conn.Close()
+	})
 	// Download status by YouTube ID
 	r.GET("/api/extras/status/:youtubeId", GetDownloadStatusHandler)
 	// Batch status endpoint
 	r.POST("/api/extras/status/batch", GetBatchDownloadStatusHandler)
 	// Start the download queue worker
 	StartDownloadQueueWorker()
+	// Start watcher for download_queue.json to broadcast only changes
+	go DownloadQueueWatcher(DownloadQueuePath, func(changed []DownloadQueueItem) {
+		BroadcastDownloadQueueChanges(changed)
+	})
 	r.GET("/api/blacklist/extras", BlacklistExtrasHandler)
 	r.POST("/api/blacklist/extras/remove", RemoveBlacklistExtraHandler)
 	// --- WebSocket for real-time task status ---

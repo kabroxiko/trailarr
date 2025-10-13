@@ -1,12 +1,14 @@
 package internal
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -182,11 +184,31 @@ func trimTrailingSlash(url string) string {
 
 // Loads a JSON cache file into a generic slice
 func loadCache(path string) ([]map[string]interface{}, error) {
+	// Use Redis for movies and series
+	if path == MoviesJSONPath || path == SeriesJSONPath {
+		items, err := LoadMediaFromRedis(path)
+		if err != nil {
+			return nil, err
+		}
+		mediaType, mainCachePath := detectMediaTypeAndMainCachePath(path)
+		titleMap := getTitleMap(mainCachePath, path)
+		if mediaType != "" {
+			mappings, err := GetPathMappings(mediaType)
+			if err != nil {
+				mappings = nil
+			}
+			for _, item := range items {
+				updateItemPath(item, mappings)
+				updateItemTitle(item, titleMap)
+			}
+		}
+		return items, nil
+	}
+	// Fallback to file for other paths
 	var items []map[string]interface{}
 	if err := ReadJSONFile(path, &items); err != nil {
 		return nil, err
 	}
-
 	mediaType, mainCachePath := detectMediaTypeAndMainCachePath(path)
 	titleMap := getTitleMap(mainCachePath, path)
 	if mediaType != "" {
@@ -199,8 +221,54 @@ func loadCache(path string) ([]map[string]interface{}, error) {
 			updateItemTitle(item, titleMap)
 		}
 	}
-
 	return items, nil
+}
+
+// LoadMediaFromRedis loads movies or series from Redis, expects path to be MoviesJSONPath or SeriesJSONPath
+func LoadMediaFromRedis(path string) ([]map[string]interface{}, error) {
+	client := GetRedisClient()
+	ctx := context.Background()
+	var redisKey string
+	switch path {
+	case MoviesJSONPath:
+		redisKey = "trailarr:movies"
+	case SeriesJSONPath:
+		redisKey = "trailarr:series"
+	default:
+		return nil, fmt.Errorf("unsupported path for redis: %s", path)
+	}
+	val, err := client.Get(ctx, redisKey).Result()
+	if err != nil {
+		if err.Error() == "redis: nil" {
+			return []map[string]interface{}{}, nil // treat as empty
+		}
+		return nil, err
+	}
+	var items []map[string]interface{}
+	if err := json.Unmarshal([]byte(val), &items); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+// SaveMediaToRedis saves movies or series to Redis, expects path to be MoviesJSONPath or SeriesJSONPath
+func SaveMediaToRedis(path string, items []map[string]interface{}) error {
+	client := GetRedisClient()
+	ctx := context.Background()
+	var redisKey string
+	switch path {
+	case MoviesJSONPath:
+		redisKey = "trailarr:movies"
+	case SeriesJSONPath:
+		redisKey = "trailarr:series"
+	default:
+		return fmt.Errorf("unsupported path for redis: %s", path)
+	}
+	data, err := json.Marshal(items)
+	if err != nil {
+		return err
+	}
+	return client.Set(ctx, redisKey, data, 0).Err()
 }
 
 // Helper: Detect media type and main cache path
@@ -290,15 +358,70 @@ func SyncMediaCacheJson(provider, apiPath, cacheFile string, filter func(map[str
 		return fmt.Errorf("failed to decode %s response: %w", provider, err)
 	}
 	items := make([]map[string]interface{}, 0)
+	ctx := context.Background()
 	for _, m := range allItems {
 		if filter(m) {
-			// Add existing_extras info
 			mediaPath, _ := m["path"].(string)
-			m["existing_extras"] = scanExtrasInfo(mediaPath)
+			extrasByType := scanExtrasInfo(mediaPath)
+			// Only record extras in the unified collection, not in the per-media cache
+			mediaType := MediaTypeMovie
+			if provider == "sonarr" {
+				mediaType = MediaTypeTV
+			}
+			mediaId, _ := parseMediaID(m["id"])
+			for extraType, extras := range extrasByType {
+				for _, extra := range extras {
+					title := ""
+					if t, ok := extra["Title"].(string); ok && t != "" {
+						title = t
+					} else if t, ok := extra["title"].(string); ok && t != "" {
+						title = t
+					} else if t, ok := extra["ExtraTitle"].(string); ok && t != "" {
+						title = t
+					}
+					fileName := ""
+					if f, ok := extra["FileName"].(string); ok && f != "" {
+						fileName = f
+					} else if f, ok := extra["fileName"].(string); ok && f != "" {
+						fileName = f
+					}
+					youtubeId := ""
+					if y, ok := extra["YoutubeId"].(string); ok && y != "" {
+						youtubeId = y
+					} else if y, ok := extra["youtubeId"].(string); ok && y != "" {
+						youtubeId = y
+					} else if y, ok := extra["YouTubeID"].(string); ok && y != "" {
+						youtubeId = y
+					}
+					status := ""
+					if s, ok := extra["Status"].(string); ok && s != "" {
+						status = s
+					} else if s, ok := extra["status"].(string); ok && s != "" {
+						status = s
+					} else {
+						status = "downloaded"
+					}
+					entry := ExtrasEntry{
+						MediaType:  mediaType,
+						MediaId:    mediaId,
+						ExtraTitle: title,
+						ExtraType:  extraType,
+						FileName:   fileName,
+						YoutubeId:  youtubeId,
+						Status:     status,
+					}
+					_ = AddOrUpdateExtra(ctx, entry)
+				}
+			}
 			items = append(items, m)
 		}
 	}
-	_ = WriteJSONFile(cacheFile, items)
+	// Save to Redis for movies/series, file for others
+	if cacheFile == MoviesJSONPath || cacheFile == SeriesJSONPath {
+		_ = SaveMediaToRedis(cacheFile, items)
+	} else {
+		_ = WriteJSONFile(cacheFile, items)
+	}
 	TrailarrLog(INFO, "SyncMediaCacheJson", "[Sync%s] Synced %d items to cache.", provider, len(items))
 
 	// After syncing main cache, update wanted status in main JSON
@@ -428,18 +551,24 @@ func updateWantedStatusInMainJson(mediaType MediaType, cacheFile string) error {
 		}
 		item["wanted"] = !trailerSet[path]
 	}
+	// Save to Redis for movies/series, file for others
+	if cacheFile == MoviesJSONPath || cacheFile == SeriesJSONPath {
+		return SaveMediaToRedis(cacheFile, items)
+	}
 	return WriteJSONFile(cacheFile, items)
 }
 
 // Handler to get a single media item by path parameter (e.g. /api/movies/:id)
 func GetMediaByIdHandler(cacheFile, key string) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		start := time.Now()
 		idParam := c.Param("id")
 		TrailarrLog(DEBUG, "GetMediaByIdHandler", "HTTP %s %s, idParam: %s", c.Request.Method, c.Request.URL.String(), idParam)
 		items, err := loadCache(cacheFile)
 		if err != nil {
 			TrailarrLog(DEBUG, "GetMediaByIdHandler", "Failed to load cache: %v", err)
 			respondError(c, http.StatusInternalServerError, "cache not found")
+			TrailarrLog(INFO, "GetMediaByIdHandler", "Total time: %v", time.Since(start))
 			return
 		}
 		filtered := Filter(items, func(m map[string]interface{}) bool {
@@ -449,16 +578,18 @@ func GetMediaByIdHandler(cacheFile, key string) gin.HandlerFunc {
 		TrailarrLog(DEBUG, "GetMediaByIdHandler", "Filtered by id=%s, %d items remain", idParam, len(filtered))
 		if len(filtered) == 0 {
 			respondError(c, http.StatusNotFound, "item not found")
+			TrailarrLog(INFO, "GetMediaByIdHandler", "Total time: %v", time.Since(start))
 			return
 		}
 		TrailarrLog(DEBUG, "GetMediaByIdHandler", "Item: %+v", filtered[0])
 		respondJSON(c, http.StatusOK, gin.H{"item": filtered[0]})
+		TrailarrLog(INFO, "GetMediaByIdHandler", "Total time: %v", time.Since(start))
 	}
 }
 
 // Returns true if the item has any extras of the enabled types (case/plural robust)
 func HasAnyEnabledExtras(item map[string]interface{}, enabledTypes []string) bool {
-	extras, ok := item["existing_extras"]
+	extras, ok := item["extras"]
 	if !ok {
 		return false
 	}

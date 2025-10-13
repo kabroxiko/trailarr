@@ -16,8 +16,8 @@ const (
 	RejectedExtrasPath       = TrailarrRoot + "/rejected_extras.json"
 	ConfigPath               = TrailarrRoot + "/config/config.yml"
 	MediaCoverPath           = TrailarrRoot + "/MediaCover"
-	MoviesJSONPath           = TrailarrRoot + "/movies.json"
-	SeriesJSONPath           = TrailarrRoot + "/series.json"
+	MoviesJSONPath           = "trailarr:movies" // Redis key, not a file
+	SeriesJSONPath           = "trailarr:series" // Redis key, not a file
 	QueueFile                = TrailarrRoot + "/queue.json"
 	DownloadQueuePath        = TrailarrRoot + "/download_queue.json"
 	CookiesFile              = TrailarrRoot + "/.config/google-chrome/cookies.txt"

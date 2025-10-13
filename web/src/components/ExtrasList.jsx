@@ -1,5 +1,4 @@
-import React, { useState, useMemo } from 'react';
-import useExtrasLiveStatus from '../hooks/useExtrasLiveStatus';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import ExtraCard from './ExtraCard.jsx';
 import SectionHeader from './SectionHeader.jsx';
 import Toast from './Toast';
@@ -16,10 +15,52 @@ function ExtrasList({
   YoutubeEmbed,
 }) {
   const [toastMsg, setToastMsg] = useState('');
+  const wsRef = useRef(null);
+
+  // WebSocket: Listen for download queue updates
+  useEffect(() => {
+    const wsUrl = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws/download-queue';
+    const ws = new window.WebSocket(wsUrl);
+    wsRef.current = ws;
+    ws.onopen = () => {
+      console.debug('[WebSocket] Connected to download queue');
+    };
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'download_queue_update' && Array.isArray(msg.queue)) {
+          console.debug('[WebSocket] Received queue update', msg.queue);
+          // Update extras state if possible
+          if (typeof setExtras === 'function') {
+            setExtras(prev => {
+              // Map over all extras and update their Status if found in queue
+              const queueMap = Object.fromEntries(msg.queue.map(e => [e.youtubeId, e.status]));
+              return prev.map(ex => {
+                if (queueMap[ex.YoutubeId]) {
+                  return { ...ex, Status: queueMap[ex.YoutubeId] };
+                }
+                return ex;
+              });
+            });
+          }
+        }
+      } catch (err) {
+        console.debug('[WebSocket] Error parsing message', err);
+      }
+    };
+    ws.onerror = (e) => {
+      console.debug('[WebSocket] Error', e);
+    };
+    ws.onclose = () => {
+      console.debug('[WebSocket] Closed');
+    };
+    return () => {
+      ws.close();
+    };
+  }, [setExtras]);
 
   // Flatten all extras for polling
   const allExtras = useMemo(() => Object.values(extrasByType).flat(), [extrasByType]);
-  useExtrasLiveStatus(allExtras, setExtras);
 
   // Helper for rendering a group of extras
   const renderExtrasGroup = (type, typeExtras) => (
@@ -36,7 +77,7 @@ function ExtrasList({
       }}>
         {typeExtras.map((extra, idx) => (
           <ExtraCard
-            key={idx}
+            key={extra.YoutubeId || idx}
             extra={extra}
             idx={idx}
             type={type}
