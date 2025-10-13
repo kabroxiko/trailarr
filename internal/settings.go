@@ -664,14 +664,14 @@ func loadMediaSettings(section string) (MediaSettings, error) {
 		TrailarrLog(WARN, "Settings", "section %s is not a map", section)
 		return MediaSettings{}, fmt.Errorf("section %s is not a map", section)
 	}
-	var url, apiKey string
+	var ProviderURL, apiKey string
 	if v, ok := sec["url"].(string); ok {
-		url = v
+		ProviderURL = v
 	}
 	if v, ok := sec["apiKey"].(string); ok {
 		apiKey = v
 	}
-	return MediaSettings{URL: url, APIKey: apiKey}, nil
+	return MediaSettings{ProviderURL: ProviderURL, APIKey: apiKey}, nil
 }
 
 // GetPathMappings reads pathMappings for a section ("radarr" or "sonarr") from config.yml and returns as [][]string
@@ -722,20 +722,21 @@ func GetProviderUrlAndApiKey(provider string) (string, string, error) {
 		TrailarrLog(WARN, "Settings", "section %s not found in config", provider)
 		return "", "", fmt.Errorf("section %s not found in config", provider)
 	}
-	url, _ := sec["url"].(string)
+	providerURL, _ := sec["url"].(string)
 	apiKey, _ := sec["apiKey"].(string)
-	return url, apiKey, nil
+	return providerURL, apiKey, nil
 }
+
 func GetSettingsHandler(section string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		data, err := os.ReadFile(ConfigPath)
 		if err != nil {
-			respondJSON(c, http.StatusOK, gin.H{"url": "", "apiKey": ""})
+			respondJSON(c, http.StatusOK, gin.H{"providerURL": "", "apiKey": ""})
 			return
 		}
 		var config map[string]interface{}
 		if err := yaml.Unmarshal(data, &config); err != nil {
-			respondJSON(c, http.StatusOK, gin.H{"url": "", "apiKey": "", "pathMappings": []interface{}{}})
+			respondJSON(c, http.StatusOK, gin.H{"providerURL": "", "apiKey": "", "pathMappings": []interface{}{}})
 			return
 		}
 		sectionData, _ := config[section].(map[string]interface{})
@@ -763,15 +764,15 @@ func GetSettingsHandler(section string) gin.HandlerFunc {
 		}
 		// Add any root folder from API response to settings if missing
 		var folders []map[string]interface{}
-		var url, apiKey string
+		var providerURL, apiKey string
 		if sectionData != nil {
-			url, _ = sectionData["url"].(string)
+			providerURL, _ = sectionData["url"].(string)
 			apiKey, _ = sectionData["apiKey"].(string)
 			switch section {
 			case "radarr":
-				folders, _ = FetchRootFolders(url, apiKey)
+				folders, _ = FetchRootFolders(providerURL, apiKey)
 			case "sonarr":
-				folders, _ = FetchRootFolders(url, apiKey)
+				folders, _ = FetchRootFolders(providerURL, apiKey)
 			}
 		}
 		updated := false
@@ -795,15 +796,16 @@ func GetSettingsHandler(section string) gin.HandlerFunc {
 				TrailarrLog(INFO, "Settings", "Updated config with new root folders")
 			}
 		}
-		respondJSON(c, http.StatusOK, gin.H{"url": url, "apiKey": apiKey, "pathMappings": mappings})
+		TrailarrLog(DEBUG, "Settings", "Loaded settings for %s: URL=%s, APIKey=%s, Mappings=%v", section, providerURL, apiKey, mappings)
+		respondJSON(c, http.StatusOK, gin.H{"providerURL": providerURL, "apiKey": apiKey, "pathMappings": mappings})
 	}
 }
 
-// Returns a Gin handler to save settings (url, apiKey, pathMappings) for a given section ("radarr" or "sonarr")
+// Returns a Gin handler to save settings (providerURL, apiKey, pathMappings) for a given section ("radarr" or "sonarr")
 func SaveSettingsHandler(section string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			URL          string `yaml:"url"`
+			ProviderURL  string `yaml:"url"`
 			APIKey       string `yaml:"apiKey"`
 			PathMappings []struct {
 				From string `yaml:"from"`
@@ -819,7 +821,7 @@ func SaveSettingsHandler(section string) gin.HandlerFunc {
 			config = map[string]interface{}{}
 		}
 		sectionData := map[string]interface{}{
-			"url":          req.URL,
+			"providerURL":  req.ProviderURL,
 			"apiKey":       req.APIKey,
 			"pathMappings": req.PathMappings,
 		}
@@ -949,9 +951,9 @@ func FetchRootFolders(apiURL, apiKey string) ([]map[string]interface{}, error) {
 }
 
 // Test connection to Radarr/Sonarr by calling /api/v3/system/status
-func testMediaConnection(url, apiKey, _ string) error {
+func testMediaConnection(providerURL, apiKey, _ string) error {
 	endpoint := "/api/v3/system/status"
-	req, err := http.NewRequest("GET", url+endpoint, nil)
+	req, err := http.NewRequest("GET", providerURL+endpoint, nil)
 	if err != nil {
 		return err
 	}
@@ -973,28 +975,28 @@ func testMediaConnection(url, apiKey, _ string) error {
 func GetEnabledCanonicalExtraTypes(cfg ExtraTypesConfig) []string {
 	types := make([]string, 0)
 	if cfg.Trailers {
-		types = append(types, canonicalizeExtraType("trailers", ""))
+		types = append(types, canonicalizeExtraType("trailers"))
 	}
 	if cfg.Scenes {
-		types = append(types, canonicalizeExtraType("scenes", ""))
+		types = append(types, canonicalizeExtraType("scenes"))
 	}
 	if cfg.BehindTheScenes {
-		types = append(types, canonicalizeExtraType("behindTheScenes", ""))
+		types = append(types, canonicalizeExtraType("behindTheScenes"))
 	}
 	if cfg.Interviews {
-		types = append(types, canonicalizeExtraType("interviews", ""))
+		types = append(types, canonicalizeExtraType("interviews"))
 	}
 	if cfg.Featurettes {
-		types = append(types, canonicalizeExtraType("featurettes", ""))
+		types = append(types, canonicalizeExtraType("featurettes"))
 	}
 	if cfg.DeletedScenes {
-		types = append(types, canonicalizeExtraType("deletedScenes", ""))
+		types = append(types, canonicalizeExtraType("deletedScenes"))
 	}
 	if cfg.Other {
-		types = append(types, canonicalizeExtraType("other", ""))
+		types = append(types, canonicalizeExtraType("other"))
 	}
 	if len(types) == 0 {
-		types = []string{canonicalizeExtraType("trailers", "")}
+		types = []string{canonicalizeExtraType("trailers")}
 	}
 	return types
 }

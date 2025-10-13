@@ -22,9 +22,10 @@ export default function ExtraCard({
 }) {
   const [imgError, setImgError] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
-  const baseTitle = extra.Title;
-  const totalCount = typeExtras.filter(e => e.Title === baseTitle).length;
-  let displayTitle = totalCount > 1 ? `${baseTitle} (${typeExtras.slice(0, idx + 1).filter(e => e.Title === baseTitle).length})` : baseTitle;
+  const baseTitle = extra.ExtraTitle || '';
+  const baseType = extra.ExtraType || '';
+  const totalCount = typeExtras.filter(e => e.ExtraTitle === baseTitle).length;
+  let displayTitle = totalCount > 1 ? `${baseTitle} (${typeExtras.slice(0, idx + 1).filter(e => e.ExtraTitle === baseTitle).length})` : baseTitle;
   const maxLen = 40;
   if (displayTitle.length > maxLen) {
     displayTitle = displayTitle.slice(0, maxLen - 3) + '...';
@@ -81,7 +82,7 @@ export default function ExtraCard({
     // Immediately update UI to show as queued (match by YoutubeId, Type, Title)
     if (typeof setExtras === 'function') {
       setExtras(prev => prev.map((ex) =>
-        ex.YoutubeId === extra.YoutubeId && ex.Type === extra.Type && ex.Title === extra.Title
+        ex.YoutubeId === extra.YoutubeId && ex.ExtraType === baseType && ex.ExtraTitle === baseTitle
           ? { ...ex, Status: 'queued' }
           : ex
       ));
@@ -93,8 +94,8 @@ export default function ExtraCard({
         body: JSON.stringify({
           mediaType,
           mediaId: media.id,
-          extraType: extra.Type,
-          extraTitle: extra.Title,
+          extraType: baseType,
+          extraTitle: baseTitle,
           youtubeId: extra.YoutubeId
         })
       });
@@ -110,7 +111,7 @@ export default function ExtraCard({
         // If failed, revert status
         if (typeof setExtras === 'function') {
           setExtras(prev => prev.map((ex) =>
-            ex.YoutubeId === extra.YoutubeId && ex.Type === extra.Type && ex.Title === extra.Title
+            ex.YoutubeId === extra.YoutubeId && ex.ExtraType === baseType && ex.ExtraTitle === baseTitle
               ? { ...ex, Status: '' }
               : ex
           ));
@@ -125,7 +126,7 @@ export default function ExtraCard({
       // If failed, revert status
       if (typeof setExtras === 'function') {
         setExtras(prev => prev.map((ex) =>
-          ex.YoutubeId === extra.YoutubeId && ex.Type === extra.Type && ex.Title === extra.Title
+          ex.YoutubeId === extra.YoutubeId && ex.ExtraType === baseType && ex.ExtraTitle === baseTitle
             ? { ...ex, Status: '' }
             : ex
         ));
@@ -256,15 +257,15 @@ export default function ExtraCard({
                       body: JSON.stringify({
                         mediaType,
                         mediaId: media.id,
-                        extraType: extra.Type,
-                        extraTitle: extra.Title,
+                        extraType: baseType,
+                        extraTitle: baseTitle,
                         youtubeId: extra.YoutubeId
                       })
                     });
                     // Immediately update UI to clear the rejected status
                     if (typeof setExtras === 'function') {
                       setExtras(prev => prev.map((ex) =>
-                        ex.YoutubeId === extra.YoutubeId && ex.Type === extra.Type && ex.Title === extra.Title
+                        ex.YoutubeId === extra.YoutubeId && ex.ExtraType === baseType && ex.ExtraTitle === baseTitle
                           ? { ...ex, Status: '' }
                           : ex
                       ));
@@ -333,7 +334,7 @@ export default function ExtraCard({
                     };
                     await deleteExtra(payload);
                     setExtras(prev => prev.map((ex) =>
-                      ex.Title === extra.Title && ex.Type === extra.Type ? { ...ex, Status: 'missing' } : ex
+                      ex.ExtraTitle === baseTitle && ex.ExtraType === baseType ? { ...ex, Status: 'missing' } : ex
                     ));
                   } catch (error) {
                     let msg = error?.message || error;

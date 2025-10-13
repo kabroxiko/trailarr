@@ -146,11 +146,10 @@ func FetchTMDBExtras(mediaType MediaType, tmdbId int, tmdbKey string) ([]Extra, 
 	for _, r := range result.Results {
 		if r.Site == "YouTube" {
 			extras = append(extras, Extra{
-				ID:        r.ID,
-				Type:      r.Type,
-				Title:     r.Name,
-				YoutubeId: r.Key,
-				// URL:   fmt.Sprintf("https://www.youtube.com/watch?v=%s", r.Key),
+				ID:         r.ID,
+				ExtraType:  r.Type,
+				ExtraTitle: r.Name,
+				YoutubeId:  r.Key,
 			})
 		}
 	}

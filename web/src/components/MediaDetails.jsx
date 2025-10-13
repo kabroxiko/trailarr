@@ -188,7 +188,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
 
   // Group extras by type
   const extrasByType = extras.reduce((acc, extra) => {
-    const type = extra.Type || 'Other';
+    const type = extra.ExtraType || 'Other';
     if (!acc[type]) acc[type] = [];
     acc[type].push(extra);
     return acc;

@@ -10,7 +10,7 @@ export default function useBlacklistLiveStatus(blacklist, setBlacklist, interval
   useEffect(() => {
     if (!blacklist || !Array.isArray(blacklist) || blacklist.length === 0) return;
     let cancelled = false;
-    const youtubeIds = blacklist.map(e => e.youtube_id || e.youtubeId).filter(Boolean);
+    const youtubeIds = blacklist.map(e => e.youtubeId).filter(Boolean);
     if (youtubeIds.length === 0) return;
 
     const poll = async () => {
@@ -24,7 +24,7 @@ export default function useBlacklistLiveStatus(blacklist, setBlacklist, interval
           const data = await res.json(); // { statuses: { [youtubeId]: { Status: ... } } }
           if (!cancelled && data && data.statuses) {
             setBlacklist(prev => prev && prev.map(ex => {
-              const ytId = ex.youtube_id || ex.youtubeId;
+              const ytId = ex.youtubeId;
               const statusObj = data.statuses[ytId];
               if (statusObj && statusObj.Status && ex.Status !== statusObj.Status) {
                 return { ...ex, Status: statusObj.Status, status: statusObj.Status };

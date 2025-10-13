@@ -76,7 +76,7 @@ function BlacklistPage({ darkMode }) {
             if (!prev) return prev;
             // Update status for matching blacklist items
             const update = (arr) => arr.map(item2 => {
-              const found = msg.queue.find(q => (q.YouTubeID === (item2.youtube_id || item2.youtubeId)));
+              const found = msg.queue.find(q => (q.YouTubeID === (item2.youtubeId)));
               if (found && found.Status && item2.Status !== found.Status) {
                 return { ...item2, status: found.Status, Status: found.Status };
               }
@@ -134,15 +134,14 @@ function BlacklistPage({ darkMode }) {
   items.forEach((item) => {
     let reason = item.reason || item.message || '';
     // Replace YouTube ID in reason with XXXXXXXX if present
-    if (item.youtube_id || item.youtubeId) {
-      const ytId = item.youtube_id || item.youtubeId;
+    if (item.youtubeId) {
+      const ytId = item.youtubeId;
       // Only replace if the ID is present in the reason
       reason = reason.replaceAll(ytId, 'XXXXXXXX');
     }
     // Also replace any likely YouTube ID pattern in the reason
     reason = reason.replace(/([A-Za-z0-9_-]{8,20})/g, (match) => {
       // If the match is the YouTube ID, replace, otherwise leave
-      if (item.youtube_id && match === item.youtube_id) return 'XXXXXXXX';
       if (item.youtubeId && match === item.youtubeId) return 'XXXXXXXX';
       return match;
     });
@@ -212,17 +211,17 @@ function BlacklistPage({ darkMode }) {
             <div style={{ ...gridStyle, justifyContent: 'start' }}>
               {groupItems.map((item, idx) => {
                 const extra = {
-                  Title: item.extra_title || item.extraTitle || '',
-                  Type: item.extra_type || item.extraType || '',
-                  YoutubeId: item.youtube_id || item.youtubeId || '',
+                  ExtraTitle: item.extraTitle || '',
+                  ExtraType: item.extraType || '',
+                  YoutubeId: item.youtubeId || '',
                   reason: item.reason || item.message || '',
                   Status: item.Status || item.status || '',
                 };
                 const media = {
-                  id: item.media_id || item.mediaId || '',
-                  title: item.media_title || item.mediaTitle || '',
+                  mediaId: item.mediaId || '',
+                  mediaTitle: item.mediaTitle || '',
                 };
-                const mediaType = item.media_type || item.mediaType || '';
+                const mediaType = item.mediaType || '';
                 // Unique key for this card
                 return (
                   <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
@@ -244,7 +243,7 @@ function BlacklistPage({ darkMode }) {
                           if (!prev) return prev;
                           // Update the correct item in the blacklist
                           const update = (arr) => arr.map((item2) => {
-                            if ((item2.youtube_id || item2.youtubeId) === extra.YoutubeId) {
+                            if (item2.youtubeId === extra.YoutubeId) {
                               return { ...item2, status: 'downloaded', Status: 'downloaded' };
                             }
                             return item2;
@@ -257,13 +256,13 @@ function BlacklistPage({ darkMode }) {
                         });
                       }}
                     />
-                    {media.title && media.id && (
+                    {media.mediaTitle && media.mediaId && (
                       <a
                         href={
                           mediaType === 'movie'
-                            ? `/movies/${media.id}`
+                            ? `/movies/${media.mediaId}`
                             : mediaType === 'tv'
-                              ? `/series/${media.id}`
+                              ? `/series/${media.mediaId}`
                               : '#'
                         }
                         style={{
@@ -277,7 +276,7 @@ function BlacklistPage({ darkMode }) {
                           fontWeight: 500,
                         }}
                       >
-                        {media.title}
+                        {media.mediaTitle}
                       </a>
                     )}
                   </div>
