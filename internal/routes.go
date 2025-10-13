@@ -34,10 +34,6 @@ func RegisterRoutes(r *gin.Engine) {
 	r.POST("/api/extras/status/batch", GetBatchDownloadStatusHandler)
 	// Start the download queue worker
 	StartDownloadQueueWorker()
-	// Start watcher for download_queue.json to broadcast only changes
-	go DownloadQueueWatcher(DownloadQueuePath, func(changed []DownloadQueueItem) {
-		BroadcastDownloadQueueChanges(changed)
-	})
 	r.GET("/api/blacklist/extras", BlacklistExtrasHandler)
 	r.POST("/api/blacklist/extras/remove", RemoveBlacklistExtraHandler)
 	// --- WebSocket for real-time task status ---

@@ -78,6 +78,14 @@ export default function ExtraCard({
   const handleDownloadClick = async () => {
     if (downloaded || downloading) return;
     setDownloading(true);
+    // Immediately update UI to show as queued (match by YoutubeId, Type, Title)
+    if (typeof setExtras === 'function') {
+      setExtras(prev => prev.map((ex) =>
+        ex.YoutubeId === extra.YoutubeId && ex.Type === extra.Type && ex.Title === extra.Title
+          ? { ...ex, Status: 'queued' }
+          : ex
+      ));
+    }
     try {
       const res = await fetch(`/api/extras/download`, {
         method: 'POST',
@@ -99,12 +107,28 @@ export default function ExtraCard({
         } else {
           showErrorModal(data?.error || 'Download failed');
         }
+        // If failed, revert status
+        if (typeof setExtras === 'function') {
+          setExtras(prev => prev.map((ex) =>
+            ex.YoutubeId === extra.YoutubeId && ex.Type === extra.Type && ex.Title === extra.Title
+              ? { ...ex, Status: '' }
+              : ex
+          ));
+        }
       }
     } catch (error) {
       if (typeof showToast === 'function') {
         showToast(error.message || error);
       } else {
         showErrorModal(error.message || error);
+      }
+      // If failed, revert status
+      if (typeof setExtras === 'function') {
+        setExtras(prev => prev.map((ex) =>
+          ex.YoutubeId === extra.YoutubeId && ex.Type === extra.Type && ex.Title === extra.Title
+            ? { ...ex, Status: '' }
+            : ex
+        ));
       }
     } finally {
       setDownloading(false);
@@ -219,7 +243,9 @@ export default function ExtraCard({
                 if (extra.Status === 'failed' || extra.Status === 'unknown' || extra.Status === 'error') {
                   if (typeof setExtras === 'function') {
                     setExtras(prev => prev.map((ex) =>
-                      ex.Title === extra.Title && ex.Type === extra.Type ? { ...ex, Status: '' } : ex
+                      ex.YoutubeId === extra.YoutubeId && ex.Type === extra.Type && ex.Title === extra.Title
+                        ? { ...ex, Status: '' }
+                        : ex
                     ));
                   }
                 } else {
@@ -235,6 +261,14 @@ export default function ExtraCard({
                         youtubeId: extra.YoutubeId
                       })
                     });
+                    // Immediately update UI to clear the rejected status
+                    if (typeof setExtras === 'function') {
+                      setExtras(prev => prev.map((ex) =>
+                        ex.YoutubeId === extra.YoutubeId && ex.Type === extra.Type && ex.Title === extra.Title
+                          ? { ...ex, Status: '' }
+                          : ex
+                      ));
+                    }
                   } catch {
                     setModalMsg('Failed to remove ban.');
                     setShowModal(true);

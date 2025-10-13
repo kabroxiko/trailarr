@@ -13,16 +13,16 @@ import (
 
 const (
 	TrailarrRoot             = "/var/lib/trailarr"
-	RejectedExtrasPath       = TrailarrRoot + "/rejected_extras.json"
 	ConfigPath               = TrailarrRoot + "/config/config.yml"
 	MediaCoverPath           = TrailarrRoot + "/MediaCover"
-	MoviesJSONPath           = "trailarr:movies" // Redis key, not a file
-	SeriesJSONPath           = "trailarr:series" // Redis key, not a file
 	QueueFile                = TrailarrRoot + "/queue.json"
-	DownloadQueuePath        = TrailarrRoot + "/download_queue.json"
 	CookiesFile              = TrailarrRoot + "/.config/google-chrome/cookies.txt"
 	LogsDir                  = TrailarrRoot + "/logs"
 	HistoryFile              = TrailarrRoot + "/history.json"
+	MoviesJSONPath           = "trailarr:movies"
+	SeriesJSONPath           = "trailarr:series"
+	ExtrasCollectionKey      = "trailarr:extras"
+	DownloadQueueRedisKey    = "trailarr:download_queue"
 	ErrInvalidSonarrSettings = "Invalid Sonarr settings"
 	RemoteMediaCoverPath     = "/MediaCover/"
 	HeaderApiKey             = "X-Api-Key"

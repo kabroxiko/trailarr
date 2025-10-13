@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gin-gonic/gin" // ...existing imports...
+	"github.com/gin-gonic/gin"
 )
 
 type YtdlpFlagsConfig struct {
@@ -56,7 +56,6 @@ type DownloadStatus struct {
 
 var downloadStatusMap = make(map[string]*DownloadStatus) // keyed by YouTubeID
 var queueMutex sync.Mutex
-var queueReady = false
 
 // BatchStatusRequest is the request body for batch status queries
 type BatchStatusRequest struct {
@@ -78,14 +77,37 @@ func GetBatchDownloadStatusHandler(c *gin.Context) {
 	}
 	TrailarrLog(INFO, "BATCH", "/api/extras/status/batch request: %+v", req)
 	statuses := make(map[string]*DownloadStatus, len(req.YoutubeIds))
-	queueMutex.Lock()
-	// Load persistent queue from disk
+	// Load persistent queue from Redis
 	var queue []DownloadQueueItem
-	_ = ReadJSONFile(DownloadQueuePath, &queue)
-	queueMutex.Unlock()
-	// Load rejected extras from disk
+	{
+		ctx := context.Background()
+		client := GetRedisClient()
+		TrailarrLog(INFO, "QUEUE", "[AddToDownloadQueue] RedisKey=%v, RedisClient=%#v", DownloadQueueRedisKey, client)
+		items, err := client.LRange(ctx, DownloadQueueRedisKey, 0, -1).Result()
+		if err == nil {
+			for _, itemStr := range items {
+				var item DownloadQueueItem
+				if err := json.Unmarshal([]byte(itemStr), &item); err == nil {
+					queue = append(queue, item)
+				}
+			}
+		}
+	}
+	// Load rejected extras from Redis
 	var rejected []RejectedExtra
-	_ = ReadJSONFile(RejectedExtrasPath, &rejected)
+	{
+		ctx := context.Background()
+		client := GetRedisClient()
+		items, err := client.LRange(ctx, ExtrasCollectionKey, 0, -1).Result()
+		if err == nil {
+			for _, itemStr := range items {
+				var r RejectedExtra
+				if err := json.Unmarshal([]byte(itemStr), &r); err == nil {
+					rejected = append(rejected, r)
+				}
+			}
+		}
+	}
 	// Build a map for quick lookup
 	rejectedMap := make(map[string]RejectedExtra)
 	for _, r := range rejected {
@@ -153,42 +175,40 @@ func GetBatchDownloadStatusHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, BatchStatusResponse{Statuses: statuses})
 }
 
-// AddToDownloadQueue adds a new download request to the queue and persists
+// AddToDownloadQueue adds a new download request to the queue and persists in Redis
 // source: "task" (block if queue not empty), "api" (always append)
 func AddToDownloadQueue(item DownloadQueueItem, source string) {
-	for {
-		queueMutex.Lock()
-		ready := queueReady
-		queueMutex.Unlock()
-		if ready {
-			break
-		}
-		time.Sleep(1 * time.Second)
-	}
+	TrailarrLog(INFO, "QUEUE", "[AddToDownloadQueue] Entered. YouTubeID=%s, source=%s", item.YouTubeID, source)
+	ctx := context.Background()
+	client := GetRedisClient()
+
+	// Removed obsolete 'queue ready' wait loop (was blocking forever)
+
+	// If source is "task", block if queue not empty (i.e., if any item is queued or downloading)
 	if source == "task" {
 		for {
-			queueMutex.Lock()
-			// Read queue from file
-			var queue []DownloadQueueItem
-			_ = ReadJSONFile(DownloadQueuePath, &queue)
+			queue, err := client.LRange(ctx, DownloadQueueRedisKey, 0, -1).Result()
 			busy := false
-			for _, q := range queue {
-				if q.Status == "queued" || q.Status == "downloading" {
-					busy = true
-					break
+			if err == nil {
+				for _, qstr := range queue {
+					var q DownloadQueueItem
+					if err := json.Unmarshal([]byte(qstr), &q); err == nil {
+						if q.Status == "queued" || q.Status == "downloading" {
+							busy = true
+							break
+						}
+					}
 				}
+			} else {
+				TrailarrLog(ERROR, "QUEUE", "[AddToDownloadQueue] Error reading queue from Redis: %v", err)
 			}
-			queueMutex.Unlock()
 			if !busy {
 				break
 			}
 			time.Sleep(2 * time.Second)
 		}
 	}
-	queueMutex.Lock()
-	// Read queue from file
-	var queue []DownloadQueueItem
-	_ = ReadJSONFile(DownloadQueuePath, &queue)
+
 	// Lookup media title if not set
 	if item.MediaTitle == "" {
 		cacheFile, _ := resolveCachePath(item.MediaType)
@@ -207,11 +227,24 @@ func AddToDownloadQueue(item DownloadQueueItem, source string) {
 	}
 	item.Status = "queued"
 	item.QueuedAt = time.Now()
-	queue = append(queue, item)
+	b, err := json.Marshal(item)
+	TrailarrLog(INFO, "QUEUE", "[AddToDownloadQueue] Marshaled JSON: %s", string(b))
+	if err != nil {
+		TrailarrLog(ERROR, "QUEUE", "[AddToDownloadQueue] Failed to marshal item: %v", err)
+		return
+	}
+	rpushRes := client.RPush(ctx, DownloadQueueRedisKey, b)
+	TrailarrLog(INFO, "QUEUE", "[AddToDownloadQueue] RPush result: %+v", rpushRes)
+	err = rpushRes.Err()
+	if err != nil {
+		TrailarrLog(ERROR, "QUEUE", "[AddToDownloadQueue] Failed to push to Redis: %v", err)
+	} else {
+		TrailarrLog(INFO, "QUEUE", "[AddToDownloadQueue] Successfully enqueued item. RedisKey=%s, YouTubeID=%s", DownloadQueueRedisKey, item.YouTubeID)
+		// Broadcast updated queue to all WebSocket clients
+		BroadcastDownloadQueueChanges([]DownloadQueueItem{item})
+	}
 	downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: "queued", UpdatedAt: time.Now()}
 	TrailarrLog(INFO, "QUEUE", "[AddToDownloadQueue] Enqueued: mediaType=%v, mediaId=%v, extraType=%s, extraTitle=%s, youtubeId=%s, source=%s", item.MediaType, item.MediaId, item.ExtraType, item.ExtraTitle, item.YouTubeID, source)
-	_ = WriteJSONFile(DownloadQueuePath, queue)
-	queueMutex.Unlock()
 }
 
 // GetDownloadStatus returns the status for a YouTube ID
@@ -224,67 +257,76 @@ func GetDownloadStatus(youtubeID string) *DownloadStatus {
 	return nil
 }
 
-// PopDownloadQueue removes and returns the next item in the queue, persists after pop
-// Find the next item with status 'queued' and return its index and value
+// NextQueuedItem fetches the next queued item from Redis and its index
 func NextQueuedItem() (int, DownloadQueueItem, bool) {
-	queueMutex.Lock()
-	defer queueMutex.Unlock()
-	var queue []DownloadQueueItem
-	_ = ReadJSONFile(DownloadQueuePath, &queue)
-	for i, item := range queue {
-		if item.Status == "queued" {
-			return i, item, true
+	ctx := context.Background()
+	client := GetRedisClient()
+	queue, err := client.LRange(ctx, DownloadQueueRedisKey, 0, -1).Result()
+	if err != nil {
+		return -1, DownloadQueueItem{}, false
+	}
+	for i, qstr := range queue {
+		var item DownloadQueueItem
+		if err := json.Unmarshal([]byte(qstr), &item); err == nil {
+			if item.Status == "queued" {
+				return i, item, true
+			}
 		}
 	}
 	return -1, DownloadQueueItem{}, false
 }
 
-// persistDownloadQueue writes the queue to disk
-// persistDownloadQueue is now unused, as all queue operations write directly to file
-
-// loadDownloadQueue loads the queue from disk, removing any items with status 'queued' (stale)
-func loadDownloadQueue() {
-	queueMutex.Lock()
-	defer queueMutex.Unlock()
-	var queue []DownloadQueueItem
-	if err := ReadJSONFile(DownloadQueuePath, &queue); err == nil {
-		filtered := make([]DownloadQueueItem, 0, len(queue))
-		for _, item := range queue {
-			if item.Status != "queued" && item.Status != "downloading" {
-				filtered = append(filtered, item)
-			} else {
-				TrailarrLog(INFO, "YouTube", "Removing stale item from download queue at startup: youtubeId=%s, status=%s", item.YouTubeID, item.Status)
-			}
-		}
-		_ = WriteJSONFile(DownloadQueuePath, filtered)
-	}
-	queueReady = true
-}
-
-// StartDownloadQueueWorker starts a goroutine to process the download queue
+// StartDownloadQueueWorker starts a goroutine to process the download queue from Redis
 func StartDownloadQueueWorker() {
-	loadDownloadQueue()
 	go func() {
+		ctx := context.Background()
+		client := GetRedisClient()
+		// Clean the queue at startup
+		_ = client.Del(ctx, DownloadQueueRedisKey).Err()
 		for {
 			idx, item, ok := NextQueuedItem()
 			if !ok {
 				time.Sleep(2 * time.Second)
 				continue
 			}
-			// Mark as downloading
-			queueMutex.Lock()
-			var queue []DownloadQueueItem
-			_ = ReadJSONFile(DownloadQueuePath, &queue)
-			if idx >= 0 && idx < len(queue) {
-				queue[idx].Status = "downloading"
-				downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: "downloading", UpdatedAt: time.Now()}
-				_ = WriteJSONFile(DownloadQueuePath, queue)
+			// Prevent re-downloading if extra is rejected
+			rejectedItems, rejErr := client.LRange(ctx, ExtrasCollectionKey, 0, -1).Result()
+			isRejected := false
+			if rejErr == nil {
+				for _, itemStr := range rejectedItems {
+					var r RejectedExtra
+					if err := json.Unmarshal([]byte(itemStr), &r); err == nil {
+						if r.YoutubeId == item.YouTubeID && r.MediaType == item.MediaType && r.MediaId == item.MediaId && r.ExtraType == item.ExtraType && r.ExtraTitle == item.ExtraTitle {
+							isRejected = true
+							break
+						}
+					}
+				}
 			}
-			queueMutex.Unlock()
+			if isRejected {
+				TrailarrLog(WARN, "QUEUE", "[StartDownloadQueueWorker] Skipping rejected extra: mediaType=%v, mediaId=%v, extraType=%s, extraTitle=%s, youtubeId=%s", item.MediaType, item.MediaId, item.ExtraType, item.ExtraTitle, item.YouTubeID)
+				// Remove from queue immediately
+				b, _ := json.Marshal(item)
+				_ = client.LRem(ctx, DownloadQueueRedisKey, 1, b).Err()
+				BroadcastDownloadQueueChanges([]DownloadQueueItem{item})
+				continue
+			}
+			// Mark as downloading in Redis
+			queue, err := client.LRange(ctx, DownloadQueueRedisKey, 0, -1).Result()
+			if err == nil && idx >= 0 && idx < len(queue) {
+				var q DownloadQueueItem
+				if err := json.Unmarshal([]byte(queue[idx]), &q); err == nil {
+					q.Status = "downloading"
+					b, _ := json.Marshal(q)
+					_ = client.LSet(ctx, DownloadQueueRedisKey, int64(idx), b).Err()
+					downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: "downloading", UpdatedAt: time.Now()}
+					BroadcastDownloadQueueChanges([]DownloadQueueItem{q})
+				}
+			}
 			// Perform the download
-			meta, err := DownloadYouTubeExtra(item.MediaType, item.MediaId, item.ExtraType, item.ExtraTitle, item.YouTubeID)
-			queueMutex.Lock()
-			_ = ReadJSONFile(DownloadQueuePath, &queue)
+			meta, _ := DownloadYouTubeExtra(item.MediaType, item.MediaId, item.ExtraType, item.ExtraTitle, item.YouTubeID)
+			// Update status in Redis
+			queue, err = client.LRange(ctx, DownloadQueueRedisKey, 0, -1).Result()
 			var finalStatus string
 			if err != nil {
 				finalStatus = "failed"
@@ -293,16 +335,29 @@ func StartDownloadQueueWorker() {
 				finalStatus = meta.Status
 				downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: finalStatus, UpdatedAt: time.Now()}
 			} else {
-				finalStatus = "unknown"
-				downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: finalStatus, UpdatedAt: time.Now()}
+				// meta == nil && err == nil: treat as failed
+				finalStatus = "failed"
+				downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: finalStatus, UpdatedAt: time.Now(), Error: "No metadata returned from download"}
 			}
-			if idx >= 0 && idx < len(queue) {
-				queue[idx].Status = finalStatus
-				_ = WriteJSONFile(DownloadQueuePath, queue)
+			// After download attempt, update status in Redis and broadcast only the final status
+			if err == nil && idx >= 0 && idx < len(queue) {
+				var q DownloadQueueItem
+				if err := json.Unmarshal([]byte(queue[idx]), &q); err == nil {
+					q.Status = finalStatus
+					b, _ := json.Marshal(q)
+					_ = client.LSet(ctx, DownloadQueueRedisKey, int64(idx), b).Err()
+					BroadcastDownloadQueueChanges([]DownloadQueueItem{q})
+				}
+			} else {
+				// If we can't update in Redis, still broadcast the failed status
+				item.Status = finalStatus
+				BroadcastDownloadQueueChanges([]DownloadQueueItem{item})
 			}
-			queueMutex.Unlock()
-			// Wait 120 seconds before next download
-			time.Sleep(120 * time.Second)
+			// Wait 10 seconds, then remove the item from the queue
+			time.Sleep(10 * time.Second)
+			// Remove the item at idx (by value, since Redis LREM removes by value)
+			b, _ := json.Marshal(item)
+			_ = client.LRem(ctx, DownloadQueueRedisKey, 1, b).Err()
 		}
 	}()
 }
@@ -573,27 +628,21 @@ func checkExistingExtra(info *downloadInfo, youtubeId string) (*ExtraDownloadMet
 }
 
 func checkRejectedExtras(info *downloadInfo, youtubeId string) *ExtraDownloadMetadata {
-	rejectedPath := RejectedExtrasPath
-	rejected := make([]map[string]string, 0)
-
-	if err := ReadJSONFile(rejectedPath, &rejected); err == nil {
-		for _, r := range rejected {
-			if r["url"] == youtubeId {
-				TrailarrLog(INFO, "YouTube", "Extra is in rejected list, skipping: %s", info.ExtraTitle)
-				return NewExtraDownloadMetadata(info, youtubeId, "rejected")
+	ctx := context.Background()
+	client := GetRedisClient()
+	items, err := client.LRange(ctx, ExtrasCollectionKey, 0, -1).Result()
+	if err == nil {
+		for _, itemStr := range items {
+			var r map[string]string
+			if err := json.Unmarshal([]byte(itemStr), &r); err == nil {
+				if r["url"] == youtubeId {
+					TrailarrLog(INFO, "YouTube", "Extra is in rejected list, skipping: %s", info.ExtraTitle)
+					return NewExtraDownloadMetadata(info, youtubeId, "rejected")
+				}
 			}
 		}
-		cleanupRejectedExtras(rejected, rejectedPath)
 	}
 	return nil
-}
-
-func cleanupRejectedExtras(rejected []map[string]string, rejectedPath string) {
-	// Deduplicate by URL
-	unique := DeduplicateByKey(rejected, "url")
-	if len(unique) != len(rejected) {
-		_ = WriteJSONFile(rejectedPath, unique)
-	}
 }
 
 func performDownload(info *downloadInfo, youtubeId string) (*ExtraDownloadMetadata, error) {
@@ -687,18 +736,23 @@ func handleDownloadErrorNative(info *downloadInfo, youtubeId string, err error, 
 }
 
 func addToRejectedExtras(info *downloadInfo, youtubeId, reason string) {
-	var rejectedList []RejectedExtra
-
-	_ = ReadJSONFile(RejectedExtrasPath, &rejectedList)
-
+	// Add rejected extra to Redis (ExtrasCollectionKey)
+	ctx := context.Background()
+	client := GetRedisClient()
 	// Check if already rejected
-	for _, rejected := range rejectedList {
-		if rejected.YoutubeId == youtubeId {
-			return
+	items, err := client.LRange(ctx, ExtrasCollectionKey, 0, -1).Result()
+	if err == nil {
+		for _, itemStr := range items {
+			var r RejectedExtra
+			if err := json.Unmarshal([]byte(itemStr), &r); err == nil {
+				if r.YoutubeId == youtubeId {
+					return
+				}
+			}
 		}
 	}
-
-	rejectedList = append(rejectedList, RejectedExtra{
+	// Add new rejected extra
+	rejected := RejectedExtra{
 		MediaType:  info.MediaType,
 		MediaId:    info.MediaId,
 		MediaTitle: info.MediaTitle,
@@ -706,24 +760,9 @@ func addToRejectedExtras(info *downloadInfo, youtubeId, reason string) {
 		ExtraTitle: info.ExtraTitle,
 		YoutubeId:  youtubeId,
 		Reason:     reason,
-	})
-
-	// Deduplicate by URL
-	tempList := make([]map[string]string, 0, len(rejectedList))
-	for _, rejected := range rejectedList {
-		tempList = append(tempList, map[string]string{"url": rejected.YoutubeId})
 	}
-	uniqueURLs := DeduplicateByKey(tempList, "url")
-	finalList := make([]RejectedExtra, 0, len(uniqueURLs))
-	for _, u := range uniqueURLs {
-		for _, rejected := range rejectedList {
-			if rejected.YoutubeId == u["url"] {
-				finalList = append(finalList, rejected)
-				break
-			}
-		}
-	}
-	_ = WriteJSONFile(RejectedExtrasPath, finalList)
+	b, _ := json.Marshal(rejected)
+	_ = client.RPush(ctx, ExtrasCollectionKey, b).Err()
 }
 
 func moveDownloadedFile(info *downloadInfo) error {

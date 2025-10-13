@@ -25,8 +25,6 @@ func SanitizeFilename(name string) string {
 	return name
 }
 
-const ExtrasCollectionKey = "trailarr:extras"
-
 // ExtrasEntry is the flat structure for each extra in the new collection
 type ExtrasEntry struct {
 	MediaType  MediaType `json:"mediaType"`
@@ -797,80 +795,33 @@ func RemoveBlacklistExtraHandler(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, "Invalid mediaType")
 		return
 	}
-	// Remove the extra from the unified collection in Redis
-	err := RemoveExtra(context.Background(), req.YoutubeId, mt, req.MediaId)
+	ctx := context.Background()
+	// Remove from hash (legacy, for compatibility)
+	err := RemoveExtra(ctx, req.YoutubeId, mt, req.MediaId)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, "Could not remove extra from collection: "+err.Error())
 		return
+	}
+	// Remove from Redis list (current rejected extras storage)
+	client := GetRedisClient()
+	items, lerr := client.LRange(ctx, ExtrasCollectionKey, 0, -1).Result()
+	if lerr == nil {
+		for _, itemStr := range items {
+			var r RejectedExtra
+			if err := json.Unmarshal([]byte(itemStr), &r); err == nil {
+				if r.YoutubeId == req.YoutubeId && r.MediaType == mt && r.MediaId == req.MediaId && r.ExtraType == req.ExtraType && r.ExtraTitle == req.ExtraTitle {
+					// Remove this item from the list
+					_ = client.LRem(ctx, ExtrasCollectionKey, 1, itemStr).Err()
+				}
+			}
+		}
 	}
 	respondJSON(c, http.StatusOK, gin.H{"status": "removed"})
 }
 
 // removeRejectedExtrasWithReasons removes all rejected extras with reasons matching certain substrings from the rejected_extras.json file.
 func removeRejectedExtrasWithReasons() {
-	TrailarrLog(INFO, "Tasks", "[removeRejectedExtrasWithReasons] Entered. Path: %s", RejectedExtrasPath)
-	var rejected []RejectedExtra
-	f, err := os.Open(RejectedExtrasPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return // nothing to do
-		}
-		TrailarrLog(WARN, "Tasks", "[removeRejectedExtrasWithReasons] Could not open rejected_extras.json: %v", err)
-		return
-	}
-	defer f.Close()
-	dec := json.NewDecoder(f)
-	if err := dec.Decode(&rejected); err != nil {
-		TrailarrLog(WARN, "Tasks", "[removeRejectedExtrasWithReasons] Could not decode rejected_extras.json: %v", err)
-		return
-	}
-	var filtered []RejectedExtra
-	for _, r := range rejected {
-		if r.Reason != "" && containsAnyReason(r.Reason, "Too Many Requests", "could not find chrome cookies database", "Sign in to confirm you’re not a bot") {
-			continue
-		}
-		filtered = append(filtered, r)
-	}
-	// Always pretty-print the file with all non-removed entries
-	f.Close()
-	out, err := os.Create(RejectedExtrasPath)
-	if err != nil {
-		TrailarrLog(WARN, "Tasks", "[removeRejectedExtrasWithReasons] Could not write rejected_extras.json: %v", err)
-		return
-	}
-	defer out.Close()
-	enc := json.NewEncoder(out)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(filtered); err != nil {
-		TrailarrLog(WARN, "Tasks", "[removeRejectedExtrasWithReasons] Could not encode rejected_extras.json: %v", err)
-	}
-}
-
-// containsAnyReason returns true if the reason contains any of the provided substrings (case-insensitive)
-func containsAnyReason(reason string, substrings ...string) bool {
-	if len(reason) == 0 {
-		return false
-	}
-	for _, substr := range substrings {
-		if containsIgnoreCase(reason, substr) {
-			return true
-		}
-	}
-	return false
-}
-
-// containsIgnoreCase returns true if substr is in s, case-insensitive
-func containsIgnoreCase(s, substr string) bool {
-	return len(s) >= len(substr) && (stringContainsFold(s, substr))
-}
-
-// stringContainsFold is like strings.Contains but case-insensitive
-func stringContainsFold(s, substr string) bool {
-	sLower := s
-	subLower := substr
-	if s != "" && substr != "" {
-		sLower = strings.ToLower(s)
-		subLower = strings.ToLower(substr)
-	}
-	return strings.Contains(sLower, subLower)
+	TrailarrLog(INFO, "Tasks", "[removeRejectedExtrasWithReasons] Entered. Redis Key: %s", ExtrasCollectionKey)
+	// TODO: Read from Redis ExtrasCollectionKey instead of file
+	// TODO: Filter and write back to Redis ExtrasCollectionKey
 }
