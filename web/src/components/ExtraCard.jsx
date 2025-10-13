@@ -22,6 +22,7 @@ export default function ExtraCard({
 }) {
   const [imgError, setImgError] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
+  const [isFallback, setIsFallback] = useState(false);
   const baseTitle = extra.ExtraTitle || '';
   const baseType = extra.ExtraType || '';
   const totalCount = typeExtras.filter(e => e.ExtraTitle === baseTitle).length;
@@ -30,22 +31,12 @@ export default function ExtraCard({
   if (displayTitle.length > maxLen) {
     displayTitle = displayTitle.slice(0, maxLen - 3) + '...';
   }
-  let posterUrl = `https://img.youtube.com/vi/${extra.YoutubeId}/hqdefault.jpg`;
+  let posterUrl = extra.YoutubeId ? `/api/proxy/youtube-image/${extra.YoutubeId}` : null;
   React.useEffect(() => {
-    let cancelled = false;
+    // Reset states when posterUrl changes
     setImgError(false);
     setImgLoaded(false);
-    if (posterUrl) {
-      const img = new window.Image();
-      img.onload = () => {
-        if (!cancelled) setImgLoaded(true);
-      };
-      img.onerror = () => {
-        if (!cancelled) setImgError(true);
-      };
-      img.src = posterUrl;
-    }
-    return () => { cancelled = true; };
+    setIsFallback(false);
   }, [posterUrl]);
   let titleFontSize = 16;
   if (displayTitle.length > 22) titleFontSize = 14;
@@ -140,10 +131,12 @@ export default function ExtraCard({
   function PosterImage({ src, alt, onError, onLoad, fallbackIcon, loaded }) {
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {src && loaded ? (
+        {src ? (
           <img
             src={src}
             alt={alt}
+            onLoad={onLoad}
+            onError={onError}
             style={{
               display: 'block',
               margin: '0 auto',
@@ -208,7 +201,7 @@ export default function ExtraCard({
       {/* Image or poster rendering restored */}
       <div style={{ width: '100%', height: 135, background: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
         {/* Play button overlay (with image) */}
-        {extra.YoutubeId && !imgError && (
+        {extra.YoutubeId && !imgError && !isFallback && (
           <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 2 }}>
             <IconButton
               icon={<FontAwesomeIcon icon={faPlay} color="#fff" size="lg" style={{ filter: 'drop-shadow(0 2px 8px #000)' }} />}
@@ -228,6 +221,24 @@ export default function ExtraCard({
             alt={displayTitle}
             fallbackIcon={faBan}
             loaded={imgLoaded}
+            onLoad={(e) => {
+              // If the image loads but is very small (our SVG fallback is 64x64), treat as fallback
+              try {
+                const img = e.target;
+                if (img.naturalWidth <= 64 && img.naturalHeight <= 64) {
+                  setIsFallback(true);
+                  setImgError(true);
+                } else {
+                  setImgLoaded(true);
+                }
+              } catch (err) {
+                setImgLoaded(true);
+              }
+            }}
+            onError={() => {
+              setIsFallback(true);
+              setImgError(true);
+            }}
           />
         ) : (
           <PosterImage src={null} alt="Denied" fallbackIcon={faBan} loaded={false} />
@@ -281,7 +292,7 @@ export default function ExtraCard({
           </div>
         )}
         {/* Download or Delete Buttons */}
-        {extra.YoutubeId && !downloaded && !imgError && (
+        {extra.YoutubeId && !downloaded && !imgError && !isFallback && (
           <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 2 }}>
             <IconButton
               icon={

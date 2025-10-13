@@ -7,11 +7,140 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
+
+// ProxyYouTubeImageHandler proxies YouTube thumbnail images to avoid 404s and CORS issues
+func ProxyYouTubeImageHandler(c *gin.Context) {
+	youtubeId := c.Param("youtubeId")
+	if youtubeId == "" {
+		respondError(c, http.StatusBadRequest, "Missing youtubeId")
+		return
+	}
+	// Use MediaCoverPath/YouTube as cache directory
+	cacheDir := filepath.Join(MediaCoverPath, "YouTube")
+	// Ensure top-level MediaCoverPath exists
+	if err := os.MkdirAll(MediaCoverPath, 0775); err != nil {
+		TrailarrLog(WARN, "ProxyYouTubeImageHandler", "Failed to create MediaCoverPath %s: %v", MediaCoverPath, err)
+	}
+	// Ensure cacheDir exists
+	if err := os.MkdirAll(cacheDir, 0775); err != nil {
+		TrailarrLog(WARN, "ProxyYouTubeImageHandler", "Failed to create cacheDir %s: %v", cacheDir, err)
+	}
+
+	// Check for existing cached files with common extensions
+	exts := []string{".jpg", ".jpeg", ".png", ".webp", ".svg"}
+	var cachedPath string
+	var contentType string
+	for _, e := range exts {
+		p := filepath.Join(cacheDir, youtubeId+e)
+		if _, err := os.Stat(p); err == nil {
+			cachedPath = p
+			switch e {
+			case ".jpg", ".jpeg":
+				contentType = "image/jpeg"
+			case ".png":
+				contentType = "image/png"
+			case ".webp":
+				contentType = "image/webp"
+			case ".svg":
+				contentType = "image/svg+xml"
+			default:
+				contentType = "application/octet-stream"
+			}
+			break
+		}
+	}
+	if cachedPath != "" {
+		// Serve cached file
+		c.Header("Content-Type", contentType)
+		c.Header("Cache-Control", "public, max-age=86400")
+		c.File(cachedPath)
+		return
+	}
+
+	// Not cached — try to fetch from YouTube image servers
+	thumbUrls := []string{
+		"https://i.ytimg.com/vi/" + youtubeId + "/maxresdefault.jpg",
+		"https://i.ytimg.com/vi/" + youtubeId + "/hqdefault.jpg",
+	}
+	var resp *http.Response
+	var err error
+	for _, url := range thumbUrls {
+		resp, err = http.Get(url)
+		if err == nil && resp.StatusCode == 200 {
+			break
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+	}
+	if err != nil || resp == nil || resp.StatusCode != 200 {
+		// Serve a small inline SVG fallback that looks like FontAwesome's faBan
+		svg := `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="64" height="64" role="img" aria-label="Unavailable">
+  <circle cx="64" cy="64" r="30" fill="none" stroke="#888" stroke-width="8" />
+  <!-- diagonal from top-right to bottom-left -->
+  <line x1="92" y1="36" x2="36" y2="92" stroke="#888" stroke-width="10" stroke-linecap="round" />
+</svg>`
+		c.Header("Content-Type", "image/svg+xml")
+		// Indicate to the frontend that this response is a fallback placeholder
+		c.Header("X-Proxy-Fallback", "1")
+		c.Header("Cache-Control", "public, max-age=86400")
+		c.Status(http.StatusOK)
+		// If this is a HEAD request, return headers only (no body)
+		if c.Request.Method == http.MethodHead {
+			return
+		}
+		_, _ = c.Writer.Write([]byte(svg))
+		return
+	}
+	defer resp.Body.Close()
+
+	// Determine extension from content-type
+	ct := resp.Header.Get("Content-Type")
+	ext := ".jpg"
+	switch {
+	case strings.Contains(ct, "jpeg"):
+		ext = ".jpg"
+	case strings.Contains(ct, "png"):
+		ext = ".png"
+	case strings.Contains(ct, "webp"):
+		ext = ".webp"
+	case strings.Contains(ct, "svg"):
+		ext = ".svg"
+	}
+
+	tmpPath := filepath.Join(cacheDir, youtubeId+".tmp")
+	finalPath := filepath.Join(cacheDir, youtubeId+ext)
+	out, err := os.Create(tmpPath)
+	if err != nil {
+		// Can't cache — just stream response
+		c.Header("Content-Type", ct)
+		c.Header("Cache-Control", "public, max-age=86400")
+		c.Status(http.StatusOK)
+		_, _ = io.Copy(c.Writer, resp.Body)
+		return
+	}
+	_, _ = io.Copy(out, resp.Body)
+	out.Close()
+	// Rename tmp to final
+	_ = os.Rename(tmpPath, finalPath)
+
+	// Serve the saved file
+	c.Header("Content-Type", ct)
+	c.Header("Cache-Control", "public, max-age=86400")
+	// If HEAD request, return headers only
+	if c.Request.Method == http.MethodHead {
+		c.Status(http.StatusOK)
+		return
+	}
+	c.File(finalPath)
+}
 
 type MediaType string
 
@@ -620,10 +749,8 @@ func HasAnyEnabledExtras(media map[string]interface{}, enabledTypes []string) bo
 			case nil:
 				// skip nil
 			default:
-				// Only return true for non-nil, non-empty values
-				if vv != nil {
-					return true
-				}
+				// Only return true for non-empty values
+				return true
 			}
 		}
 	}

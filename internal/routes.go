@@ -10,6 +10,9 @@ import (
 )
 
 func RegisterRoutes(r *gin.Engine) {
+	// Proxy endpoint for YouTube thumbnails (handle both GET and HEAD)
+	r.GET("/api/proxy/youtube-image/:youtubeId", ProxyYouTubeImageHandler)
+	r.HEAD("/api/proxy/youtube-image/:youtubeId", ProxyYouTubeImageHandler)
 	// WebSocket for real-time download queue updates
 	r.GET("/ws/download-queue", func(c *gin.Context) {
 		wsUpgrader := getWebSocketUpgrader()
