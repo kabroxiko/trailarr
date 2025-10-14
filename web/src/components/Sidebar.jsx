@@ -36,10 +36,6 @@ export default function Sidebar({ darkMode }) {
   if (path.startsWith('/system/')) {
     if (path.startsWith('/system/tasks')) selectedSystemSub = 'Tasks';
     else if (path.startsWith('/system/logs')) selectedSystemSub = 'Logs';
-    else if (path.startsWith('/system/providers')) selectedSystemSub = 'Providers';
-    else if (path.startsWith('/system/backups')) selectedSystemSub = 'Backups';
-    else if (path.startsWith('/system/status')) selectedSystemSub = 'Status';
-    else if (path.startsWith('/system/releases')) selectedSystemSub = 'Releases';
   }
 
   // Local state for submenu expansion
@@ -145,7 +141,7 @@ export default function Sidebar({ darkMode }) {
               )}
               {name === 'System' && isOpen('System') && (
                 <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0 0', background: darkMode ? '#23232a' : '#f3f4f6', borderRadius: 6, color: darkMode ? '#e5e7eb' : '#222', textAlign: 'left' }}>
-                  {['Tasks', 'Logs', 'Providers', 'Backups', 'Status', 'Releases'].map((submenu) => (
+                  {['Tasks', 'Logs'].map((submenu) => (
                     <li key={submenu} style={{ padding: '0.5em 1em', borderLeft: selectedSystemSub === submenu ? '3px solid #a855f7' : '3px solid transparent', background: 'none', color: selectedSystemSub === submenu ? (darkMode ? '#a855f7' : '#6d28d9') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSystemSub === submenu ? 'bold' : 'normal', cursor: 'pointer', textAlign: 'left' }}>
                       {(submenu === 'Tasks' || submenu === 'Logs') ? (
                         <Link

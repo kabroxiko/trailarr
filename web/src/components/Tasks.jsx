@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { FaArrowsRotate, FaClock } from 'react-icons/fa6';
 import './Tasks.css';
 
@@ -47,15 +48,21 @@ const getStyles = (darkMode) => ({
 });
 
 export default function Tasks() {
+  const location = useLocation();
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(null);
   const [queues, setQueues] = useState([]);
   const [queueLoading, setQueueLoading] = useState(true);
   // Removed unused rotationIntervals
   const [darkMode, setDarkMode] = useState(false);
+  const activeRef = useRef(false);
 
   // Fetch status from API for polling fallback and force execute
   async function fetchStatus() {
+  // Skip fetching if effect isn't active or the page is hidden
+  if (!activeRef.current) return;
+  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+
     setLoading(true);
     try {
       const res = await fetch('/api/tasks/status');
@@ -68,6 +75,10 @@ export default function Tasks() {
   }
   // Fetch queue from new endpoint
   async function fetchQueue() {
+  // Skip fetching if effect isn't active or the page is hidden
+  if (!activeRef.current) return;
+  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+
     setQueueLoading(true);
     try {
       const res = await fetch('/api/tasks/queue');
@@ -121,29 +132,80 @@ export default function Tasks() {
   }
 
   useEffect(() => {
+    // Don't start websocket/polling unless we're on the Tasks route
+    if (!location.pathname || !location.pathname.startsWith('/system/tasks')) {
+      activeRef.current = false;
+      return;
+    }
+    activeRef.current = true;
+    // Only activate polling/websocket when the user is on the Tasks route
+    if (!location.pathname || !location.pathname.startsWith('/system/tasks')) {
+      return;
+    }
     // Detect dark mode
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     setDarkMode(mq.matches);
     const handler = (e) => setDarkMode(e.matches);
     mq.addEventListener('change', handler);
     return () => mq.removeEventListener('change', handler);
-  }, []);
+  }, [location.pathname]);
 
   useEffect(() => {
+    // Don't start websocket/polling unless we're on the Tasks route
+    if (!location.pathname || !location.pathname.startsWith('/system/tasks')) {
+      return;
+    }
     let ws;
     let pollingInterval;
     let queueInterval;
     let wsConnected = false;
+    let pollingActive = false;
+
     function startPolling() {
+      if (pollingActive) return;
+      pollingActive = true;
       fetchStatus();
       pollingInterval = setInterval(fetchStatus, 500);
       fetchQueue();
       queueInterval = setInterval(fetchQueue, 1000);
+      // expose stop function globally so leftover pollers can be cleaned up
+      try {
+        if (typeof window !== 'undefined') {
+          if (window.__trailarr_tasks_polling && typeof window.__trailarr_tasks_polling.stop === 'function') {
+            // stop previous poller if any
+            window.__trailarr_tasks_polling.stop();
+          }
+          window.__trailarr_tasks_polling = {
+            stop: () => {
+              try {
+                if (pollingInterval) clearInterval(pollingInterval);
+                if (queueInterval) clearInterval(queueInterval);
+                if (ws) ws.close();
+              } catch (e) {
+                // ignore
+              }
+            }
+          };
+        }
+      } catch (e) {
+        // ignore
+      }
     }
     function stopPolling() {
+      pollingActive = false;
       if (pollingInterval) clearInterval(pollingInterval);
       if (queueInterval) clearInterval(queueInterval);
     }
+
+    // Visibility handler
+    function handleVisibility() {
+      if (document.visibilityState === 'visible') {
+        if (!wsConnected) startPolling();
+      } else {
+        stopPolling();
+      }
+    }
+
     // Try to connect to WebSocket
     try {
       ws = new window.WebSocket((window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws/tasks');
@@ -164,22 +226,36 @@ export default function Tasks() {
       };
       ws.onerror = () => {
         wsConnected = false;
-        startPolling();
+        if (document.visibilityState === 'visible') startPolling();
       };
       ws.onclose = () => {
         wsConnected = false;
-        startPolling();
+        if (document.visibilityState === 'visible') startPolling();
       };
     } catch {
-      startPolling();
+      if (document.visibilityState === 'visible') startPolling();
     }
     // Fallback to polling if WebSocket fails
-    if (!wsConnected) startPolling();
+    if (!wsConnected && document.visibilityState === 'visible') startPolling();
+
+    document.addEventListener('visibilitychange', handleVisibility);
+
     return () => {
+      activeRef.current = false;
       stopPolling();
       if (ws) ws.close();
+      // clear any global poller record
+      try {
+        if (typeof window !== 'undefined' && window.__trailarr_tasks_polling && typeof window.__trailarr_tasks_polling.stop === 'function') {
+          window.__trailarr_tasks_polling.stop();
+          delete window.__trailarr_tasks_polling;
+        }
+      } catch (e) {
+        // ignore
+      }
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, []);
+  }, [location.pathname]);
 
   // Icon rotation effect for running tasks (removed broken setIconRotation usage)
   // (No-op, as icon rotation state is not used)
