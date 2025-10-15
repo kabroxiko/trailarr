@@ -12,6 +12,8 @@ import (
 func RegisterRoutes(r *gin.Engine) {
 	// Proxy YouTube trailer search (POST only)
 	r.POST("/api/youtube/search", YouTubeTrailerSearchHandler)
+	// Progressive YouTube trailer search (SSE, GET)
+	r.GET("/api/youtube/search/stream", YouTubeTrailerSearchStreamHandler)
 	// Proxy endpoint for YouTube thumbnails (handle both GET and HEAD)
 	r.GET("/api/proxy/youtube-image/:youtubeId", ProxyYouTubeImageHandler)
 	r.HEAD("/api/proxy/youtube-image/:youtubeId", ProxyYouTubeImageHandler)

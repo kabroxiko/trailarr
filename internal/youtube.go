@@ -1,6 +1,8 @@
 package internal
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -15,6 +17,146 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+// YouTube trailer search SSE handler (progressive results)
+func YouTubeTrailerSearchStreamHandler(c *gin.Context) {
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Flush()
+
+	mediaType := c.Query("mediaType")
+	mediaIdStr := c.Query("mediaId")
+	if mediaType == "" || mediaIdStr == "" {
+		TrailarrLog(WARN, "YouTube", "Missing mediaType or mediaId in query params (SSE)")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing mediaType or mediaId"})
+		return
+	}
+	var mediaId int
+	_, err := fmt.Sscanf(mediaIdStr, "%d", &mediaId)
+	if err != nil || mediaId == 0 {
+		TrailarrLog(WARN, "YouTube", "Invalid mediaId in query params (SSE): %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid mediaId"})
+		return
+	}
+	TrailarrLog(INFO, "YouTube", "YouTubeTrailerSearchStreamHandler GET: mediaType=%s, mediaId=%d", mediaType, mediaId)
+
+	// Lookup media title/originalTitle
+	var title, originalTitle string
+	cacheFile, _ := resolveCachePath(MediaType(mediaType))
+	items, err := loadCache(cacheFile)
+	if err != nil {
+		TrailarrLog(ERROR, "YouTube", "Failed to load cache for mediaType=%s: %v", mediaType, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Media cache not found"})
+		return
+	}
+	for _, m := range items {
+		idInt, ok := parseMediaID(m["id"])
+		if ok && idInt == mediaId {
+			if t, ok := m["title"].(string); ok {
+				title = t
+			}
+			if ot, ok := m["originalTitle"].(string); ok {
+				originalTitle = ot
+			}
+			break
+		}
+	}
+	if title == "" && originalTitle == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Media not found"})
+		return
+	}
+
+	var searchTerms []string
+	if originalTitle != "" {
+		searchTerms = append(searchTerms, originalTitle)
+	}
+	if title != "" && originalTitle != title {
+		searchTerms = append(searchTerms, title)
+	}
+	videoIdSet := make(map[string]bool)
+	count := 0
+	for _, term := range searchTerms {
+		searchQuery := term + " trailer"
+		ytDlpArgs := []string{"-j", "ytsearch10:" + searchQuery, "--skip-download"}
+		TrailarrLog(INFO, "YouTube", "yt-dlp command (SSE): yt-dlp %v", ytDlpArgs)
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		cmd := exec.CommandContext(ctx, "yt-dlp", ytDlpArgs...)
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			TrailarrLog(ERROR, "YouTube", "Failed to get StdoutPipe: %v", err)
+			cancel()
+			continue
+		}
+		if err := cmd.Start(); err != nil {
+			TrailarrLog(ERROR, "YouTube", "Failed to start yt-dlp: %v", err)
+			cancel()
+			continue
+		}
+		TrailarrLog(INFO, "YouTube", "Started yt-dlp process (SSE streaming)...")
+		reader := bufio.NewReader(stdout)
+		for {
+			line, err := reader.ReadBytes('\n')
+			if len(line) == 0 && err != nil {
+				break
+			}
+			var item struct {
+				ID          string `json:"id"`
+				Title       string `json:"title"`
+				Description string `json:"description"`
+				Thumbnail   string `json:"thumbnail"`
+				Channel     string `json:"channel"`
+				ChannelID   string `json:"channel_id"`
+			}
+			parseErr := json.Unmarshal(bytes.TrimSpace(line), &item)
+			if parseErr == nil {
+				if item.ID != "" && !videoIdSet[item.ID] {
+					videoIdSet[item.ID] = true
+					result := gin.H{
+						"id": gin.H{"videoId": item.ID},
+						"snippet": gin.H{
+							"title":       item.Title,
+							"description": item.Description,
+							"thumbnails": gin.H{
+								"default": gin.H{"url": item.Thumbnail},
+							},
+							"channelTitle": item.Channel,
+							"channelId":    item.ChannelID,
+						},
+					}
+					b, _ := json.Marshal(result)
+					fmt.Fprintf(c.Writer, "data: %s\n\n", b)
+					c.Writer.Flush()
+					count++
+					if count >= 10 {
+						break
+					}
+				}
+			}
+			if err != nil {
+				if err != io.EOF {
+					TrailarrLog(ERROR, "YouTube", "[SSE] Reader error: %v", err)
+				}
+				break
+			}
+		}
+		if count >= 10 {
+			_ = cmd.Process.Kill()
+		}
+		_ = cmd.Wait()
+		cancel()
+		if ctx.Err() == context.DeadlineExceeded {
+			TrailarrLog(ERROR, "YouTube", "[SSE] yt-dlp search timed out for query: %s", searchQuery)
+			continue
+		}
+		if count >= 10 {
+			break
+		}
+	}
+	// Optionally send a done event
+	fmt.Fprintf(c.Writer, "event: done\ndata: {}\n\n")
+	c.Writer.Flush()
+}
 
 type YtdlpFlagsConfig struct {
 	Quiet              bool    `yaml:"quiet" json:"quiet"`
@@ -104,7 +246,6 @@ func GetBatchDownloadStatusHandler(c *gin.Context) {
 				rejectedMap[e.YoutubeId] = RejectedExtra{
 					MediaType:  e.MediaType,
 					MediaId:    e.MediaId,
-					MediaTitle: e.MediaTitle,
 					ExtraType:  e.ExtraType,
 					ExtraTitle: e.ExtraTitle,
 					YoutubeId:  e.YoutubeId,
@@ -433,7 +574,6 @@ func NewExtraDownloadMetadata(info *downloadInfo, youtubeId string, status strin
 type RejectedExtra struct {
 	MediaType  MediaType `json:"mediaType"`
 	MediaId    int       `json:"mediaId"`
-	MediaTitle string    `json:"mediaTitle"`
 	ExtraType  string    `json:"extraType"`
 	ExtraTitle string    `json:"extraTitle"`
 	YoutubeId  string    `json:"youtubeId"`
@@ -856,7 +996,7 @@ func YouTubeTrailerSearchHandler(c *gin.Context) {
 		return
 	}
 
-	// Search originalTitle first, then title if different, return up to 5 results
+	// Search both originalTitle and title (if different), aggregate up to 10 unique results
 	var searchTerms []string
 	if originalTitle != "" {
 		searchTerms = append(searchTerms, originalTitle)
@@ -864,27 +1004,33 @@ func YouTubeTrailerSearchHandler(c *gin.Context) {
 	if title != "" && originalTitle != title {
 		searchTerms = append(searchTerms, title)
 	}
-	var results []gin.H
-	for i, term := range searchTerms {
+	var allResults []gin.H
+	videoIdSet := make(map[string]bool)
+	for _, term := range searchTerms {
 		searchQuery := term + " trailer"
-		ytDlpArgs := []string{"-j", "ytsearch5:" + searchQuery, "--skip-download"}
+		ytDlpArgs := []string{"-j", "ytsearch10:" + searchQuery, "--skip-download"}
 		TrailarrLog(INFO, "YouTube", "yt-dlp command: yt-dlp %v", ytDlpArgs)
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 		cmd := exec.CommandContext(ctx, "yt-dlp", ytDlpArgs...)
-		TrailarrLog(INFO, "YouTube", "Starting yt-dlp process...")
-		output, err := cmd.CombinedOutput()
-		TrailarrLog(INFO, "YouTube", "yt-dlp process finished")
-		if ctx.Err() == context.DeadlineExceeded {
-			TrailarrLog(ERROR, "YouTube", "yt-dlp search timed out for query: %s", searchQuery)
-			continue
-		}
+		stdout, err := cmd.StdoutPipe()
 		if err != nil {
-			TrailarrLog(ERROR, "YouTube", "yt-dlp search failed: %v, output: %s", err, string(output))
+			TrailarrLog(ERROR, "YouTube", "Failed to get StdoutPipe: %v", err)
+			cancel()
 			continue
 		}
-		lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-		for _, line := range lines {
+		if err := cmd.Start(); err != nil {
+			TrailarrLog(ERROR, "YouTube", "Failed to start yt-dlp: %v", err)
+			cancel()
+			continue
+		}
+		TrailarrLog(INFO, "YouTube", "Started yt-dlp process (streaming)...")
+		reader := bufio.NewReader(stdout)
+		for {
+			line, err := reader.ReadBytes('\n')
+			if len(line) == 0 && err != nil {
+				break
+			}
+			TrailarrLog(DEBUG, "YouTube", "Raw yt-dlp output line: %s", string(line))
 			var item struct {
 				ID          string `json:"id"`
 				Title       string `json:"title"`
@@ -893,29 +1039,54 @@ func YouTubeTrailerSearchHandler(c *gin.Context) {
 				Channel     string `json:"channel"`
 				ChannelID   string `json:"channel_id"`
 			}
-			if err := json.Unmarshal([]byte(line), &item); err == nil {
-				results = append(results, gin.H{
-					"id": gin.H{"videoId": item.ID},
-					"snippet": gin.H{
-						"title":       item.Title,
-						"description": item.Description,
-						"thumbnails": gin.H{
-							"default": gin.H{"url": item.Thumbnail},
+			parseErr := json.Unmarshal(bytes.TrimSpace(line), &item)
+			if parseErr == nil {
+				TrailarrLog(DEBUG, "YouTube", "Parsed yt-dlp item: id=%s title=%s", item.ID, item.Title)
+				if item.ID != "" && !videoIdSet[item.ID] {
+					allResults = append(allResults, gin.H{
+						"id": gin.H{"videoId": item.ID},
+						"snippet": gin.H{
+							"title":       item.Title,
+							"description": item.Description,
+							"thumbnails": gin.H{
+								"default": gin.H{"url": item.Thumbnail},
+							},
+							"channelTitle": item.Channel,
+							"channelId":    item.ChannelID,
 						},
-						"channelTitle": item.Channel,
-						"channelId":    item.ChannelID,
-					},
-				})
-			} else {
-				TrailarrLog(WARN, "YouTube", "Failed to parse yt-dlp output line: %s", line)
+					})
+					videoIdSet[item.ID] = true
+				}
+			} else if len(bytes.TrimSpace(line)) > 0 {
+				TrailarrLog(WARN, "YouTube", "Failed to parse yt-dlp output line: %s | error: %v", string(line), parseErr)
+			}
+			if len(allResults) >= 10 {
+				break
+			}
+			if err != nil {
+				if err != io.EOF {
+					TrailarrLog(ERROR, "YouTube", "Reader error: %v", err)
+				}
+				break
 			}
 		}
-		if len(results) > 0 || i == len(searchTerms)-1 {
-			break
+		// Wait for process to finish or kill if we already have enough results
+		if len(allResults) >= 10 {
+			_ = cmd.Process.Kill()
+		}
+		_ = cmd.Wait()
+		cancel()
+		if ctx.Err() == context.DeadlineExceeded {
+			TrailarrLog(ERROR, "YouTube", "yt-dlp search timed out for query: %s", searchQuery)
+			continue
 		}
 	}
-	TrailarrLog(INFO, "YouTube", "YouTubeTrailerSearchHandler returning %d results", len(results))
-	c.JSON(http.StatusOK, gin.H{"items": results})
+	// Limit to 10 results
+	if len(allResults) > 10 {
+		allResults = allResults[:10]
+	}
+	TrailarrLog(INFO, "YouTube", "YouTubeTrailerSearchHandler returning %d results", len(allResults))
+	c.JSON(http.StatusOK, gin.H{"items": allResults})
 }
 
 // urlQueryEscape safely escapes a string for use in a URL query

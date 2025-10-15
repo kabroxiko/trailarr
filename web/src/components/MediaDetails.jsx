@@ -7,6 +7,8 @@ import Container from './Container.jsx';
 import Toast from './Toast.jsx';
 import { useParams } from 'react-router-dom';
 
+
+
 // Spinner and YouTubeEmbed component
 function Spinner() {
   return (
@@ -66,6 +68,29 @@ function YoutubeEmbed({ videoId }) {
 }
 
 export default function MediaDetails({ mediaItems, loading, mediaType }) {
+  const { id } = useParams();
+  const media = mediaItems.find(m => String(m.id) === id);
+  // Scroll to top when id (route) changes
+  useEffect(() => {
+    setTimeout(() => {
+      // Try window scroll
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      // Try scrolling main container if present
+      const main = document.querySelector('main');
+      if (main && typeof main.scrollTo === 'function') {
+        main.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      }
+      // Try to find the first scrollable container
+      const all = document.querySelectorAll('body *');
+      for (let el of all) {
+        const style = window.getComputedStyle(el);
+        if ((style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight) {
+          el.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+          break;
+        }
+      }
+    }, 0);
+  }, [id]);
   const [youtubeModal, setYoutubeModal] = useState({ open: false, videoId: '' });
   // Store YouTube search results for merging into Trailers group
   const [ytResults, setYtResults] = useState([]);
@@ -84,8 +109,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
       window.removeEventListener('mousedown', handleClick);
     };
   }, [youtubeModal.open]);
-  const { id } = useParams();
-  const media = mediaItems.find(m => String(m.id) === id);
+  // (removed duplicate declaration)
   const [extras, setExtras] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [error, setError] = useState('');
@@ -223,7 +247,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
     })).filter(e => e.YoutubeId);
   }
 
-  // Group extras by type, merging YouTube search results into 'Trailers'
+  // Group extras by type
   const extrasByType = extras.reduce((acc, extra) => {
     const type = extra.ExtraType || 'Other';
     if (!acc[type]) acc[type] = [];
@@ -231,21 +255,23 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
     return acc;
   }, {});
 
-  // Merge YouTube search results into 'Trailers', but always prefer backend extras for same YoutubeId
+  // --- Preserve manual search (ytResults) order in Trailers group ---
   if (ytResults.length > 0) {
     const ytExtras = ytResultsToExtras(ytResults);
-    const existing = extrasByType['Trailers'] || [];
-    // Build a map for quick lookup
-    const existingMap = Object.fromEntries(existing.map(e => [e.YoutubeId, e]));
-    // Start with all backend extras
-    const all = [...existing];
-    // Add only search results not present in backend
-    ytExtras.forEach(yt => {
-      if (!existingMap[yt.YoutubeId]) {
-        all.push(yt);
-      }
+    const backend = extrasByType['Trailers'] || [];
+    // Map backend extras by YoutubeId for quick lookup
+    const backendMap = Object.fromEntries(backend.map(e => [e.YoutubeId, e]));
+    // For each manual search card, if a backend extra exists, merge status/fields, else use manual
+    const merged = ytExtras.map(yt => {
+      const be = backendMap[yt.YoutubeId];
+      return be ? { ...yt, ...be } : yt;
     });
-    extrasByType['Trailers'] = all;
+    // Append backend-only extras (not in ytResults) after manual search cards
+    const ytIds = new Set(ytExtras.map(e => e.YoutubeId));
+    backend.forEach(be => {
+      if (!ytIds.has(be.YoutubeId)) merged.push(be);
+    });
+    extrasByType['Trailers'] = merged;
   }
 
   return (
@@ -278,6 +304,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
     setError={setError}
     ytResults={ytResults}
     setYtResults={setYtResults}
+    darkMode={darkMode}
   />
       <div style={{ marginTop: '4.5rem' }}>
         <MediaCard media={media} mediaType={mediaType} darkMode={darkMode} error={error} />
