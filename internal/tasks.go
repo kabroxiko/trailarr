@@ -507,7 +507,7 @@ func downloadMissingExtrasWithTypeFilter(ctx context.Context, cfg ExtraTypesConf
 		for _, r := range rejectedExtras {
 			rejectedYoutubeIds[r.YoutubeId] = struct{}{}
 		}
-		MarkRejectedExtras(extras, rejectedYoutubeIds)
+		MarkRejectedExtrasInMemory(extras, rejectedYoutubeIds)
 		// For each extra, download sequentially
 		for _, extra := range extras {
 			if ctx != nil && ctx.Err() != nil {

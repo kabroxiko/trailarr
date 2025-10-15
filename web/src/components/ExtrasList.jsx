@@ -29,15 +29,24 @@ function ExtrasList({
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === 'download_queue_update' && Array.isArray(msg.queue)) {
-          console.debug('[WebSocket] Received queue update', msg.queue);
-          // Update extras state if possible
           if (typeof setExtras === 'function') {
             setExtras(prev => {
-              // Map over all extras and update their Status if found in queue
-              const queueMap = Object.fromEntries(msg.queue.map(e => [e.youtubeId, e.status]));
+              // Map over all extras and update their Status and Reason if found in queue
               return prev.map(ex => {
-                if (queueMap[ex.YoutubeId]) {
-                  return { ...ex, Status: queueMap[ex.YoutubeId] };
+                const queueItem = msg.queue.find(q => q.youtubeId === ex.YoutubeId);
+                if (queueItem) {
+                  // Only show toast if status transitions to 'failed' or 'rejected'
+                  if ((queueItem.status === 'failed' || queueItem.status === 'rejected') &&
+                      ex.Status !== 'failed' && ex.Status !== 'rejected' && (queueItem.reason || queueItem.Reason)) {
+                    setToastMsg(queueItem.reason || queueItem.Reason);
+                  }
+                  // Always update Status and Reason fields
+                  return {
+                    ...ex,
+                    Status: queueItem.status,
+                    reason: queueItem.reason || queueItem.Reason,
+                    Reason: queueItem.reason || queueItem.Reason,
+                  };
                 }
                 return ex;
               });

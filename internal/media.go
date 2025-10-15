@@ -14,6 +14,99 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// SearchExtras merges extras from the main cache and the persistent extras collection for a media item
+func SearchExtras(mediaType MediaType, mediaId int) ([]Extra, error) {
+	cacheFile, _ := resolveCachePath(mediaType)
+	items, err := loadCache(cacheFile)
+	if err != nil {
+		return nil, err
+	}
+	var mediaItem map[string]interface{}
+	for _, m := range items {
+		idInt, ok := parseMediaID(m["id"])
+		if ok && idInt == mediaId {
+			mediaItem = m
+			break
+		}
+	}
+	if mediaItem == nil {
+		return nil, fmt.Errorf("media item not found")
+	}
+
+	// Gather extras from main cache (disk)
+	diskExtras := make(map[string]Extra)
+	extrasVal, ok := mediaItem["extras"]
+	if ok {
+		if extrasMap, ok := extrasVal.(map[string]interface{}); ok {
+			for _, v := range extrasMap {
+				em, ok := v.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				e := Extra{
+					ExtraType:  toString(em["ExtraType"]),
+					ExtraTitle: toString(em["ExtraTitle"]),
+					YoutubeId:  toString(em["YoutubeId"]),
+					Status:     toString(em["Status"]),
+				}
+				key := e.YoutubeId + ":" + e.ExtraType + ":" + e.ExtraTitle
+				diskExtras[key] = e
+			}
+		} else if extrasArr, ok := extrasVal.([]interface{}); ok {
+			for _, v := range extrasArr {
+				em, ok := v.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				e := Extra{
+					ExtraType:  toString(em["ExtraType"]),
+					ExtraTitle: toString(em["ExtraTitle"]),
+					YoutubeId:  toString(em["YoutubeId"]),
+					Status:     toString(em["Status"]),
+				}
+				key := e.YoutubeId + ":" + e.ExtraType + ":" + e.ExtraTitle
+				diskExtras[key] = e
+			}
+		}
+	}
+
+	// Gather persistent extras from Redis
+	ctx := context.Background()
+	persistent, _ := GetAllExtras(ctx)
+	persistentMap := make(map[string]Extra)
+	for _, e := range persistent {
+		if e.MediaType == mediaType && e.MediaId == mediaId {
+			key := e.YoutubeId + ":" + e.ExtraType + ":" + e.ExtraTitle
+			persistentMap[key] = Extra{
+				ExtraType:  e.ExtraType,
+				ExtraTitle: e.ExtraTitle,
+				YoutubeId:  e.YoutubeId,
+				Status:     e.Status,
+			}
+		}
+	}
+
+	// Merge: persistent status takes precedence
+	result := make([]Extra, 0)
+	used := make(map[string]struct{})
+	for k, e := range diskExtras {
+		if pe, ok := persistentMap[k]; ok {
+			result = append(result, pe)
+			used[k] = struct{}{}
+		} else {
+			result = append(result, e)
+			used[k] = struct{}{}
+		}
+	}
+	// Add persistent-only extras
+	for k, e := range persistentMap {
+		if _, ok := used[k]; !ok {
+			result = append(result, e)
+		}
+	}
+	return result, nil
+}
+
 // ProxyYouTubeImageHandler proxies YouTube thumbnail images to avoid 404s and CORS issues
 func ProxyYouTubeImageHandler(c *gin.Context) {
 	youtubeId := c.Param("youtubeId")
@@ -594,43 +687,79 @@ func sharedExtrasHandler(mediaType MediaType) gin.HandlerFunc {
 		idStr := c.Param("id")
 		var id int
 		fmt.Sscanf(idStr, "%d", &id)
+
+		// 1. Get merged extras from disk and persistent
 		extras, err := SearchExtras(mediaType, id)
 		if err != nil {
 			respondError(c, http.StatusInternalServerError, err.Error())
 			return
 		}
+
+		// 2. Get TMDB extras (from API)
+		tmdbExtras, err := FetchTMDBExtrasForMedia(mediaType, id)
+		if err != nil {
+			TrailarrLog(WARN, "sharedExtrasHandler", "Failed to fetch TMDB extras: %v", err)
+			tmdbExtras = nil
+		}
+
+		// 3. Merge all sources: persistent/disk (extras) + TMDB (tmdbExtras)
+		// Use YoutubeId+ExtraType+ExtraTitle as key
+		allMap := make(map[string]Extra)
+		for _, e := range extras {
+			key := e.YoutubeId + ":" + e.ExtraType + ":" + e.ExtraTitle
+			allMap[key] = e
+		}
+		for _, e := range tmdbExtras {
+			key := e.YoutubeId + ":" + e.ExtraType + ":" + e.ExtraTitle
+			// Only add if not already present (persistent/disk takes precedence)
+			if _, exists := allMap[key]; !exists {
+				allMap[key] = e
+			}
+		}
+		// Convert map to slice
+		finalExtras := make([]Extra, 0, len(allMap))
+		for _, e := range allMap {
+			finalExtras = append(finalExtras, e)
+		}
+
+		// 4. Mark downloaded and rejected status
 		cacheFile, _ := resolveCachePath(mediaType)
 		mediaPath, err := FindMediaPathByID(cacheFile, id)
 		if err != nil {
 			respondError(c, http.StatusInternalServerError, fmt.Sprintf("%s cache not found", mediaType))
 			return
 		}
-		MarkDownloadedExtras(extras, mediaPath, "type", "title")
+		MarkDownloadedExtras(finalExtras, mediaPath, "type", "title")
 		rejectedExtras := GetRejectedExtrasForMedia(mediaType, id)
 		TrailarrLog(DEBUG, "sharedExtrasHandler", "Rejected extras: %+v", rejectedExtras)
 		youtubeIdInResults := make(map[string]struct{})
-		for _, extra := range extras {
+		for _, extra := range finalExtras {
 			youtubeIdInResults[extra.YoutubeId] = struct{}{}
 		}
-		// Set status to "rejected" for any extra whose YoutubeId matches a rejected extra
-		rejectedYoutubeIds := make(map[string]struct{})
+		// Set status to "rejected" and copy Reason for any extra whose YoutubeId matches a rejected extra
+		rejectedReasonMap := make(map[string]string)
 		for _, rejected := range rejectedExtras {
-			rejectedYoutubeIds[rejected.YoutubeId] = struct{}{}
+			rejectedReasonMap[rejected.YoutubeId] = rejected.Reason
 		}
-		MarkRejectedExtras(extras, rejectedYoutubeIds)
+		for i := range finalExtras {
+			if reason, exists := rejectedReasonMap[finalExtras[i].YoutubeId]; exists {
+				finalExtras[i].Status = "rejected"
+				finalExtras[i].Reason = reason
+			}
+		}
 		// Also append any rejected extras not already present in extras
 		for _, rejected := range rejectedExtras {
 			if _, exists := youtubeIdInResults[rejected.YoutubeId]; !exists {
-				extras = append(extras, Extra{
+				finalExtras = append(finalExtras, Extra{
 					ExtraType:  rejected.ExtraType,
 					ExtraTitle: rejected.ExtraTitle,
 					YoutubeId:  rejected.YoutubeId,
 					Status:     "rejected",
+					Reason:     rejected.Reason,
 				})
 			}
 		}
-		TrailarrLog(DEBUG, "sharedExtrasHandler", "Final extras: %+v", extras)
-		respondJSON(c, http.StatusOK, gin.H{"extras": extras})
+		respondJSON(c, http.StatusOK, gin.H{"extras": finalExtras})
 	}
 }
 
