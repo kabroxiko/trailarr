@@ -67,6 +67,8 @@ function YoutubeEmbed({ videoId }) {
 
 export default function MediaDetails({ mediaItems, loading, mediaType }) {
   const [youtubeModal, setYoutubeModal] = useState({ open: false, videoId: '' });
+  // Store YouTube search results for merging into Trailers group
+  const [ytResults, setYtResults] = useState([]);
 
   // Close modal on outside click or Escape
   useEffect(() => {
@@ -198,13 +200,53 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
     }
   };
 
-  // Group extras by type
+  // (removed duplicate declaration; merged version below)
+
+  // Helper to convert YouTube search results to extras format for Trailers
+  function ytResultsToExtras(ytResults) {
+    return ytResults.map(item => ({
+      YoutubeId: item.id?.videoId || '',
+      ExtraType: 'Trailers',
+      ExtraTitle: item.snippet?.title || 'YouTube Trailer',
+      Status: '', // Not downloaded yet
+      Thumb: item.snippet?.thumbnails?.medium?.url || '',
+      ChannelTitle: item.snippet?.channelTitle || '',
+      PublishedAt: item.snippet?.publishedAt || '',
+      Description: item.snippet?.description || '',
+      reason: '',
+      Reason: '',
+      Source: 'YouTubeSearch',
+      // Add all fields that ExtraCard expects, with safe defaults
+      Downloaded: false,
+      Exists: false,
+      // ...add more if needed
+    })).filter(e => e.YoutubeId);
+  }
+
+  // Group extras by type, merging YouTube search results into 'Trailers'
   const extrasByType = extras.reduce((acc, extra) => {
     const type = extra.ExtraType || 'Other';
     if (!acc[type]) acc[type] = [];
     acc[type].push(extra);
     return acc;
   }, {});
+
+  // Merge YouTube search results into 'Trailers', but always prefer backend extras for same YoutubeId
+  if (ytResults.length > 0) {
+    const ytExtras = ytResultsToExtras(ytResults);
+    const existing = extrasByType['Trailers'] || [];
+    // Build a map for quick lookup
+    const existingMap = Object.fromEntries(existing.map(e => [e.YoutubeId, e]));
+    // Start with all backend extras
+    const all = [...existing];
+    // Add only search results not present in backend
+    ytExtras.forEach(yt => {
+      if (!existingMap[yt.YoutubeId]) {
+        all.push(yt);
+      }
+    });
+    extrasByType['Trailers'] = all;
+  }
 
   return (
     <Container style={{ minHeight: '100vh', background: darkMode ? '#18181b' : '#f7f8fa', fontFamily: 'Roboto, Arial, sans-serif', padding: 0 }}>
@@ -229,7 +271,14 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
           {modalMsg}
         </div>
       )}
-      <MediaInfoLane media={media} searchLoading={searchLoading} handleSearchExtras={handleSearchExtras} setError={setError} />
+  <MediaInfoLane
+    media={{ ...media, mediaType }}
+    searchLoading={searchLoading}
+    handleSearchExtras={handleSearchExtras}
+    setError={setError}
+    ytResults={ytResults}
+    setYtResults={setYtResults}
+  />
       <div style={{ marginTop: '4.5rem' }}>
         <MediaCard media={media} mediaType={mediaType} darkMode={darkMode} error={error} />
       </div>

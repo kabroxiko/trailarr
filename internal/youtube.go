@@ -816,3 +816,106 @@ func createSuccessMetadata(info *downloadInfo, youtubeId string) (*ExtraDownload
 	TrailarrLog(INFO, "YouTube", "Downloaded %s to %s", info.ExtraTitle, info.OutFile)
 	return meta, nil
 }
+
+// YouTube trailer search proxy handler (POST: mediaType, mediaId)
+func YouTubeTrailerSearchHandler(c *gin.Context) {
+	var req struct {
+		MediaType string `json:"mediaType"`
+		MediaId   int    `json:"mediaId"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.MediaType == "" || req.MediaId == 0 {
+		TrailarrLog(WARN, "YouTube", "Invalid POST body for YouTube search: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing mediaType or mediaId"})
+		return
+	}
+	TrailarrLog(INFO, "YouTube", "YouTubeTrailerSearchHandler POST: mediaType=%s, mediaId=%d", req.MediaType, req.MediaId)
+
+	// Lookup media title/originalTitle
+	var title, originalTitle string
+	cacheFile, _ := resolveCachePath(MediaType(req.MediaType))
+	items, err := loadCache(cacheFile)
+	if err != nil {
+		TrailarrLog(ERROR, "YouTube", "Failed to load cache for mediaType=%s: %v", req.MediaType, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Media cache not found"})
+		return
+	}
+	for _, m := range items {
+		idInt, ok := parseMediaID(m["id"])
+		if ok && idInt == req.MediaId {
+			if t, ok := m["title"].(string); ok {
+				title = t
+			}
+			if ot, ok := m["originalTitle"].(string); ok {
+				originalTitle = ot
+			}
+			break
+		}
+	}
+	if title == "" && originalTitle == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Media not found"})
+		return
+	}
+
+	// Search originalTitle first, then title if different, return up to 5 results
+	var searchTerms []string
+	if originalTitle != "" {
+		searchTerms = append(searchTerms, originalTitle)
+	}
+	if title != "" && originalTitle != title {
+		searchTerms = append(searchTerms, title)
+	}
+	var results []gin.H
+	for i, term := range searchTerms {
+		searchQuery := term + " trailer"
+		ytDlpArgs := []string{"-j", "ytsearch5:" + searchQuery, "--skip-download"}
+		TrailarrLog(INFO, "YouTube", "yt-dlp command: yt-dlp %v", ytDlpArgs)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "yt-dlp", ytDlpArgs...)
+		TrailarrLog(INFO, "YouTube", "Starting yt-dlp process...")
+		output, err := cmd.CombinedOutput()
+		TrailarrLog(INFO, "YouTube", "yt-dlp process finished")
+		if ctx.Err() == context.DeadlineExceeded {
+			TrailarrLog(ERROR, "YouTube", "yt-dlp search timed out for query: %s", searchQuery)
+			continue
+		}
+		if err != nil {
+			TrailarrLog(ERROR, "YouTube", "yt-dlp search failed: %v, output: %s", err, string(output))
+			continue
+		}
+		lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+		for _, line := range lines {
+			var item struct {
+				ID          string `json:"id"`
+				Title       string `json:"title"`
+				Description string `json:"description"`
+				Thumbnail   string `json:"thumbnail"`
+				Channel     string `json:"channel"`
+				ChannelID   string `json:"channel_id"`
+			}
+			if err := json.Unmarshal([]byte(line), &item); err == nil {
+				results = append(results, gin.H{
+					"id": gin.H{"videoId": item.ID},
+					"snippet": gin.H{
+						"title":       item.Title,
+						"description": item.Description,
+						"thumbnails": gin.H{
+							"default": gin.H{"url": item.Thumbnail},
+						},
+						"channelTitle": item.Channel,
+						"channelId":    item.ChannelID,
+					},
+				})
+			} else {
+				TrailarrLog(WARN, "YouTube", "Failed to parse yt-dlp output line: %s", line)
+			}
+		}
+		if len(results) > 0 || i == len(searchTerms)-1 {
+			break
+		}
+	}
+	TrailarrLog(INFO, "YouTube", "YouTubeTrailerSearchHandler returning %d results", len(results))
+	c.JSON(http.StatusOK, gin.H{"items": results})
+}
+
+// urlQueryEscape safely escapes a string for use in a URL query

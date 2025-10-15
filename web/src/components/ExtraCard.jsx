@@ -84,6 +84,27 @@ export default function ExtraCard({
       });
       if (res.ok) {
         setErrorCard(null);
+        // If this card is a search-only card (not in backend), add a backend-style extra to extras state
+        if (typeof setExtras === 'function' && !downloaded && !isQueued && !isDownloading && !exists) {
+          setExtras(prev => {
+            // If already present as a backend extra, do nothing
+            if (prev.some(ex => ex.YoutubeId === extra.YoutubeId && ex.Status && ex.Status !== '')) return prev;
+            // Add a new backend-style extra with Status 'queued' (optimistic)
+            return [
+              ...prev,
+              {
+                ...extra,
+                Status: 'queued',
+                reason: '',
+                Reason: '',
+                ExtraType: baseType,
+                ExtraTitle: baseTitle,
+                YoutubeId: extra.YoutubeId,
+                // Add any other backend fields as needed
+              }
+            ];
+          });
+        }
       } else {
         const data = await res.json();
         if (typeof showToast === 'function') {
