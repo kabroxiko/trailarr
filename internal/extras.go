@@ -86,8 +86,8 @@ type ExtrasEntry struct {
 	Reason     string    `json:"reason,omitempty"`
 }
 
-// MarkRejectedExtras sets Status="rejected" for extras whose YoutubeId is in rejectedYoutubeIds
-func MarkRejectedExtras(extras []Extra, rejectedYoutubeIds map[string]struct{}) {
+// MarkRejectedExtrasInMemory sets Status="rejected" for extras whose YoutubeId is in rejectedYoutubeIds (in-memory only)
+func MarkRejectedExtrasInMemory(extras []Extra, rejectedYoutubeIds map[string]struct{}) {
 	for i := range extras {
 		if _, exists := rejectedYoutubeIds[extras[i].YoutubeId]; exists {
 			extras[i].Status = "rejected"
@@ -184,7 +184,17 @@ func RemoveExtra(ctx context.Context, youtubeId string, mediaType MediaType, med
 	client := GetRedisClient()
 	key := ExtrasCollectionKey
 	entryKey := fmt.Sprintf("%s:%s:%d", youtubeId, mediaType, mediaId)
-	return client.HDel(ctx, key, entryKey).Err()
+	// Debug: print the entryKey and all current keys in the hash
+	keys, _ := client.HKeys(ctx, key).Result()
+	filteredKeys := make([]string, 0, len(keys))
+	idStr := fmt.Sprintf(":%d", mediaId)
+	for _, k := range keys {
+		if strings.HasSuffix(k, idStr) {
+			filteredKeys = append(filteredKeys, k)
+		}
+	}
+	err := client.HDel(ctx, key, entryKey).Err()
+	return err
 }
 
 type Extra struct {
@@ -193,6 +203,7 @@ type Extra struct {
 	ExtraTitle string
 	YoutubeId  string
 	Status     string
+	Reason     string
 }
 
 // GetRejectedExtrasForMedia returns rejected extras for a given media type and id, using Redis cache
@@ -219,71 +230,54 @@ func GetRejectedExtrasForMedia(mediaType MediaType, id int) []RejectedExtra {
 	return rejected
 }
 
-// updateExtraStatus is a generic helper to update the status (and optional reason) of an extra in the cache
-func updateExtraStatus(mediaType MediaType, mediaId int, extraType, extraTitle, youtubeId, status, reason string) error {
-	cacheFile, _ := resolveCachePath(mediaType)
-	items, err := loadCache(cacheFile)
-	if err != nil {
-		return err
+// SetExtraRejectedPersistent sets the Status of an extra to "rejected" in Redis, adding it if not present (persistent)
+func SetExtraRejectedPersistent(mediaType MediaType, mediaId int, extraType, extraTitle, youtubeId, reason string) error {
+	TrailarrLog(INFO, "SetExtraRejectedPersistent", "Attempting to mark rejected: mediaType=%s, mediaId=%d, extraType=%s, extraTitle=%s, youtubeId=%s, reason=%s", mediaType, mediaId, extraType, extraTitle, youtubeId, reason)
+	ctx := context.Background()
+	entry := ExtrasEntry{
+		MediaType:  mediaType,
+		MediaId:    mediaId,
+		ExtraType:  extraType,
+		ExtraTitle: extraTitle,
+		YoutubeId:  youtubeId,
+		Status:     "rejected",
+		Reason:     reason,
 	}
-	updated := false
-	for _, m := range items {
-		idInt, ok := parseMediaID(m["id"])
-		if !ok || idInt != mediaId {
-			continue
-		}
-		extras, ok := m["extras"].([]interface{})
-		if !ok {
-			continue
-		}
-		for _, e := range extras {
-			em, ok := e.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			if toString(em["ExtraType"]) == extraType && toString(em["ExtraTitle"]) == extraTitle && toString(em["YoutubeId"]) == youtubeId {
-				em["Status"] = status
-				if reason != "" {
-					em["reason"] = reason
-				}
-				updated = true
-			}
-		}
-	}
-	if updated {
-		return SaveMediaToRedis(cacheFile, items)
-	}
-	return nil
-}
-
-// MarkExtraRejected sets the Status of an extra to "rejected" in Redis, adding it if not present
-func MarkExtraRejected(mediaType MediaType, mediaId int, extraType, extraTitle, youtubeId, reason string) error {
-	TrailarrLog(INFO, "MarkExtraRejected", "Attempting to mark rejected: mediaType=%s, mediaId=%d, extraType=%s, extraTitle=%s, youtubeId=%s, reason=%s", mediaType, mediaId, extraType, extraTitle, youtubeId, reason)
-	return updateExtraStatus(mediaType, mediaId, extraType, extraTitle, youtubeId, "rejected", reason)
+	return AddOrUpdateExtra(ctx, entry)
 }
 
 // UnmarkExtraRejected clears the Status of an extra if it is "rejected" in Redis, but keeps the extra in the array
 func UnmarkExtraRejected(mediaType MediaType, mediaId int, extraType, extraTitle, youtubeId string) error {
-	return updateExtrasInCache(mediaType, mediaId, func(em map[string]interface{}) bool {
-		if toString(em["ExtraType"]) == extraType && toString(em["ExtraTitle"]) == extraTitle && toString(em["YoutubeId"]) == youtubeId {
-			if em["Status"] == "rejected" {
-				em["Status"] = ""
-				em["reason"] = ""
-				return true
-			}
-		}
-		return false
-	})
+	ctx := context.Background()
+	return RemoveExtra(ctx, youtubeId, mediaType, mediaId)
 }
 
 // MarkExtraDownloaded sets the Status of an extra to "downloaded" in Redis, if present
 func MarkExtraDownloaded(mediaType MediaType, mediaId int, extraType, extraTitle, youtubeId string) error {
-	return updateExtraStatus(mediaType, mediaId, extraType, extraTitle, youtubeId, "downloaded", "")
+	ctx := context.Background()
+	entry := ExtrasEntry{
+		MediaType:  mediaType,
+		MediaId:    mediaId,
+		ExtraType:  extraType,
+		ExtraTitle: extraTitle,
+		YoutubeId:  youtubeId,
+		Status:     "downloaded",
+	}
+	return AddOrUpdateExtra(ctx, entry)
 }
 
 // MarkExtraDeleted sets the Status of an extra to "deleted" in Redis, if present (does not remove)
 func MarkExtraDeleted(mediaType MediaType, mediaId int, extraType, extraTitle, youtubeId string) error {
-	return updateExtraStatus(mediaType, mediaId, extraType, extraTitle, youtubeId, "deleted", "")
+	ctx := context.Background()
+	entry := ExtrasEntry{
+		MediaType:  mediaType,
+		MediaId:    mediaId,
+		ExtraType:  extraType,
+		ExtraTitle: extraTitle,
+		YoutubeId:  youtubeId,
+		Status:     "deleted",
+	}
+	return AddOrUpdateExtra(ctx, entry)
 }
 
 // Helper to safely convert interface{} to string
@@ -415,8 +409,8 @@ func canonicalizeExtraType(extraType string) string {
 	return extraType
 }
 
-// Placeholder for extras search and download logic
-func SearchExtras(mediaType MediaType, id int) ([]Extra, error) {
+// FetchTMDBExtrasForMedia fetches extras from TMDB for a given media item
+func FetchTMDBExtrasForMedia(mediaType MediaType, id int) ([]Extra, error) {
 	tmdbKey, err := GetTMDBKey()
 	if err != nil {
 		return nil, err
@@ -658,7 +652,7 @@ func DownloadMissingExtras(mediaType MediaType, cacheFile string) error {
 			TrailarrLog(WARN, "DownloadMissingExtras", "Missing or invalid id in item: %v", m)
 			return false
 		}
-		_, err := SearchExtras(mediaType, idInt)
+		_, err := FetchTMDBExtrasForMedia(mediaType, idInt)
 		if err != nil {
 			TrailarrLog(WARN, "DownloadMissingExtras", "SearchExtras error: %v", err)
 			return false
@@ -672,7 +666,7 @@ func DownloadMissingExtras(mediaType MediaType, cacheFile string) error {
 	})
 	mapped := Map(filtered, func(media map[string]interface{}) downloadItem {
 		idInt, _ := parseMediaID(media["id"])
-		extras, _ := SearchExtras(mediaType, idInt)
+		extras, _ := FetchTMDBExtrasForMedia(mediaType, idInt)
 		mediaPath, _ := FindMediaPathByID(cacheFile, idInt)
 		MarkDownloadedExtras(extras, mediaPath, "type", "title")
 		// Defensive: mark rejected extras before any download
@@ -681,7 +675,7 @@ func DownloadMissingExtras(mediaType MediaType, cacheFile string) error {
 		for _, r := range rejectedExtras {
 			rejectedYoutubeIds[r.YoutubeId] = struct{}{}
 		}
-		MarkRejectedExtras(extras, rejectedYoutubeIds)
+		MarkRejectedExtrasInMemory(extras, rejectedYoutubeIds)
 		return downloadItem{idInt, mediaPath, extras}
 	})
 	for _, di := range mapped {
@@ -698,7 +692,7 @@ func filterAndDownloadExtras(mediaType MediaType, mediaId int, extras []Extra, c
 	for _, r := range rejectedExtras {
 		rejectedYoutubeIds[r.YoutubeId] = struct{}{}
 	}
-	MarkRejectedExtras(extras, rejectedYoutubeIds)
+	MarkRejectedExtrasInMemory(extras, rejectedYoutubeIds)
 	filtered := Filter(extras, func(extra Extra) bool {
 		return shouldDownloadExtra(extra, config)
 	})
@@ -798,25 +792,10 @@ func RemoveBlacklistExtraHandler(c *gin.Context) {
 		return
 	}
 	ctx := context.Background()
-	// Remove from hash (legacy, for compatibility)
 	err := RemoveExtra(ctx, req.YoutubeId, mt, req.MediaId)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, "Could not remove extra from collection: "+err.Error())
 		return
-	}
-	// Remove from Redis list (current rejected extras storage)
-	client := GetRedisClient()
-	items, lerr := client.LRange(ctx, ExtrasCollectionKey, 0, -1).Result()
-	if lerr == nil {
-		for _, itemStr := range items {
-			var r RejectedExtra
-			if err := json.Unmarshal([]byte(itemStr), &r); err == nil {
-				if r.YoutubeId == req.YoutubeId && r.MediaType == mt && r.MediaId == req.MediaId && r.ExtraType == req.ExtraType && r.ExtraTitle == req.ExtraTitle {
-					// Remove this item from the list
-					_ = client.LRem(ctx, ExtrasCollectionKey, 1, itemStr).Err()
-				}
-			}
-		}
 	}
 	respondJSON(c, http.StatusOK, gin.H{"status": "removed"})
 }

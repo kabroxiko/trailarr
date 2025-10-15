@@ -3,6 +3,8 @@ import MediaInfoLane from './MediaInfoLane.jsx';
 import MediaCard from './MediaCard.jsx';
 import ExtrasList from './ExtrasList';
 import YoutubePlayer from './YoutubePlayer.jsx';
+import Container from './Container.jsx';
+import Toast from './Toast.jsx';
 import { useParams } from 'react-router-dom';
 
 // Spinner and YouTubeEmbed component
@@ -123,11 +125,21 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === 'download_queue_update' && Array.isArray(msg.queue)) {
-          // Only update extras that match this media
           setExtras(prev => prev.map(ex => {
             const found = msg.queue.find(q => q.MediaId == media.id && q.YouTubeID === ex.YoutubeId);
-            if (found && found.Status && ex.Status !== found.Status) {
-              return { ...ex, Status: found.Status };
+            if (found && found.Status) {
+              // Only show toast if status transitions to 'failed' or 'rejected'
+              if ((found.Status === 'failed' || found.Status === 'rejected') &&
+                  (found.reason || found.Reason) &&
+                  ex.Status !== found.Status) {
+                setError(found.reason || found.Reason);
+              }
+              return {
+                ...ex,
+                Status: found.Status,
+                reason: found.reason || found.Reason,
+                Reason: found.reason || found.Reason,
+              };
             }
             return ex;
           }));
@@ -195,17 +207,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
   }, {});
 
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      minHeight: '100vh',
-      background: darkMode ? '#18181b' : '#f7f8fa',
-      fontFamily: 'Roboto, Arial, sans-serif',
-      margin: 0,
-      padding: 0,
-      width: '100%',
-      boxSizing: 'border-box',
-    }}>
+    <Container style={{ minHeight: '100vh', background: darkMode ? '#18181b' : '#f7f8fa', fontFamily: 'Roboto, Arial, sans-serif', padding: 0 }}>
       {/* Floating Modal for Download Error */}
       {showModal && (
         <div style={{
@@ -227,8 +229,11 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
           {modalMsg}
         </div>
       )}
-      <MediaInfoLane searchLoading={searchLoading} handleSearchExtras={handleSearchExtras} />
-      <MediaCard media={media} mediaType={mediaType} darkMode={darkMode} error={error} />
+      <MediaInfoLane media={media} searchLoading={searchLoading} handleSearchExtras={handleSearchExtras} setError={setError} />
+      <div style={{ marginTop: '4.5rem' }}>
+        <MediaCard media={media} mediaType={mediaType} darkMode={darkMode} error={error} />
+      </div>
+      <Toast message={error} onClose={() => setError('')} darkMode={darkMode} />
       {/* Grouped extras by type, with 'Trailers' first */}
       {Object.keys(extrasByType).length > 0 && (
         <div style={{ width: '100%', background: darkMode ? '#23232a' : '#f3e8ff', overflow: 'hidden', padding: '24px 10px', margin: 0 }}>
@@ -271,6 +276,6 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
           </div>
         </div>
       )}
-    </div>
+    </Container>
   );
 }

@@ -54,8 +54,8 @@ export default function MediaCard({ media, mediaType, error }) {
           </div>
         )}
         <div style={{ marginBottom: 6, color: '#e5e7eb', textAlign: 'left', fontSize: 13, textShadow: '0 1px 2px #000' }}>{media.year} &bull; {media.path}</div>
-        {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
+          {/* error is now shown only via Toast */}
+        </div>
       </div>
-    </div>
   );
 }

@@ -70,14 +70,6 @@ export default function ExtraCard({
   const handleDownloadClick = async () => {
     if (downloaded || downloading) return;
     setDownloading(true);
-    // Immediately update UI to show as queued (match by YoutubeId, Type, Title)
-    if (typeof setExtras === 'function') {
-      setExtras(prev => prev.map((ex) =>
-        ex.YoutubeId === extra.YoutubeId && ex.ExtraType === baseType && ex.ExtraTitle === baseTitle
-          ? { ...ex, Status: 'queued' }
-          : ex
-      ));
-    }
     try {
       const res = await fetch(`/api/extras/download`, {
         method: 'POST',
@@ -184,20 +176,23 @@ export default function ExtraCard({
     borderColor = '2px solid #8888';
   }
   return (
-    <div style={{
-      width: 180,
-      height: 210,
-      background: darkMode ? '#18181b' : '#fff',
-      borderRadius: 12,
-      boxShadow: darkMode ? '0 2px 12px rgba(0,0,0,0.22)' : '0 2px 12px rgba(0,0,0,0.10)',
-      overflow: 'hidden',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      padding: '0 0 0 0',
-      position: 'relative',
-      border: borderColor,
-    }}>
+    <div
+      title={rejected ? (extra.reason ? `Rejected: ${extra.reason}` : 'Rejected (cannot download)') : undefined}
+      style={{
+        width: 180,
+        height: 210,
+        background: darkMode ? '#18181b' : '#fff',
+        borderRadius: 12,
+        boxShadow: darkMode ? '0 2px 12px rgba(0,0,0,0.22)' : '0 2px 12px rgba(0,0,0,0.10)',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        padding: '0 0 0 0',
+        position: 'relative',
+        border: borderColor,
+      }}
+    >
       {/* Image or poster rendering restored */}
       <div style={{ width: '100%', height: 135, background: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
         {/* Play button overlay (with image) */}
@@ -251,40 +246,44 @@ export default function ExtraCard({
               title={extra.Status === 'failed' ? 'Remove failed status' : 'Remove ban'}
               onClick={async event => {
                 event.stopPropagation();
-                // Remove from blacklist if rejected, or just clear failed status if failed/unknown/error
-                if (extra.Status === 'failed' || extra.Status === 'unknown' || extra.Status === 'error') {
+                // Always call backend to remove from blacklist for both rejected and failed statuses
+                try {
+                  await fetch('/api/blacklist/extras/remove', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      mediaType,
+                      mediaId: media.id,
+                      extraType: baseType,
+                      extraTitle: baseTitle,
+                      youtubeId: extra.YoutubeId
+                    })
+                  });
+                  // Optimistically update UI immediately
                   if (typeof setExtras === 'function') {
                     setExtras(prev => prev.map((ex) =>
-                      ex.YoutubeId === extra.YoutubeId && ex.Type === extra.Type && ex.Title === extra.Title
+                      ex.YoutubeId === extra.YoutubeId && ex.ExtraType === baseType && ex.ExtraTitle === baseTitle
                         ? { ...ex, Status: '' }
                         : ex
                     ));
                   }
-                } else {
-                  try {
-                    await fetch('/api/blacklist/extras/remove', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        mediaType,
-                        mediaId: media.id,
-                        extraType: baseType,
-                        extraTitle: baseTitle,
-                        youtubeId: extra.YoutubeId
-                      })
-                    });
-                    // Immediately update UI to clear the rejected status
-                    if (typeof setExtras === 'function') {
-                      setExtras(prev => prev.map((ex) =>
-                        ex.YoutubeId === extra.YoutubeId && ex.ExtraType === baseType && ex.ExtraTitle === baseTitle
-                          ? { ...ex, Status: '' }
-                          : ex
-                      ));
-                    }
-                  } catch {
-                    setModalMsg('Failed to remove ban.');
-                    setShowModal(true);
+                  // Then refresh from backend
+                  if (typeof setExtras === 'function' && typeof media !== 'undefined' && media.id) {
+                    try {
+                      const res = await fetch(`/api/${mediaType === 'movie' ? 'movies' : 'series'}/${media.id}/extras`);
+                      if (res.ok) {
+                        const data = await res.json();
+                        if (Array.isArray(data)) {
+                          setExtras(data);
+                        } else if (data && Array.isArray(data.extras)) {
+                          setExtras(data.extras);
+                        }
+                      }
+                    } catch (e) { /* ignore */ }
                   }
+                } catch {
+                  setModalMsg('Failed to remove ban.');
+                  setShowModal(true);
                 }
               }}
               aria-label={extra.Status === 'failed' ? 'Remove failed status' : 'Remove ban'}

@@ -45,6 +45,7 @@ type DownloadQueueItem struct {
 	YouTubeID  string    `json:"youtubeId"`
 	QueuedAt   time.Time `json:"queuedAt"`
 	Status     string    `json:"status"` // "queued", "downloading", etc.
+	Reason     string    `json:"reason,omitempty"`
 }
 
 // DownloadStatus holds the status of a download
@@ -93,25 +94,24 @@ func GetBatchDownloadStatusHandler(c *gin.Context) {
 			}
 		}
 	}
-	// Load rejected extras from Redis
-	var rejected []RejectedExtra
-	{
-		ctx := context.Background()
-		client := GetRedisClient()
-		items, err := client.LRange(ctx, ExtrasCollectionKey, 0, -1).Result()
-		if err == nil {
-			for _, itemStr := range items {
-				var r RejectedExtra
-				if err := json.Unmarshal([]byte(itemStr), &r); err == nil {
-					rejected = append(rejected, r)
+	// Build a map for quick lookup of rejected extras using the hash
+	ctx := context.Background()
+	rejectedMap := make(map[string]RejectedExtra)
+	extras, err := GetAllExtras(ctx)
+	if err == nil {
+		for _, e := range extras {
+			if e.Status == "rejected" {
+				rejectedMap[e.YoutubeId] = RejectedExtra{
+					MediaType:  e.MediaType,
+					MediaId:    e.MediaId,
+					MediaTitle: e.MediaTitle,
+					ExtraType:  e.ExtraType,
+					ExtraTitle: e.ExtraTitle,
+					YoutubeId:  e.YoutubeId,
+					Reason:     e.Reason,
 				}
 			}
 		}
-	}
-	// Build a map for quick lookup
-	rejectedMap := make(map[string]RejectedExtra)
-	for _, r := range rejected {
-		rejectedMap[r.YoutubeId] = r
 	}
 	// Load cache files (movies/series)
 	var movieCache, seriesCache []map[string]interface{}
@@ -289,21 +289,9 @@ func StartDownloadQueueWorker() {
 				time.Sleep(2 * time.Second)
 				continue
 			}
-			// Prevent re-downloading if extra is rejected
-			rejectedItems, rejErr := client.LRange(ctx, ExtrasCollectionKey, 0, -1).Result()
-			isRejected := false
-			if rejErr == nil {
-				for _, itemStr := range rejectedItems {
-					var r RejectedExtra
-					if err := json.Unmarshal([]byte(itemStr), &r); err == nil {
-						if r.YoutubeId == item.YouTubeID && r.MediaType == item.MediaType && r.MediaId == item.MediaId && r.ExtraType == item.ExtraType && r.ExtraTitle == item.ExtraTitle {
-							isRejected = true
-							break
-						}
-					}
-				}
-			}
-			if isRejected {
+			// Prevent re-downloading if extra is rejected (hash-based)
+			entry, err := GetExtraByYoutubeId(ctx, item.YouTubeID, item.MediaType, item.MediaId)
+			if err == nil && entry != nil && entry.Status == "rejected" {
 				TrailarrLog(WARN, "QUEUE", "[StartDownloadQueueWorker] Skipping rejected extra: mediaType=%v, mediaId=%v, extraType=%s, extraTitle=%s, youtubeId=%s", item.MediaType, item.MediaId, item.ExtraType, item.ExtraTitle, item.YouTubeID)
 				// Remove from queue immediately
 				b, _ := json.Marshal(item)
@@ -324,26 +312,32 @@ func StartDownloadQueueWorker() {
 				}
 			}
 			// Perform the download
-			meta, _ := DownloadYouTubeExtra(item.MediaType, item.MediaId, item.ExtraType, item.ExtraTitle, item.YouTubeID)
+			meta, metaErr := DownloadYouTubeExtra(item.MediaType, item.MediaId, item.ExtraType, item.ExtraTitle, item.YouTubeID)
 			// Update status in Redis
 			queue, err = client.LRange(ctx, DownloadQueueRedisKey, 0, -1).Result()
 			var finalStatus string
-			if err != nil {
+			var failReason string
+			if metaErr != nil {
 				finalStatus = "failed"
-				downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: finalStatus, UpdatedAt: time.Now(), Error: err.Error()}
+				failReason = metaErr.Error()
+				downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: finalStatus, UpdatedAt: time.Now(), Error: failReason}
 			} else if meta != nil {
 				finalStatus = meta.Status
 				downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: finalStatus, UpdatedAt: time.Now()}
 			} else {
-				// meta == nil && err == nil: treat as failed
+				// meta == nil && metaErr == nil: treat as failed
 				finalStatus = "failed"
-				downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: finalStatus, UpdatedAt: time.Now(), Error: "No metadata returned from download"}
+				failReason = "No metadata returned from download"
+				downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: finalStatus, UpdatedAt: time.Now(), Error: failReason}
 			}
 			// After download attempt, update status in Redis and broadcast only the final status
 			if err == nil && idx >= 0 && idx < len(queue) {
 				var q DownloadQueueItem
 				if err := json.Unmarshal([]byte(queue[idx]), &q); err == nil {
 					q.Status = finalStatus
+					if finalStatus == "failed" && failReason != "" {
+						q.Reason = failReason
+					}
 					b, _ := json.Marshal(q)
 					_ = client.LSet(ctx, DownloadQueueRedisKey, int64(idx), b).Err()
 					BroadcastDownloadQueueChanges([]DownloadQueueItem{q})
@@ -351,6 +345,9 @@ func StartDownloadQueueWorker() {
 			} else {
 				// If we can't update in Redis, still broadcast the failed status
 				item.Status = finalStatus
+				if finalStatus == "failed" && failReason != "" {
+					item.Reason = failReason
+				}
 				BroadcastDownloadQueueChanges([]DownloadQueueItem{item})
 			}
 			// Wait 10 seconds, then remove the item from the queue
@@ -626,19 +623,11 @@ func checkExistingExtra(info *downloadInfo, youtubeId string) (*ExtraDownloadMet
 }
 
 func checkRejectedExtras(info *downloadInfo, youtubeId string) *ExtraDownloadMetadata {
+	// Use the hash-based approach: check if extra is marked as rejected in the hash
 	ctx := context.Background()
-	client := GetRedisClient()
-	items, err := client.LRange(ctx, ExtrasCollectionKey, 0, -1).Result()
-	if err == nil {
-		for _, itemStr := range items {
-			var r map[string]string
-			if err := json.Unmarshal([]byte(itemStr), &r); err == nil {
-				if r["youtubeId"] == youtubeId {
-					TrailarrLog(INFO, "YouTube", "Extra is in rejected list, skipping: %s", info.ExtraTitle)
-					return NewExtraDownloadMetadata(info, youtubeId, "rejected")
-				}
-			}
-		}
+	entry, err := GetExtraByYoutubeId(ctx, youtubeId, info.MediaType, info.MediaId)
+	if err == nil && entry != nil && entry.Status == "rejected" {
+		return NewExtraDownloadMetadata(info, youtubeId, "rejected")
 	}
 	return nil
 }
@@ -726,7 +715,7 @@ func handleDownloadErrorNative(info *downloadInfo, youtubeId string, err error, 
 	TrailarrLog(ERROR, "YouTube", "Download failed for %s: %s", youtubeId, reason)
 	addToRejectedExtras(info, youtubeId, reason)
 	// Also update the unified extras collection in Redis
-	errMark := MarkExtraRejected(info.MediaType, info.MediaId, info.ExtraType, info.ExtraTitle, youtubeId, reason)
+	errMark := SetExtraRejectedPersistent(info.MediaType, info.MediaId, info.ExtraType, info.ExtraTitle, youtubeId, reason)
 	if errMark != nil {
 		TrailarrLog(ERROR, "YouTube", "Failed to mark extra as rejected in Redis: %v", errMark)
 	}
@@ -734,33 +723,14 @@ func handleDownloadErrorNative(info *downloadInfo, youtubeId string, err error, 
 }
 
 func addToRejectedExtras(info *downloadInfo, youtubeId, reason string) {
-	// Add rejected extra to Redis (ExtrasCollectionKey)
+	// Use the hash-based approach: mark as rejected in the hash only if not already rejected
 	ctx := context.Background()
-	client := GetRedisClient()
-	// Check if already rejected
-	items, err := client.LRange(ctx, ExtrasCollectionKey, 0, -1).Result()
-	if err == nil {
-		for _, itemStr := range items {
-			var r RejectedExtra
-			if err := json.Unmarshal([]byte(itemStr), &r); err == nil {
-				if r.YoutubeId == youtubeId {
-					return
-				}
-			}
-		}
+	entry, err := GetExtraByYoutubeId(ctx, youtubeId, info.MediaType, info.MediaId)
+	if err == nil && entry != nil && entry.Status == "rejected" {
+		return
 	}
-	// Add new rejected extra
-	rejected := RejectedExtra{
-		MediaType:  info.MediaType,
-		MediaId:    info.MediaId,
-		MediaTitle: info.MediaTitle,
-		ExtraType:  info.ExtraType,
-		ExtraTitle: info.ExtraTitle,
-		YoutubeId:  youtubeId,
-		Reason:     reason,
-	}
-	b, _ := json.Marshal(rejected)
-	_ = client.RPush(ctx, ExtrasCollectionKey, b).Err()
+	// Add or update as rejected
+	_ = SetExtraRejectedPersistent(info.MediaType, info.MediaId, info.ExtraType, info.ExtraTitle, youtubeId, reason)
 }
 
 func moveDownloadedFile(info *downloadInfo) error {
