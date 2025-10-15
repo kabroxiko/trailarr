@@ -1,9 +1,47 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import IconButton from './IconButton.jsx';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faBookmark } from '@fortawesome/free-regular-svg-icons';
 
 export default function MediaCard({ media, mediaType, error }) {
+  const [cast, setCast] = useState([]);
+  const [castLoading, setCastLoading] = useState(false);
+  const [castError, setCastError] = useState("");
+  useEffect(() => {
+    if (!media || !media.id || !mediaType) {
+      setCast([]);
+      setCastError("");
+      return;
+    }
+    setCastLoading(true);
+    setCastError("");
+    let url = "";
+    if (mediaType === "movie") {
+      url = `/api/movies/${media.id}/cast`;
+    } else if (mediaType === "series" || mediaType === "tv") {
+      url = `/api/series/${media.id}/cast`;
+    } else {
+      setCast([]);
+      setCastError("Unknown media type");
+      setCastLoading(false);
+      return;
+    }
+    fetch(url)
+      .then(res => {
+        if (!res.ok) throw new Error("Failed to fetch cast");
+        return res.json();
+      })
+      .then(data => {
+        setCast(Array.isArray(data.cast) ? data.cast : []);
+        setCastLoading(false);
+      })
+      .catch(e => {
+        setCast([]);
+        setCastError("Failed to load cast");
+        setCastLoading(false);
+      });
+  }, [media, mediaType]);
+
   if (!media) return null;
 
   let background;
@@ -54,8 +92,41 @@ export default function MediaCard({ media, mediaType, error }) {
           </div>
         )}
         <div style={{ marginBottom: 6, color: '#e5e7eb', textAlign: 'left', fontSize: 13, textShadow: '0 1px 2px #000' }}>{media.year} &bull; {media.path}</div>
-          {/* error is now shown only via Toast */}
+        {/* Cast display - now inside MediaCard, directly under year/path */}
+        <div style={{ marginBottom: 10, width: '100%' }}>
+          <div style={{ height: 20, marginBottom: 4 }} />
+          {castLoading && <div style={{ fontSize: '0.95em', color: '#bbb' }}>Loading cast...</div>}
+          {castError && <div style={{ color: 'red', fontSize: '0.95em' }}>{castError}</div>}
+          {!castLoading && !castError && cast && cast.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.2em 1.5em' }}>
+              {cast.slice(0, 10).map(actor => (
+                <div key={actor.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, minWidth: 0 }}>
+                  {actor.profile_path && actor.profile_path !== '' ? (
+                    <img
+                      src={`https://image.tmdb.org/t/p/w185${actor.profile_path}`}
+                      alt={actor.name}
+                      style={{ width: 56, height: 80, objectFit: 'cover', borderRadius: 4, background: '#2222', marginBottom: 2 }}
+                      onError={e => { e.target.onerror = null; e.target.src = '/logo.svg'; }}
+                    />
+                  ) : (
+                    <div style={{ width: 56, height: 80, background: '#4444', borderRadius: 4, marginBottom: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="16" cy="12" r="7" fill="#888" />
+                        <ellipse cx="16" cy="25" rx="11" ry="7" fill="#888" />
+                      </svg>
+                    </div>
+                  )}
+                  <span style={{ fontWeight: 500, fontSize: '0.68em', color: '#fff', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: 80, textAlign: 'center' }}>{actor.name}</span>
+                  <span style={{ fontSize: '0.60em', color: '#fff', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', maxWidth: 80, textAlign: 'center' }}>{actor.character}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {!castLoading && !castError && (!cast || cast.length === 0) && (
+            <div style={{ fontSize: '0.95em', color: '#bbb' }}>No cast information available.</div>
+          )}
         </div>
       </div>
+    </div>
   );
 }
