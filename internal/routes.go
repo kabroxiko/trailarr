@@ -2,6 +2,7 @@ package internal
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -10,6 +11,49 @@ import (
 )
 
 func RegisterRoutes(r *gin.Engine) {
+	// --- Cast endpoints ---
+	r.GET("/api/movies/:id/cast", func(c *gin.Context) {
+		idStr := c.Param("id")
+		var id int
+		fmt.Sscanf(idStr, "%d", &id)
+		tmdbKey, err := GetTMDBKey()
+		if err != nil {
+			respondError(c, http.StatusInternalServerError, err.Error())
+			return
+		}
+		tmdbId, err := GetTMDBId(MediaTypeMovie, id, tmdbKey)
+		if err != nil {
+			respondError(c, http.StatusInternalServerError, err.Error())
+			return
+		}
+		cast, err := FetchTMDBCast(MediaTypeMovie, tmdbId, tmdbKey)
+		if err != nil {
+			respondError(c, http.StatusInternalServerError, err.Error())
+			return
+		}
+		respondJSON(c, http.StatusOK, gin.H{"cast": cast})
+	})
+	r.GET("/api/series/:id/cast", func(c *gin.Context) {
+		idStr := c.Param("id")
+		var id int
+		fmt.Sscanf(idStr, "%d", &id)
+		tmdbKey, err := GetTMDBKey()
+		if err != nil {
+			respondError(c, http.StatusInternalServerError, err.Error())
+			return
+		}
+		tmdbId, err := GetTMDBId(MediaTypeTV, id, tmdbKey)
+		if err != nil {
+			respondError(c, http.StatusInternalServerError, err.Error())
+			return
+		}
+		cast, err := FetchTMDBCast(MediaTypeTV, tmdbId, tmdbKey)
+		if err != nil {
+			respondError(c, http.StatusInternalServerError, err.Error())
+			return
+		}
+		respondJSON(c, http.StatusOK, gin.H{"cast": cast})
+	})
 	// Proxy YouTube trailer search (POST only)
 	r.POST("/api/youtube/search", YouTubeTrailerSearchHandler)
 	// Progressive YouTube trailer search (SSE, GET)

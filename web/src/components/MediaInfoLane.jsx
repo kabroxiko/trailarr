@@ -6,7 +6,6 @@ import { searchYoutubeStream } from '../api.youtube.sse';
 
 export default function MediaInfoLane({ media, searchLoading, handleSearchExtras, setError, ytResults, setYtResults, darkMode }) {
   const [ytLoading, setYtLoading] = useState(false);
-
   const handleManualSearch = () => {
     if (!media) return;
     if (!media.mediaType || !media.id) {
@@ -78,7 +77,6 @@ export default function MediaInfoLane({ media, searchLoading, handleSearchExtras
           </span>
         </button>
       </div>
-      {/* YouTube search results are now shown as cards in the Trailers group, not as a text list here. */}
     </div>
   );
 }

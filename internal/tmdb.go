@@ -8,6 +8,44 @@ import (
 	"net/url"
 )
 
+// TMDBCastMember represents a cast member (actor) from TMDB
+type TMDBCastMember struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Character   string `json:"character"`
+	ProfilePath string `json:"profile_path"`
+	Order       int    `json:"order"`
+}
+
+// FetchTMDBCast fetches cast info from TMDB for a given media type and TMDB id
+func FetchTMDBCast(mediaType MediaType, tmdbId int, tmdbKey string) ([]TMDBCastMember, error) {
+	var url string
+	switch mediaType {
+	case MediaTypeMovie:
+		url = fmt.Sprintf("https://api.themoviedb.org/3/movie/%d/credits?api_key=%s", tmdbId, tmdbKey)
+	case MediaTypeTV:
+		url = fmt.Sprintf("https://api.themoviedb.org/3/tv/%d/credits?api_key=%s", tmdbId, tmdbKey)
+	default:
+		return nil, fmt.Errorf("unsupported mediaType for cast fetch: %s", mediaType)
+	}
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	var result struct {
+		Cast []TMDBCastMember `json:"cast"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+	return result.Cast, nil
+}
+
 // Common TMDB extra types (singular)
 var TMDBExtraTypes = []string{
 	"Trailer",

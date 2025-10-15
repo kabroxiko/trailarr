@@ -328,10 +328,15 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
       )}
       {/* Render YouTube modal only once at the page level */}
       {(youtubeModal.open && youtubeModal.videoId) && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.7)', zIndex: 99999,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
+        <div
+          style={{
+            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.7)', zIndex: 99999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+          onClick={e => {
+            if (e.target === e.currentTarget) setYoutubeModal({ open: false, videoId: '' });
+          }}
+        >
           <div style={{
             position: 'relative',
             background: '#18181b',
