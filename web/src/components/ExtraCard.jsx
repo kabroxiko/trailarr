@@ -84,12 +84,14 @@ export default function ExtraCard({
       });
       if (res.ok) {
         setErrorCard(null);
-        // If this card is a search-only card (not in backend), add a backend-style extra to extras state
+        // Only add a new backend-style extra if not already present (by YoutubeId, ExtraType, and ExtraTitle)
         if (typeof setExtras === 'function' && !downloaded && !isQueued && !isDownloading && !exists) {
           setExtras(prev => {
-            // If already present as a backend extra, do nothing
-            if (prev.some(ex => ex.YoutubeId === extra.YoutubeId && ex.Status && ex.Status !== '')) return prev;
-            // Add a new backend-style extra with Status 'queued' (optimistic)
+            if (prev.some(ex =>
+              ex.YoutubeId === extra.YoutubeId &&
+              ex.ExtraType === baseType &&
+              ex.ExtraTitle === baseTitle
+            )) return prev;
             return [
               ...prev,
               {

@@ -30,39 +30,6 @@ func ListSubdirectories(path string) ([]string, error) {
 	return dirs, nil
 }
 
-// Helper: Update extras in cache by predicate
-func updateExtrasInCache(mediaType MediaType, mediaId int, updateFn func(em map[string]interface{}) bool) error {
-	cacheFile, _ := resolveCachePath(mediaType)
-	items, err := loadCache(cacheFile)
-	if err != nil {
-		return err
-	}
-	updated := false
-	for _, m := range items {
-		idInt, ok := parseMediaID(m["id"])
-		if !ok || idInt != mediaId {
-			continue
-		}
-		extras, ok := m["extras"].([]interface{})
-		if !ok {
-			continue
-		}
-		for _, e := range extras {
-			em, ok := e.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			if updateFn(em) {
-				updated = true
-			}
-		}
-	}
-	if updated {
-		return SaveMediaToRedis(cacheFile, items)
-	}
-	return nil
-}
-
 // Sanitize filename for OS conflicts (remove/replace invalid chars)
 func SanitizeFilename(name string) string {
 	// Remove any character not allowed in filenames
@@ -184,15 +151,6 @@ func RemoveExtra(ctx context.Context, youtubeId string, mediaType MediaType, med
 	client := GetRedisClient()
 	key := ExtrasCollectionKey
 	entryKey := fmt.Sprintf("%s:%s:%d", youtubeId, mediaType, mediaId)
-	// Debug: print the entryKey and all current keys in the hash
-	keys, _ := client.HKeys(ctx, key).Result()
-	filteredKeys := make([]string, 0, len(keys))
-	idStr := fmt.Sprintf(":%d", mediaId)
-	for _, k := range keys {
-		if strings.HasSuffix(k, idStr) {
-			filteredKeys = append(filteredKeys, k)
-		}
-	}
 	err := client.HDel(ctx, key, entryKey).Err()
 	return err
 }
@@ -219,7 +177,6 @@ func GetRejectedExtrasForMedia(mediaType MediaType, id int) []RejectedExtra {
 			rejected = append(rejected, RejectedExtra{
 				MediaType:  e.MediaType,
 				MediaId:    e.MediaId,
-				MediaTitle: "", // MediaTitle not stored in unified collection
 				ExtraType:  e.ExtraType,
 				ExtraTitle: e.ExtraTitle,
 				YoutubeId:  e.YoutubeId,
