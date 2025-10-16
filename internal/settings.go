@@ -15,19 +15,22 @@ const (
 	TrailarrRoot             = "/var/lib/trailarr"
 	ConfigPath               = TrailarrRoot + "/config/config.yml"
 	MediaCoverPath           = TrailarrRoot + "/MediaCover"
-	QueueFile                = TrailarrRoot + "/queue.json"
 	CookiesFile              = TrailarrRoot + "/.config/google-chrome/cookies.txt"
 	LogsDir                  = TrailarrRoot + "/logs"
-	HistoryFile              = TrailarrRoot + "/history.json"
-	MoviesJSONPath           = "trailarr:movies"
-	SeriesJSONPath           = "trailarr:series"
-	ExtrasCollectionKey      = "trailarr:extras"
-	DownloadQueueRedisKey    = "trailarr:download_queue"
-	ErrInvalidSonarrSettings = "Invalid Sonarr settings"
+	MoviesRedisKey           = "trailarr:movies"
+	SeriesRedisKey           = "trailarr:series"
+	ExtrasRedisKey           = "trailarr:extras"
+	DownloadQueue            = "trailarr:download_queue"
+	TaskTimesRedisKey        = "trailarr:task_times"
+	HistoryRedisKey          = "trailarr:history"
+	HistoryMaxLen            = 1000
+	TaskQueueRedisKey        = "trailarr:task_queue"
+	TaskQueueMaxLen          = 1000
 	RemoteMediaCoverPath     = "/MediaCover/"
 	HeaderApiKey             = "X-Api-Key"
-	ErrInvalidRequest        = "invalid request"
 	HeaderContentType        = "Content-Type"
+	ErrInvalidSonarrSettings = "Invalid Sonarr settings"
+	ErrInvalidRequest        = "invalid request"
 )
 
 // Global in-memory config

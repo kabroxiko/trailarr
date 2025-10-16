@@ -33,9 +33,9 @@ const HistoryPage = () => {
     // Only use mediaId for links
     if (item.mediaId) {
       if (item.mediaType === 'movie') {
-        return `/movies/${item.mediaId}`;
+        return `/history/movies/${item.mediaId}`;
       } else if (item.mediaType === 'tv') {
-        return `/series/${item.mediaId}`;
+        return `/history/series/${item.mediaId}`;
       }
     }
     return null;

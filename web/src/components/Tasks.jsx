@@ -95,8 +95,8 @@ export default function Tasks() {
 
   // Converts a time value in milliseconds to human-readable text, showing only the largest non-zero unit
   // durationToText: ms to human text, with rounding option
-  // roundType: 'ceil' (default), 'cut', 'round'
-  function durationToText(ms, suffix = '', roundType = 'ceil') {
+  // roundType: 'round' (default), 'cut', 'ceil'
+  function durationToText(ms, suffix = '', roundType = 'round') {
     if (typeof ms !== 'number' || isNaN(ms) || ms < 0) return `0 seconds${suffix}`;
     let totalSeconds;
     if (roundType === 'cut') {
@@ -471,25 +471,27 @@ export default function Tasks() {
                   return endedDate.toLocaleString();
                 })()}</td>
                 <td style={styles.td}>{(() => {
-                  if (!item.duration || item.duration === '') return '—';
+                  // Normalize duration and display using formatDuration.
+                  // Backend returns seconds (number) via qi.Duration.Seconds().
+                  // Older code stored nanoseconds; detect large numeric values and convert.
+                  if (item.duration === null || item.duration === undefined || item.duration === '') return '—';
                   let dur = item.duration;
+                  // If duration is a numeric string, convert to number
                   if (typeof dur === 'string') {
-                    dur = Number(dur);
+                    const n = Number(dur);
+                    if (!isNaN(n)) dur = n;
                   }
                   if (typeof dur === 'number' && !isNaN(dur)) {
-                    // If > 1s, show seconds, else show ms
-                    if (dur >= 1e9) {
-                      return `${(dur / 1e9).toFixed(2)} s`;
-                    } else if (dur >= 1e6) {
-                      return `${Math.round(dur / 1e6)} ms`;
-                    } else if (dur >= 1e3) {
-                      return `${Math.round(dur / 1e3)} μs`;
-                    } else {
-                      return `${dur} ns`;
+                    // Heuristic: if the number looks like nanoseconds (very large), convert to seconds
+                    let seconds = dur;
+                    if (Math.abs(dur) >= 1e6) {
+                      // treat as nanoseconds -> seconds
+                      seconds = dur / 1e9;
                     }
+                    return formatDuration(seconds);
                   }
-                  // If string and not a number, fallback to previous logic
-                  return item.duration;
+                  // Fallback: let formatDuration handle strings like '1m2.3s' or '123ms'
+                  return formatDuration(item.duration);
                 })()}</td>
               </tr>
             );

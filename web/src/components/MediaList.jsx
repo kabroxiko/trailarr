@@ -1,132 +1,113 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import MediaCard from './MediaCard.jsx';
 
-export default function MediaList({ items, darkMode, type }) {
+// basePath: e.g. '/wanted/movies' or '/movies'
+export default function MediaList({ items, darkMode, type, basePath }) {
+  const [showEmpty, setShowEmpty] = useState(false);
+
+  useEffect(() => {
+    let t;
+    if (!items || items.length === 0) {
+      // wait briefly before showing empty state to avoid flash while loading
+      t = setTimeout(() => setShowEmpty(true), 500);
+    } else {
+      setShowEmpty(false);
+    }
+    return () => clearTimeout(t);
+  }, [items]);
+
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 0px))',
-        gap: '2rem 1.5rem',
-        padding: '1.5rem 1rem',
-        width: '100%',
-        boxSizing: 'border-box',
-        justifyContent: 'flex-start',
-        gridAutoFlow: 'unset',
-      }}
-    >
-      {items.map((item) => (
+    <div style={{ width: '100%' }}>
+  {(items.length === 0 && showEmpty) ? (
         <div
-          key={item.id + '-' + type}
           style={{
-            background: darkMode ? '#23232a' : '#fff',
-            borderRadius: 12,
-            boxShadow: darkMode ? '0 2px 8px #18181b' : '0 2px 8px #e5e7eb',
-            padding: '0.85rem',
+            minHeight: 'calc(100vh - 120px)',
             display: 'flex',
-            flexDirection: 'column',
             alignItems: 'center',
-            height: 410,
-            transition: 'box-shadow 0.2s',
-            border: darkMode ? '1px solid #333' : '1px solid #eee',
-            overflow: 'hidden',
-            width: 220,
+            justifyContent: 'center',
+            padding: '1.5rem',
             boxSizing: 'border-box',
           }}
         >
-          <Link
-            to={type === 'series' ? `/series/${item.id}` : `/movies/${item.id}`}
+          <div
             style={{
-              width: '100%',
+              textAlign: 'center',
+              color: darkMode ? '#ddd' : '#333',
+              background: darkMode ? '#121214' : '#fbfbfb',
+              border: darkMode ? '1px solid #222' : '1px solid #eee',
+              padding: '1.25rem 1.5rem',
+              borderRadius: 10,
+              maxWidth: 800,
+              width: 'auto',
+              margin: '0 auto',
+            }}
+          >
+            <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>No media found</div>
+            <div style={{ fontSize: 14, opacity: 0.85 }}>
+              There are no items to show here. Try scanning your libraries, check your path mappings, or adjust filters.
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: (items && items.length > 0)
+              ? 'repeat(auto-fill, 220px)'
+              : 'repeat(auto-fit, minmax(200px, 1fr))',
+            gridAutoRows: '1fr',
+            justifyContent: (items && items.length > 0) ? 'start' : 'center',
+            gap: '2rem 1.5rem',
+            padding: '1.5rem 1rem',
+            width: '100%',
+            boxSizing: 'border-box',
+            alignItems: 'start',
+          }}
+        >
+          {items.map((item) => (
+          <div
+            key={item.id + '-' + type}
+            style={{
+              background: darkMode ? '#23232a' : '#fff',
+              borderRadius: 12,
+              boxShadow: darkMode ? '0 2px 8px #18181b' : '0 2px 8px #e5e7eb',
+              padding: '0.85rem',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              textDecoration: 'none',
-              height: '100%',
+              height: 410,
+              transition: 'box-shadow 0.2s',
+              border: darkMode ? '1px solid #333' : '1px solid #eee',
+              overflow: 'hidden',
+              width: 220,
+              boxSizing: 'border-box',
             }}
           >
-            <div style={{
-              width: 200,
-              height: 300,
-              position: 'relative',
-              marginBottom: 10,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: darkMode ? '#222' : '#fff',
-              borderRadius: 8,
-              overflow: 'hidden',
-              border: darkMode ? '1px solid #333' : '1px solid #eee',
-            }}>
-              <img
-                key={item.id + '-' + type}
-                src={type === 'series'
-                  ? `/mediacover/Series/${item.id}/poster-500.jpg`
-                  : `/mediacover/Movies/${item.id}/poster-500.jpg`}
-                width={200}
-                height={300}
-                loading="lazy"
-                style={{
-                  width: 200,
-                  height: 300,
-                  objectFit: 'cover',
-                  borderRadius: 8,
-                  display: 'block',
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  zIndex: 1,
-                }}
-                onError={e => {
-                  e.target.onerror = null;
-                  e.target.src = '';
-                  const parent = e.target.parentNode;
-                  if (parent && !parent.querySelector('.fallback-logo')) {
-                    const logo = document.createElement('img');
-                    logo.src = '/logo.svg';
-                    logo.width = 80;
-                    logo.height = 80;
-                    logo.alt = 'No Poster';
-                    logo.className = 'fallback-logo';
-                    logo.style.position = 'relative';
-                    logo.style.zIndex = 2;
-                    logo.style.display = 'block';
-                    logo.style.margin = 'auto';
-                    logo.style.top = '0';
-                    logo.style.left = '0';
-                    logo.style.right = '0';
-                    logo.style.bottom = '0';
-                    logo.style.transform = 'none';
-                    parent.appendChild(logo);
-                  }
-                  e.target.style.visibility = 'hidden';
-                }}
-                alt={item.title}
-              />
-            </div>
-            <div style={{ color: darkMode ? '#e5e7eb' : '#222', fontSize: 14, marginBottom: 2, opacity: 0.85 }}>{item.year ? item.year : (item.airDate || '')}</div>
-            <div style={{ flex: 1 }} />
-            <div
+            <Link
+              to={
+                basePath
+                  ? `${basePath}/${item.id}`
+                  : (type === 'series' ? `/series/${item.id}` : `/movies/${item.id}`)
+              }
               style={{
-                color: darkMode ? '#fff' : '#222',
-                fontWeight: 600,
-                fontSize: 16,
-                textAlign: 'center',
-                marginBottom: 2,
                 width: '100%',
-                maxWidth: 180,
-                wordBreak: 'break-word',
-                overflow: 'hidden',
-                textOverflow: 'clip',
-                whiteSpace: 'normal',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                textDecoration: 'none',
+                height: '100%',
               }}
-              title={item.title}
             >
-              {item.title}
-            </div>
-          </Link>
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%' }}>
+                <MediaCard media={item} mediaType={type} darkMode={darkMode} />
+                <div style={{ flex: 1 }} />
+              </div>
+            </Link>
+          </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 }

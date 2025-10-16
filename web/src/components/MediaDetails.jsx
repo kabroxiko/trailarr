@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import MediaInfoLane from './MediaInfoLane.jsx';
-import MediaCard from './MediaCard.jsx';
+import MediaActionLane from './MediaActionLane.jsx';
 import ExtrasList from './ExtrasList';
 import YoutubePlayer from './YoutubePlayer.jsx';
 import Container from './Container.jsx';
@@ -297,17 +297,14 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
           {modalMsg}
         </div>
       )}
-  <MediaInfoLane
+  <MediaActionLane
     media={{ ...media, mediaType }}
-    searchLoading={searchLoading}
-    handleSearchExtras={handleSearchExtras}
     setError={setError}
-    ytResults={ytResults}
     setYtResults={setYtResults}
     darkMode={darkMode}
   />
       <div style={{ marginTop: '4.5rem' }}>
-        <MediaCard media={media} mediaType={mediaType} darkMode={darkMode} error={error} />
+        <MediaInfoLane media={{ ...media, mediaType }} mediaType={mediaType} darkMode={darkMode} error={error} />
       </div>
       <Toast message={error} onClose={() => setError('')} darkMode={darkMode} />
       {/* Grouped extras by type, with 'Trailers' first */}
