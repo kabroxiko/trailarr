@@ -2,11 +2,14 @@ package internal
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 )
+
+// ErrTMDBNotFound is returned when a media entry exists in the cache but has no tmdbId
+var ErrTMDBNotFound = errors.New("tmdb id not found in cache")
 
 // TMDBCastMember represents a cast member (actor) from TMDB
 type TMDBCastMember struct {
@@ -83,78 +86,44 @@ func GetTMDBKey() (string, error) {
 	return tmdbKey, nil
 }
 
-func GetTMDBId(mediaType MediaType, id int, tmdbKey string) (int, error) {
+func GetTMDBId(mediaType MediaType, mediaId int) (int, error) {
+	var cachePath string
 	switch mediaType {
 	case MediaTypeMovie:
-		return GetMovieTMDBId(id)
+		cachePath = MoviesRedisKey
 	case MediaTypeTV:
-		return GetTVTMDBId(id, tmdbKey)
-	default:
-		TrailarrLog(WARN, "TMDB", "unknown mediaType: %s", mediaType)
-		return 0, fmt.Errorf("unknown mediaType: %s", mediaType)
+		cachePath = SeriesRedisKey
 	}
+
+	tmdb, err := getCachedTMDBId(cachePath, mediaId)
+	if err == nil {
+		return tmdb, nil
+	}
+	if errors.Is(err, ErrTMDBNotFound) {
+		TrailarrLog(WARN, "TMDB", "TMDB id not found for %s id %d", mediaType, mediaId)
+		return 0, fmt.Errorf("TMDB id not found for %s id %d", mediaType, mediaId)
+	}
+
+	return 0, err
 }
 
-func GetMovieTMDBId(id int) (int, error) {
-	var movies []map[string]interface{}
-	movies, err := LoadMediaFromRedis(MoviesJSONPath)
+// getCachedTMDBId checks a JSON cache path (Radarr/Sonarr JSON dumps) for a matching id
+// and returns the stored tmdbId if present. Returns (tmdbId, found, error).
+func getCachedTMDBId(cachePath string, mediaId int) (int, error) {
+	var items []map[string]interface{}
+	items, err := LoadMediaFromRedis(cachePath)
 	if err != nil {
-		return 0, fmt.Errorf("failed to read or decode Radarr cache: %w", err)
+		return 0, fmt.Errorf("failed to read or decode cache %s: %w", cachePath, err)
 	}
-	for _, m := range movies {
-		if mid, ok := m["id"].(float64); ok && int(mid) == id {
-			if tmdb, ok := m["tmdbId"].(float64); ok {
+	for _, it := range items {
+		if iid, ok := it["id"].(float64); ok && int(iid) == mediaId {
+			if tmdb, ok := it["tmdbId"].(float64); ok && int(tmdb) != 0 {
 				return int(tmdb), nil
 			}
-			break
+			return 0, ErrTMDBNotFound
 		}
 	}
-	TrailarrLog(WARN, "TMDB", "TMDB id not found for Radarr movie id %d", id)
-	return 0, fmt.Errorf("TMDB id not found for Radarr movie id %d", id)
-}
-
-func GetTVTMDBId(id int, tmdbKey string) (int, error) {
-	var series []map[string]interface{}
-	series, err := LoadMediaFromRedis(SeriesJSONPath)
-	if err != nil {
-		return 0, fmt.Errorf("failed to read or decode Sonarr cache: %w", err)
-	}
-	var title string
-	for _, s := range series {
-		if sid, ok := s["id"].(float64); ok && int(sid) == id {
-			if t, ok := s["title"].(string); ok {
-				title = t
-			}
-			break
-		}
-	}
-	if title == "" {
-		TrailarrLog(WARN, "TMDB", "title not found for Sonarr series id %d", id)
-		return 0, fmt.Errorf("title not found for Sonarr series id %d", id)
-	}
-	tmdbSearchURL := fmt.Sprintf("https://api.themoviedb.org/3/search/tv?api_key=%s&query=%s", tmdbKey, url.QueryEscape(title))
-	resp, err := http.Get(tmdbSearchURL)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return 0, err
-	}
-	var tmdbResult struct {
-		Results []struct {
-			ID int `json:"id"`
-		} `json:"results"`
-	}
-	if err := json.Unmarshal(body, &tmdbResult); err != nil {
-		return 0, err
-	}
-	if len(tmdbResult.Results) == 0 {
-		TrailarrLog(WARN, "TMDB", "no TMDB TV series found for title %s", title)
-		return 0, fmt.Errorf("no TMDB TV series found for title %s", title)
-	}
-	return tmdbResult.Results[0].ID, nil
+	return 0, ErrTMDBNotFound
 }
 
 func FetchTMDBExtras(mediaType MediaType, tmdbId int, tmdbKey string) ([]Extra, error) {

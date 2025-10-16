@@ -192,6 +192,12 @@ jobs:
             npm ci
             npm run build
           fi
+      - name: Fail if frontend build is missing
+        run: |
+          if [ ! -d "web/dist" ] || [ -z "$(ls -A web/dist)" ]; then
+            echo "ERROR: web/dist is missing or empty after artifact download and build."
+            exit 1
+          fi
       - name: Build binary
         env:
           GOOS: ${{ matrix.goos }}

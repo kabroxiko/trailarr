@@ -1,11 +1,16 @@
 package internal
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	iofs "io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
+
+	"trailarr/assets"
 
 	"github.com/gin-gonic/gin"
 )
@@ -21,7 +26,7 @@ func RegisterRoutes(r *gin.Engine) {
 			respondError(c, http.StatusInternalServerError, err.Error())
 			return
 		}
-		tmdbId, err := GetTMDBId(MediaTypeMovie, id, tmdbKey)
+		tmdbId, err := GetTMDBId(MediaTypeMovie, id)
 		if err != nil {
 			respondError(c, http.StatusInternalServerError, err.Error())
 			return
@@ -42,7 +47,7 @@ func RegisterRoutes(r *gin.Engine) {
 			respondError(c, http.StatusInternalServerError, err.Error())
 			return
 		}
-		tmdbId, err := GetTMDBId(MediaTypeTV, id, tmdbKey)
+		tmdbId, err := GetTMDBId(MediaTypeTV, id)
 		if err != nil {
 			respondError(c, http.StatusInternalServerError, err.Error())
 			return
@@ -216,9 +221,45 @@ func RegisterRoutes(r *gin.Engine) {
 	r.GET("/api/tasks/queue", GetTaskQueueFileHandler())
 	r.POST("/api/tasks/force", TaskHandler())
 
-	// Serve React static files and SPA fallback
-	r.Static("/assets", "./web/dist/assets")
-	r.StaticFile("/", "./web/dist/index.html")
+	// Serve React static files and SPA fallback from embedded web/dist
+	// Create a sub filesystem rooted at web/dist
+	// Use embedded dist from assets package
+	distFS, err := iofs.Sub(assets.EmbeddedDist, "dist")
+	if err == nil {
+		// serve assets from embedded dist/assets
+		r.GET("/assets/*filepath", func(c *gin.Context) {
+			// strip leading /assets/
+			p := c.Param("filepath")
+			f, err := distFS.Open(filepath.Join("assets", p))
+			if err != nil {
+				c.Status(http.StatusNotFound)
+				return
+			}
+			defer f.Close()
+			// read file contents into a reader that implements ReadSeeker
+			buf, err := iofs.ReadFile(distFS, filepath.Join("assets", p))
+			if err != nil {
+				c.Status(http.StatusNotFound)
+				return
+			}
+			reader := bytes.NewReader(buf)
+			http.ServeContent(c.Writer, c.Request, p, time.Now(), reader)
+		})
+		// serve index.html at root
+		r.GET("/", func(c *gin.Context) {
+			data, err := iofs.ReadFile(distFS, "index.html")
+			if err != nil {
+				c.Status(http.StatusNotFound)
+				return
+			}
+			reader := bytes.NewReader(data)
+			http.ServeContent(c.Writer, c.Request, "index.html", time.Now(), reader)
+		})
+	} else {
+		// fallback to filesystem if embed not available
+		r.Static("/assets", "./web/dist/assets")
+		r.StaticFile("/", "./web/dist/index.html")
+	}
 
 	// Serve log files for frontend log viewer
 	r.GET("/logs/:filename", func(c *gin.Context) {
@@ -234,12 +275,31 @@ func RegisterRoutes(r *gin.Engine) {
 
 	r.NoRoute(func(c *gin.Context) {
 		TrailarrLog(INFO, "WEB", "NoRoute handler hit for path: %s", c.Request.URL.Path)
+		// Serve index.html from embed if possible
+		if distFS != nil {
+			data, err := iofs.ReadFile(distFS, "index.html")
+			if err == nil {
+				reader := bytes.NewReader(data)
+				http.ServeContent(c.Writer, c.Request, "index.html", time.Now(), reader)
+				return
+			}
+		}
 		c.File("./web/dist/index.html")
 	})
 
 	// Serve static files for movie posters
 	r.Static("/mediacover", MediaCoverPath)
-	r.StaticFile("/logo.svg", "web/public/logo.svg")
+	// Serve logo.svg from embedded dist (if present) or fall back to public
+	r.GET("/logo.svg", func(c *gin.Context) {
+		if distFS != nil {
+			if data, err := iofs.ReadFile(distFS, "logo.svg"); err == nil {
+				reader := bytes.NewReader(data)
+				http.ServeContent(c.Writer, c.Request, "logo.svg", time.Now(), reader)
+				return
+			}
+		}
+		c.File("web/public/logo.svg")
+	})
 	// Helper for default media path
 	// Group movies/series endpoints
 	for _, media := range []struct {
@@ -248,8 +308,8 @@ func RegisterRoutes(r *gin.Engine) {
 		fallbackPath string
 		extrasType   MediaType
 	}{
-		{"movies", MoviesJSONPath, "/Movies", MediaTypeMovie},
-		{"series", SeriesJSONPath, "/Series", MediaTypeTV},
+		{"movies", MoviesRedisKey, "/Movies", MediaTypeMovie},
+		{"series", SeriesRedisKey, "/Series", MediaTypeTV},
 	} {
 		r.GET("/api/"+media.section, GetMediaHandler(media.cacheFile, "id"))
 		r.GET("/api/"+media.section+"/wanted", GetMissingExtrasHandler(media.cacheFile))

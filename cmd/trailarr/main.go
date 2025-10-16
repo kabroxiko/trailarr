@@ -49,9 +49,9 @@ func main() {
 	internal.Timings = timings
 	internal.TrailarrLog(internal.INFO, "Startup", "Sync timings: %v", timings)
 
-	// Load task_times.json into memory at startup
+	// Load last task run times (Redis primary, disk fallback)
 	if _, err := internal.LoadTaskStates(); err != nil {
-		internal.TrailarrLog(internal.WARN, "Startup", "Could not load task_times.json: %v", err)
+		internal.TrailarrLog(internal.WARN, "Startup", "Could not load last task run times: %v", err)
 	}
 	internal.TrailarrLog(internal.DEBUG, "Startup", "Loaded GlobalTaskStates: %+v", internal.GlobalTaskStates)
 	r := gin.Default()

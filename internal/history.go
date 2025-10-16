@@ -1,8 +1,9 @@
 package internal
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -18,29 +19,46 @@ type HistoryEvent struct {
 	Date       time.Time `json:"date"`
 }
 
-var historyMutex sync.Mutex
-
 func historyHandler(c *gin.Context) {
-	events := LoadHistoryEvents()
-	// Reverse events so newest is first
+	events, err := LoadHistoryEvents()
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	// events are stored newest-last, reverse for newest-first
 	for i, j := 0, len(events)-1; i < j; i, j = i+1, j-1 {
 		events[i], events[j] = events[j], events[i]
 	}
 	respondJSON(c, http.StatusOK, gin.H{"history": events})
 }
 
-var historyFile = HistoryFile
-
 func AppendHistoryEvent(event HistoryEvent) error {
-	historyMutex.Lock()
-	defer historyMutex.Unlock()
-	events := LoadHistoryEvents()
-	events = append(events, event)
-	return WriteJSONFile(historyFile, events)
+	client := GetRedisClient()
+	ctx := context.Background()
+	b, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+	if err := client.RPush(ctx, HistoryRedisKey, b).Err(); err != nil {
+		return err
+	}
+	// Trim list to maximum length
+	return client.LTrim(ctx, HistoryRedisKey, -HistoryMaxLen, -1).Err()
 }
 
-func LoadHistoryEvents() []HistoryEvent {
-	var events []HistoryEvent
-	_ = ReadJSONFile(historyFile, &events)
-	return events
+func LoadHistoryEvents() ([]HistoryEvent, error) {
+	client := GetRedisClient()
+	ctx := context.Background()
+	vals, err := client.LRange(ctx, HistoryRedisKey, 0, -1).Result()
+	if err != nil {
+		return nil, err
+	}
+	events := make([]HistoryEvent, 0, len(vals))
+	for _, v := range vals {
+		var e HistoryEvent
+		if err := json.Unmarshal([]byte(v), &e); err == nil {
+			events = append(events, e)
+		}
+	}
+	return events, nil
 }

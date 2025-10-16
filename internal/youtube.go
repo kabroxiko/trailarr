@@ -225,8 +225,8 @@ func GetBatchDownloadStatusHandler(c *gin.Context) {
 	{
 		ctx := context.Background()
 		client := GetRedisClient()
-		TrailarrLog(INFO, "QUEUE", "[AddToDownloadQueue] RedisKey=%v, RedisClient=%#v", DownloadQueueRedisKey, client)
-		items, err := client.LRange(ctx, DownloadQueueRedisKey, 0, -1).Result()
+		TrailarrLog(INFO, "QUEUE", "[AddToDownloadQueue] RedisKey=%v, RedisClient=%#v", DownloadQueue, client)
+		items, err := client.LRange(ctx, DownloadQueue, 0, -1).Result()
 		if err == nil {
 			for _, itemStr := range items {
 				var item DownloadQueueItem
@@ -256,8 +256,8 @@ func GetBatchDownloadStatusHandler(c *gin.Context) {
 	}
 	// Load cache files (movies/series)
 	var movieCache, seriesCache []map[string]interface{}
-	movieCache, _ = LoadMediaFromRedis(MoviesJSONPath)
-	seriesCache, _ = LoadMediaFromRedis(SeriesJSONPath)
+	movieCache, _ = LoadMediaFromRedis(MoviesRedisKey)
+	seriesCache, _ = LoadMediaFromRedis(SeriesRedisKey)
 	// Helper to check existence in cache
 	existsInCache := func(yid string) bool {
 		for _, m := range movieCache {
@@ -328,7 +328,7 @@ func AddToDownloadQueue(item DownloadQueueItem, source string) {
 	// If source is "task", block if queue not empty (i.e., if any item is queued or downloading)
 	if source == "task" {
 		for {
-			queue, err := client.LRange(ctx, DownloadQueueRedisKey, 0, -1).Result()
+			queue, err := client.LRange(ctx, DownloadQueue, 0, -1).Result()
 			busy := false
 			if err == nil {
 				for _, qstr := range queue {
@@ -374,13 +374,13 @@ func AddToDownloadQueue(item DownloadQueueItem, source string) {
 		TrailarrLog(ERROR, "QUEUE", "[AddToDownloadQueue] Failed to marshal item: %v", err)
 		return
 	}
-	rpushRes := client.RPush(ctx, DownloadQueueRedisKey, b)
+	rpushRes := client.RPush(ctx, DownloadQueue, b)
 	TrailarrLog(INFO, "QUEUE", "[AddToDownloadQueue] RPush result: %+v", rpushRes)
 	err = rpushRes.Err()
 	if err != nil {
 		TrailarrLog(ERROR, "QUEUE", "[AddToDownloadQueue] Failed to push to Redis: %v", err)
 	} else {
-		TrailarrLog(INFO, "QUEUE", "[AddToDownloadQueue] Successfully enqueued item. RedisKey=%s, YouTubeID=%s", DownloadQueueRedisKey, item.YouTubeID)
+		TrailarrLog(INFO, "QUEUE", "[AddToDownloadQueue] Successfully enqueued item. RedisKey=%s, YouTubeID=%s", DownloadQueue, item.YouTubeID)
 		// Broadcast updated queue to all WebSocket clients
 		BroadcastDownloadQueueChanges([]DownloadQueueItem{item})
 	}
@@ -402,7 +402,7 @@ func GetDownloadStatus(youtubeID string) *DownloadStatus {
 func NextQueuedItem() (int, DownloadQueueItem, bool) {
 	ctx := context.Background()
 	client := GetRedisClient()
-	queue, err := client.LRange(ctx, DownloadQueueRedisKey, 0, -1).Result()
+	queue, err := client.LRange(ctx, DownloadQueue, 0, -1).Result()
 	if err != nil {
 		return -1, DownloadQueueItem{}, false
 	}
@@ -423,7 +423,7 @@ func StartDownloadQueueWorker() {
 		ctx := context.Background()
 		client := GetRedisClient()
 		// Clean the queue at startup
-		_ = client.Del(ctx, DownloadQueueRedisKey).Err()
+		_ = client.Del(ctx, DownloadQueue).Err()
 		for {
 			idx, item, ok := NextQueuedItem()
 			if !ok {
@@ -436,18 +436,18 @@ func StartDownloadQueueWorker() {
 				TrailarrLog(WARN, "QUEUE", "[StartDownloadQueueWorker] Skipping rejected extra: mediaType=%v, mediaId=%v, extraType=%s, extraTitle=%s, youtubeId=%s", item.MediaType, item.MediaId, item.ExtraType, item.ExtraTitle, item.YouTubeID)
 				// Remove from queue immediately
 				b, _ := json.Marshal(item)
-				_ = client.LRem(ctx, DownloadQueueRedisKey, 1, b).Err()
+				_ = client.LRem(ctx, DownloadQueue, 1, b).Err()
 				BroadcastDownloadQueueChanges([]DownloadQueueItem{item})
 				continue
 			}
 			// Mark as downloading in Redis
-			queue, err := client.LRange(ctx, DownloadQueueRedisKey, 0, -1).Result()
+			queue, err := client.LRange(ctx, DownloadQueue, 0, -1).Result()
 			if err == nil && idx >= 0 && idx < len(queue) {
 				var q DownloadQueueItem
 				if err := json.Unmarshal([]byte(queue[idx]), &q); err == nil {
 					q.Status = "downloading"
 					b, _ := json.Marshal(q)
-					_ = client.LSet(ctx, DownloadQueueRedisKey, int64(idx), b).Err()
+					_ = client.LSet(ctx, DownloadQueue, int64(idx), b).Err()
 					downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: "downloading", UpdatedAt: time.Now()}
 					BroadcastDownloadQueueChanges([]DownloadQueueItem{q})
 				}
@@ -467,7 +467,7 @@ func StartDownloadQueueWorker() {
 				}
 			}
 			// Update status in Redis
-			queue, err = client.LRange(ctx, DownloadQueueRedisKey, 0, -1).Result()
+			queue, err = client.LRange(ctx, DownloadQueue, 0, -1).Result()
 			var finalStatus string
 			var failReason string
 			if metaErr != nil {
@@ -492,7 +492,7 @@ func StartDownloadQueueWorker() {
 						q.Reason = failReason
 					}
 					b, _ := json.Marshal(q)
-					_ = client.LSet(ctx, DownloadQueueRedisKey, int64(idx), b).Err()
+					_ = client.LSet(ctx, DownloadQueue, int64(idx), b).Err()
 					BroadcastDownloadQueueChanges([]DownloadQueueItem{q})
 				}
 			} else {
@@ -507,7 +507,7 @@ func StartDownloadQueueWorker() {
 			time.Sleep(10 * time.Second)
 			// Remove the item at idx (by value, since Redis LREM removes by value)
 			b, _ := json.Marshal(item)
-			_ = client.LRem(ctx, DownloadQueueRedisKey, 1, b).Err()
+			_ = client.LRem(ctx, DownloadQueue, 1, b).Err()
 		}
 	}()
 }

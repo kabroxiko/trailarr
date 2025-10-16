@@ -267,6 +267,10 @@ function App() {
                 } />
                 <Route path="/movies/:id" element={<MediaDetails mediaItems={movies} loading={moviesLoading} mediaType="movie" />} />
                 <Route path="/series/:id" element={<MediaDetails mediaItems={series} loading={seriesLoading} mediaType="tv" />} />
+                <Route path="/wanted/movies/:id" element={<MediaDetails mediaItems={movies} loading={moviesLoading} mediaType="movie" />} />
+                <Route path="/wanted/series/:id" element={<MediaDetails mediaItems={series} loading={seriesLoading} mediaType="tv" />} />
+                <Route path="/history/movies/:id" element={<MediaDetails mediaItems={movies} loading={moviesLoading} mediaType="movie" />} />
+                <Route path="/history/series/:id" element={<MediaDetails mediaItems={series} loading={seriesLoading} mediaType="tv" />} />
                 <Route path="/history" element={<HistoryPage />} />
                 <Route path="/wanted/movies" element={<Wanted darkMode={darkMode} type="movie" />} />
                 <Route path="/wanted/series" element={<Wanted darkMode={darkMode} type="series" />} />

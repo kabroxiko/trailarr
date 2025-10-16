@@ -340,7 +340,7 @@ func trimTrailingSlash(url string) string {
 // Loads a JSON cache file into a generic slice
 func loadCache(path string) ([]map[string]interface{}, error) {
 	// Use Redis for movies and series
-	if path == MoviesJSONPath || path == SeriesJSONPath {
+	if path == MoviesRedisKey || path == SeriesRedisKey {
 		items, err := LoadMediaFromRedis(path)
 		if err != nil {
 			return nil, err
@@ -381,15 +381,15 @@ func loadCache(path string) ([]map[string]interface{}, error) {
 	return items, nil
 }
 
-// LoadMediaFromRedis loads movies or series from Redis, expects path to be MoviesJSONPath or SeriesJSONPath
+// LoadMediaFromRedis loads movies or series from Redis, expects path to be MoviesRedisKey or SeriesRedisKey
 func LoadMediaFromRedis(path string) ([]map[string]interface{}, error) {
 	client := GetRedisClient()
 	ctx := context.Background()
 	var redisKey string
 	switch path {
-	case MoviesJSONPath:
+	case MoviesRedisKey:
 		redisKey = "trailarr:movies"
-	case SeriesJSONPath:
+	case SeriesRedisKey:
 		redisKey = "trailarr:series"
 	default:
 		return nil, fmt.Errorf("unsupported path for redis: %s", path)
@@ -408,15 +408,15 @@ func LoadMediaFromRedis(path string) ([]map[string]interface{}, error) {
 	return items, nil
 }
 
-// SaveMediaToRedis saves movies or series to Redis, expects path to be MoviesJSONPath or SeriesJSONPath
+// SaveMediaToRedis saves movies or series to Redis, expects path to be MoviesRedisKey or SeriesRedisKey
 func SaveMediaToRedis(path string, items []map[string]interface{}) error {
 	client := GetRedisClient()
 	ctx := context.Background()
 	var redisKey string
 	switch path {
-	case MoviesJSONPath:
+	case MoviesRedisKey:
 		redisKey = "trailarr:movies"
-	case SeriesJSONPath:
+	case SeriesRedisKey:
 		redisKey = "trailarr:series"
 	default:
 		return fmt.Errorf("unsupported path for redis: %s", path)
@@ -431,9 +431,9 @@ func SaveMediaToRedis(path string, items []map[string]interface{}) error {
 // Helper: Detect media type and main cache path
 func detectMediaTypeAndMainCachePath(path string) (MediaType, string) {
 	if strings.Contains(path, "movie") || strings.Contains(path, "Movie") {
-		return MediaTypeMovie, MoviesJSONPath
+		return MediaTypeMovie, MoviesRedisKey
 	} else if strings.Contains(path, "series") || strings.Contains(path, "Series") {
-		return MediaTypeTV, SeriesJSONPath
+		return MediaTypeTV, SeriesRedisKey
 	}
 	return "", ""
 }
@@ -552,7 +552,7 @@ func SyncMediaCacheJson(provider, apiPath, cacheFile string, filter func(map[str
 		}
 	}
 	// Save to Redis for movies/series, file for others
-	if cacheFile == MoviesJSONPath || cacheFile == SeriesJSONPath {
+	if cacheFile == MoviesRedisKey || cacheFile == SeriesRedisKey {
 		_ = SaveMediaToRedis(cacheFile, items)
 	} else {
 		_ = WriteJSONFile(cacheFile, items)
@@ -730,7 +730,7 @@ func updateWantedStatusInMainJson(mediaType MediaType, cacheFile string) error {
 		item["wanted"] = !hasTrailer
 	}
 	// Save to Redis for movies/series, file for others
-	if cacheFile == MoviesJSONPath || cacheFile == SeriesJSONPath {
+	if cacheFile == MoviesRedisKey || cacheFile == SeriesRedisKey {
 		return SaveMediaToRedis(cacheFile, items)
 	}
 	return WriteJSONFile(cacheFile, items)
@@ -785,7 +785,7 @@ func SyncMediaType(mediaType MediaType) error {
 		return SyncMedia(
 			"radarr",
 			"/api/v3/movie",
-			MoviesJSONPath,
+			MoviesRedisKey,
 			func(m map[string]interface{}) bool {
 				hasFile, ok := m["hasFile"].(bool)
 				return ok && hasFile
@@ -797,7 +797,7 @@ func SyncMediaType(mediaType MediaType) error {
 		return SyncMedia(
 			"sonarr",
 			"/api/v3/series",
-			SeriesJSONPath,
+			SeriesRedisKey,
 			func(m map[string]interface{}) bool {
 				stats, ok := m["statistics"].(map[string]interface{})
 				if !ok {

@@ -74,7 +74,7 @@ func GetCurrentDownloadQueue() []DownloadQueueItem {
 	ctx := context.Background()
 	client := GetRedisClient()
 	var queue []DownloadQueueItem
-	items, err := client.LRange(ctx, DownloadQueueRedisKey, 0, -1).Result()
+	items, err := client.LRange(ctx, DownloadQueue, 0, -1).Result()
 	if err == nil {
 		for _, itemStr := range items {
 			var item DownloadQueueItem

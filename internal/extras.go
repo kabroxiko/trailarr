@@ -19,7 +19,7 @@ import (
 func RemoveAll429Rejections() error {
 	ctx := context.Background()
 	client := GetRedisClient()
-	key := ExtrasCollectionKey
+	key := ExtrasRedisKey
 	vals, err := client.HVals(ctx, key).Result()
 	if err != nil {
 		return err
@@ -58,7 +58,7 @@ func GetExtrasForMedia(ctx context.Context, mediaType MediaType, mediaId int) ([
 	}
 	// Fallback: if nothing found, try global (legacy)
 	if len(result) == 0 {
-		key := ExtrasCollectionKey
+		key := ExtrasRedisKey
 		vals, err := client.HVals(ctx, key).Result()
 		if err != nil {
 			return nil, err
@@ -125,7 +125,7 @@ func MarkRejectedExtrasInMemory(extras []Extra, rejectedYoutubeIds map[string]st
 // AddOrUpdateExtra stores or updates an extra in the unified collection
 func AddOrUpdateExtra(ctx context.Context, entry ExtrasEntry) error {
 	client := GetRedisClient()
-	key := ExtrasCollectionKey
+	key := ExtrasRedisKey
 	// Use YoutubeId+MediaType+MediaId as unique identifier
 	entryKey := fmt.Sprintf("%s:%s:%d", entry.YoutubeId, entry.MediaType, entry.MediaId)
 	data, err := json.Marshal(entry)
@@ -147,7 +147,7 @@ func AddOrUpdateExtra(ctx context.Context, entry ExtrasEntry) error {
 // GetExtraByYoutubeId fetches an extra by YoutubeId, MediaType, and MediaId
 func GetExtraByYoutubeId(ctx context.Context, youtubeId string, mediaType MediaType, mediaId int) (*ExtrasEntry, error) {
 	client := GetRedisClient()
-	key := ExtrasCollectionKey
+	key := ExtrasRedisKey
 	entryKey := fmt.Sprintf("%s:%s:%d", youtubeId, mediaType, mediaId)
 	val, err := client.HGet(ctx, key, entryKey).Result()
 	if err == redis.Nil {
@@ -165,7 +165,7 @@ func GetExtraByYoutubeId(ctx context.Context, youtubeId string, mediaType MediaT
 // GetAllExtras returns all extras in the collection
 func GetAllExtras(ctx context.Context) ([]ExtrasEntry, error) {
 	client := GetRedisClient()
-	key := ExtrasCollectionKey
+	key := ExtrasRedisKey
 	vals, err := client.HVals(ctx, key).Result()
 	if err != nil {
 		return nil, err
@@ -175,7 +175,7 @@ func GetAllExtras(ctx context.Context) ([]ExtrasEntry, error) {
 	movieTitles := make(map[int]string)
 	seriesTitles := make(map[int]string)
 	// Load movie and series caches once
-	movieItems, _ := loadCache(MoviesJSONPath)
+	movieItems, _ := loadCache(MoviesRedisKey)
 	for _, m := range movieItems {
 		idInt, ok := parseMediaID(m["id"])
 		if ok {
@@ -184,7 +184,7 @@ func GetAllExtras(ctx context.Context) ([]ExtrasEntry, error) {
 			}
 		}
 	}
-	seriesItems, _ := loadCache(SeriesJSONPath)
+	seriesItems, _ := loadCache(SeriesRedisKey)
 	for _, m := range seriesItems {
 		idInt, ok := parseMediaID(m["id"])
 		if ok {
@@ -218,7 +218,7 @@ func GetAllExtras(ctx context.Context) ([]ExtrasEntry, error) {
 // RemoveExtra removes an extra from the collection
 func RemoveExtra(ctx context.Context, youtubeId string, mediaType MediaType, mediaId int) error {
 	client := GetRedisClient()
-	key := ExtrasCollectionKey
+	key := ExtrasRedisKey
 	entryKey := fmt.Sprintf("%s:%s:%d", youtubeId, mediaType, mediaId)
 	err := client.HDel(ctx, key, entryKey).Err()
 	return err
@@ -347,9 +347,9 @@ func deleteExtraHandler(c *gin.Context) {
 func resolveCachePath(mediaType MediaType) (string, error) {
 	switch mediaType {
 	case MediaTypeMovie:
-		return MoviesJSONPath, nil
+		return MoviesRedisKey, nil
 	case MediaTypeTV:
-		return SeriesJSONPath, nil
+		return SeriesRedisKey, nil
 	}
 	return "", fmt.Errorf("unknown media type: %v", mediaType)
 }
@@ -428,7 +428,7 @@ func FetchTMDBExtrasForMedia(mediaType MediaType, id int) ([]Extra, error) {
 		return nil, err
 	}
 
-	tmdbId, err := GetTMDBId(mediaType, id, tmdbKey)
+	tmdbId, err := GetTMDBId(mediaType, id)
 	if err != nil {
 		return nil, err
 	}

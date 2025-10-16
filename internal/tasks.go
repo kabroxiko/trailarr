@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sort"
 	"sync"
 	"time"
@@ -78,7 +77,7 @@ func broadcastTaskStatus(_ map[string]interface{}) {
 
 var GlobalTaskStates TaskStates
 
-const taskTimesFile = "task_times.json"
+// Note: task_times are stored in Redis (TaskTimesRedisKey). Disk file support removed.
 
 // TaskID is a string identifier for a scheduled task
 type TaskID string
@@ -106,24 +105,28 @@ type TaskStates map[TaskID]TaskState
 var tasksMeta map[TaskID]TaskMeta
 
 func init() {
-	// On startup, update any 'running' tasks in queue.json to 'queued'
-	var fileQueue []SyncQueueItem
-	if err := ReadJSONFile(QueueFile, &fileQueue); err == nil {
-		changed := false
-		for i := range fileQueue {
-			if fileQueue[i].Status == "running" {
-				fileQueue[i].Status = "queued"
-				changed = true
+	// On startup, update any 'running' tasks in Redis queue to 'queued'
+	client := GetRedisClient()
+	ctx := context.Background()
+	vals, err := client.LRange(ctx, TaskQueueRedisKey, 0, -1).Result()
+	if err == nil {
+		for i, v := range vals {
+			var qi SyncQueueItem
+			if err := json.Unmarshal([]byte(v), &qi); err == nil {
+				if qi.Status == "running" {
+					qi.Status = "queued"
+					if b, err := json.Marshal(qi); err == nil {
+						// set the element back at index i
+						_ = client.LSet(ctx, TaskQueueRedisKey, int64(i), b).Err()
+					}
+				}
 			}
-		}
-		if changed {
-			_ = WriteJSONFile(QueueFile, fileQueue)
 		}
 	}
 	tasksMeta = map[TaskID]TaskMeta{
 		"radarr": {ID: "radarr", Name: "Sync with Radarr", Function: wrapWithQueue("radarr", func() error { return SyncMediaType(MediaTypeMovie) }), Order: 1},
 		"sonarr": {ID: "sonarr", Name: "Sync with Sonarr", Function: wrapWithQueue("sonarr", func() error { return SyncMediaType(MediaTypeTV) }), Order: 2},
-		"extras": {ID: "extras", Name: "Search for Missing Extras", Function: wrapWithQueue("extras", func() error { handleExtrasDownloadLoop(context.Background()); return nil }), Order: 3},
+		"extras": {ID: "extras", Name: "Search for Missing Extras", Function: wrapWithQueue("extras", func() error { processExtras(context.Background()); return nil }), Order: 3},
 	}
 }
 
@@ -137,12 +140,26 @@ func AllTaskIDs() []TaskID {
 }
 
 func LoadTaskStates() (TaskStates, error) {
-	var arr []TaskState
-	path := filepath.Join(TrailarrRoot, taskTimesFile)
-	err := ReadJSONFile(path, &arr)
+	// Redis-backed task states; disk fallback removed
+	// First try Redis
+	client := GetRedisClient()
+	ctx := context.Background()
+	vals, err := client.LRange(ctx, TaskTimesRedisKey, 0, -1).Result()
 	states := make(TaskStates)
-	// If file is missing or corrupt, always create/reset with default values
-	if err != nil {
+	if err == nil && len(vals) > 0 {
+		// parse stored JSON array entries
+		for _, v := range vals {
+			var t TaskState
+			if err := json.Unmarshal([]byte(v), &t); err == nil {
+				t.Status = "idle"
+				states[t.ID] = t
+			}
+		}
+	} else {
+		// No disk fallback; if Redis empty, initialization below will create defaults
+	}
+	// If still empty, initialize defaults
+	if len(states) == 0 {
 		zeroTime := time.Time{}
 		for id := range tasksMeta {
 			interval := 0
@@ -156,17 +173,6 @@ func LoadTaskStates() (TaskStates, error) {
 			}
 		}
 		_ = saveTaskStates(states)
-		GlobalTaskStates = states
-		return states, nil
-	}
-	// Map array entries to map by TaskId
-	for _, t := range arr {
-		if t.ID == "" {
-			continue // skip invalid entries
-		}
-		// Ignore persisted Status, always set to "idle" on load
-		t.Status = "idle"
-		states[t.ID] = t
 	}
 	// Ensure all tasks exist
 	for id := range tasksMeta {
@@ -200,13 +206,16 @@ func saveTaskStates(states TaskStates) error {
 			LastDuration:  t.LastDuration,
 		})
 	}
-	path := filepath.Join(TrailarrRoot, taskTimesFile)
-	err := WriteJSONFile(path, arr)
-	if err != nil {
-		TrailarrLog(ERROR, "Tasks", "[saveTaskStates] Failed to write %s: %v", path, err)
-	} else {
+	// Persist to Redis as list of task states (overwrite by deleting and RPUSH)
+	client := GetRedisClient()
+	ctx := context.Background()
+	_ = client.Del(ctx, TaskTimesRedisKey).Err()
+	for _, s := range arr {
+		if b, err := json.Marshal(s); err == nil {
+			_ = client.RPush(ctx, TaskTimesRedisKey, b).Err()
+		}
 	}
-	return err
+	return nil
 }
 
 func GetAllTasksStatus() gin.HandlerFunc {
@@ -268,6 +277,48 @@ func sortTaskQueuesByQueuedDesc(queues []TaskStatus) {
 	sort.Slice(queues, func(i, j int) bool {
 		return queues[i].Queued.After(queues[j].Queued)
 	})
+}
+
+// pushTaskQueueItem appends a sync queue item to Redis list
+func pushTaskQueueItem(item SyncQueueItem) error {
+	client := GetRedisClient()
+	ctx := context.Background()
+	b, err := json.Marshal(item)
+	if err != nil {
+		return err
+	}
+	if err := client.RPush(ctx, TaskQueueRedisKey, b).Err(); err != nil {
+		return err
+	}
+	// Trim to reasonable max
+	return client.LTrim(ctx, TaskQueueRedisKey, -int64(TaskQueueMaxLen), -1).Err()
+}
+
+// updateTaskQueueItem searches from the end to find a matching TaskId+Queued and updates it
+func updateTaskQueueItem(taskId string, queued time.Time, update func(*SyncQueueItem)) error {
+	client := GetRedisClient()
+	ctx := context.Background()
+	vals, err := client.LRange(ctx, TaskQueueRedisKey, 0, -1).Result()
+	if err != nil {
+		return err
+	}
+	// search from the back
+	for i := len(vals) - 1; i >= 0; i-- {
+		var qi SyncQueueItem
+		if err := json.Unmarshal([]byte(vals[i]), &qi); err != nil {
+			continue
+		}
+		if qi.TaskId == taskId && qi.Queued.Equal(queued) {
+			update(&qi)
+			b, err := json.Marshal(qi)
+			if err != nil {
+				return err
+			}
+			// set list element at index i
+			return client.LSet(ctx, TaskQueueRedisKey, int64(i), b).Err()
+		}
+	}
+	return nil
 }
 
 func TaskHandler() gin.HandlerFunc {
@@ -396,47 +447,27 @@ func StartBackgroundTasks() {
 			ticker := time.NewTicker(interval)
 			defer ticker.Stop()
 			for {
+				// Gate extras: only run after radarr and sonarr have executed at least once
+				if t.id == "extras" {
+					// Wait (block) until radarr and sonarr have executed at least once
+					for {
+						st := GlobalTaskStates
+						radLast := st["radarr"].LastExecution
+						sonLast := st["sonarr"].LastExecution
+						if !radLast.IsZero() && !sonLast.IsZero() {
+							break
+						}
+						TrailarrLog(INFO, "Tasks", "Waiting for radarr/sonarr to run before extras")
+						// Sleep a short while and re-check; this goroutine blocks only the extras scheduler
+						time.Sleep(5 * time.Second)
+					}
+				}
 				go runTaskAsync(TaskID(t.id), t.syncFunc)
 				<-ticker.C
 			}
 		}(*task)
 	}
-	TrailarrLog(INFO, "Tasks", "Native Go scheduler started. Jobs will persist last execution times in %s", taskTimesFile)
-}
-
-func StartExtrasDownloadTask() {
-	TrailarrLog(INFO, "Tasks", "Starting extras download task (manual trigger)...")
-	// Manual/forced run: runTaskAsync with the actual sync logic
-	states := make(TaskStates)
-	for k, v := range GlobalTaskStates {
-		states[k] = v
-	}
-	go runTaskAsync("extras", func() { handleExtrasDownloadLoop(context.Background()) })
-}
-
-func handleExtrasDownloadLoop(ctx context.Context) bool {
-	interval := getExtrasInterval()
-	processExtras(ctx)
-	result := waitOrDone(ctx, time.Duration(interval)*time.Minute)
-	return result
-}
-
-func waitOrDone(ctx context.Context, d time.Duration) bool {
-	select {
-	case <-ctx.Done():
-		TrailarrLog(INFO, "Tasks", "[TASK] Extras download task stopped by cancel.")
-		return true
-	case <-time.After(d):
-		return false
-	}
-}
-
-func getExtrasInterval() int {
-	interval := 360 // default 6 hours
-	if v, ok := Timings["extras"]; ok {
-		interval = v
-	}
-	return interval
+	TrailarrLog(INFO, "Tasks", "Native Go scheduler started. Jobs will persist last execution times to Redis key %s", TaskTimesRedisKey)
 }
 
 func processExtras(ctx context.Context) {
@@ -452,9 +483,9 @@ func processExtras(ctx context.Context) {
 		return
 	}
 	TrailarrLog(INFO, "Tasks", "[TASK] Searching for missing movie extras...")
-	downloadMissingExtrasWithTypeFilter(ctx, extraTypesCfg, MediaTypeMovie, MoviesJSONPath)
+	downloadMissingExtrasWithTypeFilter(ctx, extraTypesCfg, MediaTypeMovie, MoviesRedisKey)
 	TrailarrLog(INFO, "Tasks", "[TASK] Searching for missing series extras...")
-	downloadMissingExtrasWithTypeFilter(ctx, extraTypesCfg, MediaTypeTV, SeriesJSONPath)
+	downloadMissingExtrasWithTypeFilter(ctx, extraTypesCfg, MediaTypeTV, SeriesRedisKey)
 }
 
 func StopExtrasDownloadTask() {
@@ -702,7 +733,7 @@ func GetTaskQueueHandler() gin.HandlerFunc {
 // Centralized queue wrapper for all tasks
 func wrapWithQueue(taskId TaskID, syncFunc func() error) func() {
 	return func() {
-		// Add new queue item to file on start
+		// Add new queue item to Redis on start
 		queued := time.Now()
 		item := SyncQueueItem{
 			TaskId:  string(taskId),
@@ -710,10 +741,7 @@ func wrapWithQueue(taskId TaskID, syncFunc func() error) func() {
 			Status:  "running",
 			Started: queued,
 		}
-		var fileQueue []SyncQueueItem
-		_ = ReadJSONFile(QueueFile, &fileQueue)
-		fileQueue = append(fileQueue, item)
-		_ = WriteJSONFile(QueueFile, fileQueue)
+		_ = pushTaskQueueItem(item)
 
 		err := syncFunc()
 		ended := time.Now()
@@ -725,22 +753,17 @@ func wrapWithQueue(taskId TaskID, syncFunc func() error) func() {
 		} else {
 			TrailarrLog(INFO, "Tasks", "Task %s completed successfully.", taskId)
 		}
-		// Update the last queue item for this task (by TaskId and Queued)
-		_ = ReadJSONFile(QueueFile, &fileQueue)
-		for i := len(fileQueue) - 1; i >= 0; i-- {
-			if fileQueue[i].TaskId == string(taskId) && fileQueue[i].Queued.Equal(queued) {
-				fileQueue[i].Status = status
-				fileQueue[i].Started = queued
-				fileQueue[i].Ended = ended
-				fileQueue[i].Duration = duration
-				if err != nil {
-					fileQueue[i].Error = err.Error()
-				} else {
-					fileQueue[i].Error = ""
-				}
-				break
+		// Update the last queue item for this task (by TaskId and Queued) in Redis
+		_ = updateTaskQueueItem(string(taskId), queued, func(qi *SyncQueueItem) {
+			qi.Status = status
+			qi.Started = queued
+			qi.Ended = ended
+			qi.Duration = duration
+			if err != nil {
+				qi.Error = err.Error()
+			} else {
+				qi.Error = ""
 			}
-		}
-		_ = WriteJSONFile(QueueFile, fileQueue)
+		})
 	}
 }
