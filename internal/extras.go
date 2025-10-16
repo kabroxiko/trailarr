@@ -15,6 +15,66 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// RemoveAll429Rejections removes all extras with status 'rejected' and reason containing '429' from the extras collection
+func RemoveAll429Rejections() error {
+	ctx := context.Background()
+	client := GetRedisClient()
+	key := ExtrasCollectionKey
+	vals, err := client.HVals(ctx, key).Result()
+	if err != nil {
+		return err
+	}
+	for _, v := range vals {
+		var entry ExtrasEntry
+		if err := json.Unmarshal([]byte(v), &entry); err == nil {
+			if entry.Status == "rejected" && strings.Contains(entry.Reason, "429") {
+				entryKey := fmt.Sprintf("%s:%s:%d", entry.YoutubeId, entry.MediaType, entry.MediaId)
+				if err := client.HDel(ctx, key, entryKey).Err(); err != nil {
+					TrailarrLog(WARN, "Extras", "Failed to remove 429 rejected extra: %v", err)
+				}
+				// Also remove from per-media hash
+				perMediaKey := fmt.Sprintf("trailarr:extras:%s:%d", entry.MediaType, entry.MediaId)
+				_ = client.HDel(ctx, perMediaKey, entryKey).Err()
+			}
+		}
+	}
+	return nil
+}
+
+// GetExtrasForMedia efficiently returns all extras for a given mediaType and mediaId
+func GetExtrasForMedia(ctx context.Context, mediaType MediaType, mediaId int) ([]ExtrasEntry, error) {
+	client := GetRedisClient()
+	perMediaKey := fmt.Sprintf("trailarr:extras:%s:%d", mediaType, mediaId)
+	vals, err := client.HVals(ctx, perMediaKey).Result()
+	if err != nil && err != redis.Nil {
+		return nil, err
+	}
+	var result []ExtrasEntry
+	for _, v := range vals {
+		var entry ExtrasEntry
+		if err := json.Unmarshal([]byte(v), &entry); err == nil {
+			result = append(result, entry)
+		}
+	}
+	// Fallback: if nothing found, try global (legacy)
+	if len(result) == 0 {
+		key := ExtrasCollectionKey
+		vals, err := client.HVals(ctx, key).Result()
+		if err != nil {
+			return nil, err
+		}
+		for _, v := range vals {
+			var entry ExtrasEntry
+			if err := json.Unmarshal([]byte(v), &entry); err == nil {
+				if entry.MediaType == mediaType && entry.MediaId == mediaId {
+					result = append(result, entry)
+				}
+			}
+		}
+	}
+	return result, nil
+}
+
 // ListSubdirectories returns all subdirectories for a given path
 func ListSubdirectories(path string) ([]string, error) {
 	entries, err := os.ReadDir(path)
@@ -72,7 +132,16 @@ func AddOrUpdateExtra(ctx context.Context, entry ExtrasEntry) error {
 	if err != nil {
 		return err
 	}
-	return client.HSet(ctx, key, entryKey, data).Err()
+	// Write to global hash
+	if err := client.HSet(ctx, key, entryKey, data).Err(); err != nil {
+		return err
+	}
+	// Write to per-media hash for fast lookup
+	perMediaKey := fmt.Sprintf("trailarr:extras:%s:%d", entry.MediaType, entry.MediaId)
+	if err := client.HSet(ctx, perMediaKey, entryKey, data).Err(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // GetExtraByYoutubeId fetches an extra by YoutubeId, MediaType, and MediaId
@@ -237,21 +306,6 @@ func MarkExtraDeleted(mediaType MediaType, mediaId int, extraType, extraTitle, y
 	return AddOrUpdateExtra(ctx, entry)
 }
 
-// Helper to safely convert interface{} to string
-func toString(v interface{}) string {
-	if v == nil {
-		return ""
-	}
-	switch t := v.(type) {
-	case string:
-		return t
-	case fmt.Stringer:
-		return t.String()
-	default:
-		return fmt.Sprintf("%v", t)
-	}
-}
-
 // Handler to delete an extra and record history
 func deleteExtraHandler(c *gin.Context) {
 	var req struct {
@@ -308,7 +362,8 @@ func lookupMediaTitle(cacheFile string, mediaId int) string {
 	for _, m := range items {
 		idInt, ok := parseMediaID(m["id"])
 		if ok && idInt == mediaId {
-			if t, ok := m["extraTitle"].(string); ok {
+			// Use "title" for both movies and series
+			if t, ok := m["title"].(string); ok {
 				return t
 			}
 		}
@@ -332,7 +387,7 @@ func recordDeleteHistory(mediaType MediaType, mediaId int, extraType, extraTitle
 	cacheFile, _ := resolveCachePath(mediaType)
 	mediaTitle := lookupMediaTitle(cacheFile, mediaId)
 	if mediaTitle == "" {
-		mediaTitle = "Unknown"
+		panic(fmt.Errorf("recordDeleteHistory: could not find media title for mediaType=%v, mediaId=%v", mediaType, mediaId))
 	}
 	event := HistoryEvent{
 		Action:     "delete",
@@ -469,49 +524,36 @@ func downloadExtraHandler(c *gin.Context) {
 	}
 	AddToDownloadQueue(item, "api")
 	TrailarrLog(INFO, "Extras", "[downloadExtraHandler] Enqueued download: mediaType=%s, mediaId=%d, extraType=%s, extraTitle=%s, youtubeId=%s", req.MediaType, req.MediaId, req.ExtraType, req.ExtraTitle, req.YoutubeId)
+
+	// Write .mkv.json meta file for manual download
+	cacheFile, _ := resolveCachePath(req.MediaType)
+	mediaPath, err := FindMediaPathByID(cacheFile, req.MediaId)
+	if err == nil && mediaPath != "" {
+		extraDir := mediaPath + "/" + req.ExtraType
+		if err := os.MkdirAll(extraDir, 0775); err == nil {
+			metaFile := extraDir + "/" + SanitizeFilename(req.ExtraTitle) + ".mkv.json"
+			meta := struct {
+				ExtraType  string `json:"extraType"`
+				ExtraTitle string `json:"extraTitle"`
+				FileName   string `json:"fileName"`
+				YoutubeId  string `json:"youtubeId"`
+				Status     string `json:"status"`
+			}{
+				ExtraType:  req.ExtraType,
+				ExtraTitle: req.ExtraTitle,
+				FileName:   SanitizeFilename(req.ExtraTitle) + ".mkv",
+				YoutubeId:  req.YoutubeId,
+				Status:     "queued",
+			}
+			if f, err := os.Create(metaFile); err == nil {
+				enc := json.NewEncoder(f)
+				enc.SetIndent("", "  ")
+				_ = enc.Encode(meta)
+				f.Close()
+			}
+		}
+	}
 	respondJSON(c, http.StatusOK, gin.H{"status": "queued"})
-}
-
-// Utility: Recursively find all media paths with Trailers containing video files (with debug logging)
-func findMediaWithTrailers(baseDirs ...string) map[string]bool {
-	found := make(map[string]bool)
-	for _, baseDir := range baseDirs {
-		walkMediaDirs(baseDir, found)
-	}
-	return found
-}
-
-func walkMediaDirs(baseDir string, found map[string]bool) {
-	_ = filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || !info.IsDir() {
-			return nil
-		}
-		if isTrailerDir(path) && hasVideoFiles(path) {
-			parent := filepath.Dir(path)
-			found[parent] = true
-		}
-		return nil
-	})
-}
-
-func isTrailerDir(path string) bool {
-	return filepath.Base(path) == "Trailers"
-}
-
-func hasVideoFiles(dir string) bool {
-	entries, _ := os.ReadDir(dir)
-	for _, entry := range entries {
-		if !entry.IsDir() && isVideoFile(entry.Name()) {
-			return true
-		}
-	}
-	return false
-}
-
-func isVideoFile(name string) bool {
-	return strings.HasSuffix(name, ".mp4") ||
-		strings.HasSuffix(name, ".mkv") ||
-		strings.HasSuffix(name, ".avi")
 }
 
 // shouldDownloadExtra determines if an extra should be downloaded

@@ -23,7 +23,7 @@ export function searchYoutubeStream({ mediaType, mediaId, onResult, onDone, onEr
           try {
             const json = JSON.parse(chunk.slice(6));
             if (onResult) onResult(json);
-          } catch (e) {
+          } catch {
             // ignore parse error
           }
         } else if (chunk.startsWith('event: done')) {

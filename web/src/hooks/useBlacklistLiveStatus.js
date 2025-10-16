@@ -33,7 +33,7 @@ export default function useBlacklistLiveStatus(blacklist, setBlacklist, interval
             }));
           }
         }
-      } catch (e) {
+      } catch {
         // ignore
       }
     };

@@ -19,7 +19,6 @@ export default function DirectoryPicker({ value, onChange, label, disabled }) {
 		if (showBrowser) {
 			fetchFolders(currentPath);
 		}
-	// (removed unused eslint-disable-next-line)
 	}, [showBrowser, currentPath]);
 
 	function fetchFolders(path) {

@@ -146,7 +146,7 @@ const HistoryPage = () => {
         {/* Pagination Controls */}
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, margin: '18px 0' }}>
           <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} style={{ padding: '6px 16px', borderRadius: 6, border: '1px solid #ccc', background: page === 1 ? '#eee' : '#fff', color: '#222', cursor: page === 1 ? 'not-allowed' : 'pointer', fontWeight: 500 }}>Prev</button>
-          <span style={{ fontWeight: 600, fontSize: 16 }}>Page {page} of {totalPages}</span>
+          <span style={{ fontWeight: 600, fontSize: 16, color: 'var(--history-table-pagination, #222)' }}>Page {page} of {totalPages}</span>
           <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} style={{ padding: '6px 16px', borderRadius: 6, border: '1px solid #ccc', background: page === totalPages ? '#eee' : '#fff', color: '#222', cursor: page === totalPages ? 'not-allowed' : 'pointer', fontWeight: 500 }}>Next</button>
         </div>
       </div>
@@ -168,7 +168,8 @@ const HistoryPage = () => {
       document.documentElement.style.setProperty('--history-table-extra-type', isDark ? '#fff' : '#000');
       document.documentElement.style.setProperty('--history-table-extra-title', isDark ? '#d1d5db' : '#444');
       document.documentElement.style.setProperty('--history-table-date', isDark ? '#a1a1aa' : '#888');
-      document.documentElement.style.setProperty('--history-icon-color', isDark ? '#fff' : '#111');
+  document.documentElement.style.setProperty('--history-icon-color', isDark ? '#fff' : '#111');
+  document.documentElement.style.setProperty('--history-table-pagination', isDark ? '#e5e7eb' : '#222');
     };
     setTableColors();
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', setTableColors);

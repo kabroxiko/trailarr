@@ -454,6 +454,18 @@ func StartDownloadQueueWorker() {
 			}
 			// Perform the download
 			meta, metaErr := DownloadYouTubeExtra(item.MediaType, item.MediaId, item.ExtraType, item.ExtraTitle, item.YouTubeID)
+			// If we hit a 429, pause the queue for 5 minutes
+			if metaErr != nil {
+				if tooMany, ok := metaErr.(*TooManyRequestsError); ok {
+					TrailarrLog(WARN, "QUEUE", "[StartDownloadQueueWorker] 429 detected, pausing queue for 5 minutes: %s", tooMany.Error())
+					pauseUntil := time.Now().Add(5 * time.Minute)
+					for time.Now().Before(pauseUntil) {
+						TrailarrLog(INFO, "QUEUE", "[StartDownloadQueueWorker] Queue paused for 429. Resuming in %v seconds...", int(time.Until(pauseUntil).Seconds()))
+						time.Sleep(30 * time.Second)
+					}
+					TrailarrLog(INFO, "QUEUE", "[StartDownloadQueueWorker] 5-minute pause for 429 complete. Resuming queue.")
+				}
+			}
 			// Update status in Redis
 			queue, err = client.LRange(ctx, DownloadQueueRedisKey, 0, -1).Result()
 			var finalStatus string
@@ -797,6 +809,10 @@ func performDownload(info *downloadInfo, youtubeId string) (*ExtraDownloadMetada
 		}
 	}
 	if err != nil {
+		// Check for 429/Too Many Requests in output
+		if strings.Contains(string(output), "429") || strings.Contains(strings.ToLower(string(output)), "too many requests") {
+			return nil, &TooManyRequestsError{Message: "yt-dlp hit 429 Too Many Requests"}
+		}
 		return nil, handleDownloadErrorNative(info, youtubeId, err, string(output))
 	}
 
@@ -807,6 +823,15 @@ func performDownload(info *downloadInfo, youtubeId string) (*ExtraDownloadMetada
 
 	// Create metadata
 	return createSuccessMetadata(info, youtubeId)
+}
+
+// TooManyRequestsError is returned when a 429/Too Many Requests is detected
+type TooManyRequestsError struct {
+	Message string
+}
+
+func (e *TooManyRequestsError) Error() string {
+	return e.Message
 }
 
 func isImpersonationErrorNative(output string) bool {
@@ -948,6 +973,35 @@ func createSuccessMetadata(info *downloadInfo, youtubeId string) (*ExtraDownload
 	if err := AddOrUpdateExtra(ctx, entry); err != nil {
 		TrailarrLog(WARN, "YouTube", "Failed to add/update extra in Redis after download: %v", err)
 	}
+
+	// Record download event in history
+	cacheFile, _ := resolveCachePath(info.MediaType)
+	mediaTitle := ""
+	if cacheFile != "" {
+		items, _ := loadCache(cacheFile)
+		for _, m := range items {
+			idInt, ok := parseMediaID(m["id"])
+			if ok && idInt == info.MediaId {
+				if t, ok := m["title"].(string); ok {
+					mediaTitle = t
+					break
+				}
+			}
+		}
+	}
+	if mediaTitle == "" {
+		mediaTitle = "Unknown"
+	}
+	event := HistoryEvent{
+		Action:     "download",
+		MediaTitle: mediaTitle,
+		MediaType:  info.MediaType,
+		MediaId:    info.MediaId,
+		ExtraType:  info.ExtraType,
+		ExtraTitle: info.ExtraTitle,
+		Date:       time.Now(),
+	}
+	_ = AppendHistoryEvent(event)
 
 	metaFile := info.OutFile + ".json"
 	metaBytes, _ := json.MarshalIndent(meta, "", "  ")

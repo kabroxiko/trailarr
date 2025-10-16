@@ -53,7 +53,6 @@ export default function Tasks() {
   const [status, setStatus] = useState(null);
   const [queues, setQueues] = useState([]);
   const [queueLoading, setQueueLoading] = useState(true);
-  // Removed unused rotationIntervals
   const [darkMode, setDarkMode] = useState(false);
   const activeRef = useRef(false);
 
@@ -181,13 +180,13 @@ export default function Tasks() {
                 if (pollingInterval) clearInterval(pollingInterval);
                 if (queueInterval) clearInterval(queueInterval);
                 if (ws) ws.close();
-              } catch (e) {
+              } catch {
                 // ignore
               }
             }
           };
         }
-      } catch (e) {
+      } catch {
         // ignore
       }
     }
@@ -250,7 +249,7 @@ export default function Tasks() {
           window.__trailarr_tasks_polling.stop();
           delete window.__trailarr_tasks_polling;
         }
-      } catch (e) {
+      } catch {
         // ignore
       }
       document.removeEventListener('visibilitychange', handleVisibility);

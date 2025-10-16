@@ -440,6 +440,12 @@ func getExtrasInterval() int {
 }
 
 func processExtras(ctx context.Context) {
+	// Clean all 429 rejections before starting extras task
+	if err := RemoveAll429Rejections(); err != nil {
+		TrailarrLog(WARN, "Tasks", "Failed to clean 429 rejections: %v", err)
+	} else {
+		TrailarrLog(INFO, "Tasks", "Cleaned all 429 rejections before starting extras task.")
+	}
 	extraTypesCfg, err := GetExtraTypesConfig()
 	if err != nil {
 		TrailarrLog(WARN, "Tasks", "Could not load extra types config: %v", err)
@@ -475,41 +481,73 @@ func downloadMissingExtrasWithTypeFilter(ctx context.Context, cfg ExtraTypesConf
 		return
 	}
 
+	enabledTypes := GetEnabledCanonicalExtraTypes(cfg)
+	// Filter items using the same wanted logic as GetMissingExtrasHandler
+	wantedItems := make([]map[string]interface{}, 0, len(items))
 	for _, item := range items {
+		id := item["id"]
+		var mediaId int
+		switch v := id.(type) {
+		case float64:
+			mediaId = int(v)
+		case int:
+			mediaId = v
+		default:
+			continue
+		}
+		if !HasAnyEnabledExtras(mediaType, mediaId, enabledTypes) {
+			wantedItems = append(wantedItems, item)
+		}
+	}
+	for _, item := range wantedItems {
 		if ctx != nil && ctx.Err() != nil {
 			TrailarrLog(INFO, "Tasks", "Extras download cancelled before processing item.")
 			break
 		}
-		// Skip items that have any extras of enabled types
-		enabledTypes := GetEnabledCanonicalExtraTypes(cfg)
-		if HasAnyEnabledExtras(item, enabledTypes) {
-			continue // skip this item, it has at least one extra of an enabled type
-		}
-		mediaId, ok := parseMediaID(item["id"])
-		if !ok {
-			continue
-		}
+		mediaId, _ := parseMediaID(item["id"])
+		title, _ := item["title"].(string)
 		extras, err := SearchExtras(mediaType, mediaId)
 		if err != nil {
-			TrailarrLog(WARN, "Tasks", "SearchExtras failed for mediaId=%v: %v", mediaId, err)
+			TrailarrLog(WARN, "Tasks", "SearchExtras failed for mediaId=%v, title=%q: %v", mediaId, title, err)
 			continue
+		}
+		var tmdbExtras []Extra
+		usedTMDB := false
+		if len(extras) == 0 {
+			TrailarrLog(INFO, "Tasks", "No extras found for mediaId=%v, title=%q, enabledTypes=%v, attempting TMDB fetch...", mediaId, title, enabledTypes)
+			tmdbExtras, err = FetchTMDBExtrasForMedia(mediaType, mediaId)
+			if err != nil {
+				TrailarrLog(WARN, "Tasks", "TMDB fetch failed for mediaId=%v, title=%q: %v", mediaId, title, err)
+				continue
+			}
+			if len(tmdbExtras) == 0 {
+				TrailarrLog(INFO, "Tasks", "Still no extras after TMDB fetch for mediaId=%v, title=%q", mediaId, title)
+				continue
+			}
+			usedTMDB = true
 		}
 		mediaPath, err := FindMediaPathByID(cacheFile, mediaId)
 		if err != nil || mediaPath == "" {
-			TrailarrLog(WARN, "Tasks", "FindMediaPathByID failed for mediaId=%v: %v", mediaId, err)
+			TrailarrLog(WARN, "Tasks", "FindMediaPathByID failed for mediaId=%v, title=%q: %v", mediaId, title, err)
 			continue
 		}
 		TrailarrLog(INFO, "Tasks", "Searching extras for %s %v: %s", mediaType, mediaId, item["title"])
-		MarkDownloadedExtras(extras, mediaPath, "type", "title")
-		// Defensive: mark rejected extras before any download
-		rejectedExtras := GetRejectedExtrasForMedia(mediaType, mediaId)
-		rejectedYoutubeIds := make(map[string]struct{})
-		for _, r := range rejectedExtras {
-			rejectedYoutubeIds[r.YoutubeId] = struct{}{}
+		var toDownload []Extra
+		if usedTMDB {
+			toDownload = tmdbExtras
+		} else {
+			MarkDownloadedExtras(extras, mediaPath, "type", "title")
+			// Defensive: mark rejected extras before any download
+			rejectedExtras := GetRejectedExtrasForMedia(mediaType, mediaId)
+			rejectedYoutubeIds := make(map[string]struct{})
+			for _, r := range rejectedExtras {
+				rejectedYoutubeIds[r.YoutubeId] = struct{}{}
+			}
+			MarkRejectedExtrasInMemory(extras, rejectedYoutubeIds)
+			toDownload = extras
 		}
-		MarkRejectedExtrasInMemory(extras, rejectedYoutubeIds)
 		// For each extra, download sequentially
-		for _, extra := range extras {
+		for _, extra := range toDownload {
 			if ctx != nil && ctx.Err() != nil {
 				TrailarrLog(INFO, "Tasks", "Extras download cancelled before processing extra.")
 				break
@@ -518,10 +556,12 @@ func downloadMissingExtrasWithTypeFilter(ctx context.Context, cfg ExtraTypesConf
 			if !isExtraTypeEnabled(cfg, typ) {
 				continue
 			}
-			if extra.Status == "rejected" {
+			// Only check rejection for local extras, not TMDB-fetched
+			if !usedTMDB && extra.Status == "rejected" {
 				continue
 			}
-			if extra.Status == "missing" && extra.YoutubeId != "" {
+			// For TMDB-fetched, always treat as missing if not present locally
+			if (usedTMDB && extra.YoutubeId != "") || (!usedTMDB && extra.Status == "missing" && extra.YoutubeId != "") {
 				err := handleTypeFilteredExtraDownload(mediaType, mediaId, extra)
 				if err != nil {
 					TrailarrLog(WARN, "Tasks", "[SEQ] Download failed: %v", err)
@@ -544,6 +584,20 @@ func handleTypeFilteredExtraDownload(mediaType MediaType, mediaId int, extra Ext
 	}
 	AddToDownloadQueue(item, "task")
 	TrailarrLog(INFO, "QUEUE", "[handleTypeFilteredExtraDownload] Enqueued extra: mediaType=%v, mediaId=%v, type=%s, title=%s, youtubeId=%s", mediaType, mediaId, extra.ExtraType, extra.ExtraTitle, extra.YoutubeId)
+
+	// Record download event in history
+	cacheFile, _ := resolveCachePath(mediaType)
+	mediaTitle := lookupMediaTitle(cacheFile, mediaId)
+	event := HistoryEvent{
+		Action:     "download",
+		MediaTitle: mediaTitle,
+		MediaType:  mediaType,
+		MediaId:    mediaId,
+		ExtraType:  extra.ExtraType,
+		ExtraTitle: extra.ExtraTitle,
+		Date:       time.Now(),
+	}
+	_ = AppendHistoryEvent(event)
 	return nil
 }
 

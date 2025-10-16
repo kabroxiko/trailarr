@@ -33,7 +33,7 @@ export default function useExtrasLiveStatus(extras, setExtras, intervalMs = 3000
             }));
           }
         }
-      } catch (e) {
+      } catch {
         // ignore
       }
     };

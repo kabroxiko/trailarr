@@ -14,14 +14,11 @@ export default function ExtraCard({
   setExtras,
   setModalMsg,
   setShowModal,
-  // YoutubeEmbed, // removed unused
   rejected: rejectedProp,
   onPlay,
-  onDownloaded,
   showToast, // new prop for toast/modal
 }) {
   const [imgError, setImgError] = useState(false);
-  const [imgLoaded, setImgLoaded] = useState(false);
   const [isFallback, setIsFallback] = useState(false);
   const baseTitle = extra.ExtraTitle || '';
   const baseType = extra.ExtraType || '';
@@ -35,7 +32,6 @@ export default function ExtraCard({
   React.useEffect(() => {
     // Reset states when posterUrl changes
     setImgError(false);
-    setImgLoaded(false);
     setIsFallback(false);
   }, [posterUrl]);
   let titleFontSize = 16;
@@ -48,7 +44,7 @@ export default function ExtraCard({
   const exists = extra.Status === 'exists';
   const [downloading, setDownloading] = useState(false);
   // Use the rejected prop if provided, otherwise fallback to extra.Status
-  const [unbanned, setUnbanned] = useState(false);
+  const [unbanned] = useState(false);
   // Treat 'failed' as 'rejected' for UI
   const rejected = !unbanned && (typeof rejectedProp === 'boolean' ? rejectedProp : extra.Status === 'rejected' || extra.Status === 'failed');
   const [errorCard, setErrorCard] = useState(null);
@@ -143,7 +139,7 @@ export default function ExtraCard({
   };
 
   // Poster image or fallback factory
-  function PosterImage({ src, alt, onError, onLoad, fallbackIcon, loaded }) {
+  function PosterImage({ src, alt, onError, onLoad, fallbackIcon }) {
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {src ? (
@@ -238,19 +234,16 @@ export default function ExtraCard({
             src={posterUrl}
             alt={displayTitle}
             fallbackIcon={faBan}
-            loaded={imgLoaded}
-            onLoad={(e) => {
+            onLoad={(event) => {
               // If the image loads but is very small (our SVG fallback is 64x64), treat as fallback
               try {
-                const img = e.target;
+                const img = event.target;
                 if (img.naturalWidth <= 64 && img.naturalHeight <= 64) {
                   setIsFallback(true);
                   setImgError(true);
-                } else {
-                  setImgLoaded(true);
                 }
-              } catch (err) {
-                setImgLoaded(true);
+              } catch {
+                // ignore
               }
             }}
             onError={() => {
@@ -259,7 +252,7 @@ export default function ExtraCard({
             }}
           />
         ) : (
-          <PosterImage src={null} alt="Denied" fallbackIcon={faBan} loaded={false} />
+          <PosterImage src={null} alt="Denied" fallbackIcon={faBan} />
         )}
         {/* Failed/Rejected Icon (always show for failed/rejected) */}
         {(extra.Status === 'failed' || extra.Status === 'rejected' || extra.Status === 'unknown' || extra.Status === 'error') && (
@@ -302,7 +295,7 @@ export default function ExtraCard({
                           setExtras(data.extras);
                         }
                       }
-                    } catch (e) { /* ignore */ }
+                    } catch { /* ignore */ }
                   }
                 } catch {
                   setModalMsg('Failed to remove ban.');

@@ -19,15 +19,13 @@ export default function YoutubePlayer({ videoId, onReady }) {
   const playerRef = useRef();
   const ytPlayer = useRef();
   const [error, setError] = useState('');
-  const [hide, setHide] = useState(false);
 
   useEffect(() => {
     let destroyed = false;
     let pollId;
     let playerCreated = false;
     let timeoutId;
-    setError('');
-    setHide(false);
+  setError('');
     function tryCreatePlayer() {
       if (destroyed || playerCreated) return;
       if (!videoId) {

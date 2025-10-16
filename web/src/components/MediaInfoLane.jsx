@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSearch } from '@fortawesome/free-solid-svg-icons';
-import { searchYoutube } from '../api.youtube';
 import { searchYoutubeStream } from '../api.youtube.sse';
 
-export default function MediaInfoLane({ media, searchLoading, handleSearchExtras, setError, ytResults, setYtResults, darkMode }) {
+export default function MediaInfoLane({ media, setError, setYtResults, darkMode }) {
   const [ytLoading, setYtLoading] = useState(false);
   const handleManualSearch = () => {
     if (!media) return;
@@ -27,7 +26,7 @@ export default function MediaInfoLane({ media, searchLoading, handleSearchExtras
       onDone: () => {
         setYtLoading(false);
       },
-      onError: (e) => {
+      onError: () => {
         setError && setError('YouTube search failed');
         setYtLoading(false);
       }

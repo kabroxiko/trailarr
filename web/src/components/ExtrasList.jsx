@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ExtraCard from './ExtraCard.jsx';
 import SectionHeader from './SectionHeader.jsx';
 import Toast from './Toast';
@@ -67,9 +67,6 @@ function ExtrasList({
       ws.close();
     };
   }, [setExtras]);
-
-  // Flatten all extras for polling
-  const allExtras = useMemo(() => Object.values(extrasByType).flat(), [extrasByType]);
 
   // Helper for rendering a group of extras
   const renderExtrasGroup = (type, typeExtras) => (

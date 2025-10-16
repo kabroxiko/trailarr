@@ -91,22 +91,12 @@ function PlexTypeBox({ plexType, onDropChip, children, isDark }) {
   );
 }
 
-// Removed unused fetchTMDBTypes, fetchPlexTypes, fetchMapping, saveMapping
-
 export default function ExtrasTypeMappingConfig({ mapping, onMappingChange, tmdbTypes, plexTypes, isDark = false }) {
-  // Removed unused error and loading state
-
-  // Only local error/loading, all mapping state is controlled by parent
-
-  // Removed unused usedPlexTypes
-
-  const handleMoveChip = (tmdbType, newPlexType) => {
+    const handleMoveChip = (tmdbType, newPlexType) => {
     if (onMappingChange) {
       onMappingChange({ ...mapping, [tmdbType]: newPlexType });
     }
   };
-
-  // Removed undefined loading check
 
   return (
     <DndProvider backend={HTML5Backend}>
@@ -114,7 +104,6 @@ export default function ExtrasTypeMappingConfig({ mapping, onMappingChange, tmdb
         <SectionHeader>
           TMDB to Plex Extra Type Mapping
         </SectionHeader>
-        {/* Removed undefined error display */}
         <Paper sx={{
           mt: 2,
           p: 1,
