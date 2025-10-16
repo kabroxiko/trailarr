@@ -65,7 +65,6 @@ export default function ExtrasSettings({ darkMode }) {
   const [plexTypes, setPlexTypes] = useState([]);
   const [mapping, setMapping] = useState({});
 
-  // Removed unused loading and ytSaving
   useEffect(() => {
     Promise.all([
       axios.get('/api/tmdb/extratypes'),
@@ -94,10 +93,6 @@ export default function ExtrasSettings({ darkMode }) {
   const handleMappingChange = (newMapping) => {
     setMapping(newMapping);
   };
-
-  // const handleChange = (key) => {
-  //   setSettings(prev => ({ ...prev, [key]: !prev[key] }));
-  // }; // removed unused
 
   const handleYtFlagChange = (key, value) => {
     setYtFlags(prev => ({ ...prev, [key]: value }));

@@ -16,93 +16,26 @@ import (
 
 // SearchExtras merges extras from the main cache and the persistent extras collection for a media item
 func SearchExtras(mediaType MediaType, mediaId int) ([]Extra, error) {
-	cacheFile, _ := resolveCachePath(mediaType)
-	items, err := loadCache(cacheFile)
-	if err != nil {
-		return nil, err
-	}
-	var mediaItem map[string]interface{}
-	for _, m := range items {
-		idInt, ok := parseMediaID(m["id"])
-		if ok && idInt == mediaId {
-			mediaItem = m
-			break
-		}
-	}
-	if mediaItem == nil {
-		return nil, fmt.Errorf("media item not found")
-	}
-
-	// Gather extras from main cache (disk)
-	diskExtras := make(map[string]Extra)
-	extrasVal, ok := mediaItem["extras"]
-	if ok {
-		if extrasMap, ok := extrasVal.(map[string]interface{}); ok {
-			for _, v := range extrasMap {
-				em, ok := v.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				e := Extra{
-					ExtraType:  toString(em["ExtraType"]),
-					ExtraTitle: toString(em["ExtraTitle"]),
-					YoutubeId:  toString(em["YoutubeId"]),
-					Status:     toString(em["Status"]),
-				}
-				key := e.YoutubeId + ":" + e.ExtraType + ":" + e.ExtraTitle
-				diskExtras[key] = e
-			}
-		} else if extrasArr, ok := extrasVal.([]interface{}); ok {
-			for _, v := range extrasArr {
-				em, ok := v.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				e := Extra{
-					ExtraType:  toString(em["ExtraType"]),
-					ExtraTitle: toString(em["ExtraTitle"]),
-					YoutubeId:  toString(em["YoutubeId"]),
-					Status:     toString(em["Status"]),
-				}
-				key := e.YoutubeId + ":" + e.ExtraType + ":" + e.ExtraTitle
-				diskExtras[key] = e
-			}
-		}
-	}
-
-	// Gather persistent extras from Redis
 	ctx := context.Background()
-	persistent, _ := GetAllExtras(ctx)
-	persistentMap := make(map[string]Extra)
-	for _, e := range persistent {
-		if e.MediaType == mediaType && e.MediaId == mediaId {
-			key := e.YoutubeId + ":" + e.ExtraType + ":" + e.ExtraTitle
-			persistentMap[key] = Extra{
-				ExtraType:  e.ExtraType,
-				ExtraTitle: e.ExtraTitle,
-				YoutubeId:  e.YoutubeId,
-				Status:     e.Status,
+	entries, err := GetExtrasForMedia(ctx, mediaType, mediaId)
+	if err != nil {
+		// fallback to old method if needed
+		persistent, _ := GetAllExtras(ctx)
+		entries = make([]ExtrasEntry, 0)
+		for _, e := range persistent {
+			if e.MediaType == mediaType && e.MediaId == mediaId {
+				entries = append(entries, e)
 			}
 		}
 	}
-
-	// Merge: persistent status takes precedence
-	result := make([]Extra, 0)
-	used := make(map[string]struct{})
-	for k, e := range diskExtras {
-		if pe, ok := persistentMap[k]; ok {
-			result = append(result, pe)
-			used[k] = struct{}{}
-		} else {
-			result = append(result, e)
-			used[k] = struct{}{}
-		}
-	}
-	// Add persistent-only extras
-	for k, e := range persistentMap {
-		if _, ok := used[k]; !ok {
-			result = append(result, e)
-		}
+	result := make([]Extra, 0, len(entries))
+	for _, e := range entries {
+		result = append(result, Extra{
+			ExtraType:  e.ExtraType,
+			ExtraTitle: e.ExtraTitle,
+			YoutubeId:  e.YoutubeId,
+			Status:     e.Status,
+		})
 	}
 	return result, nil
 }
@@ -422,18 +355,7 @@ func loadCache(path string) ([]map[string]interface{}, error) {
 			for _, item := range items {
 				updateItemPath(item, mappings)
 				updateItemTitle(item, titleMap)
-				// Attach extras from collection
-				mediaPath, _ := item["path"].(string)
-				if mediaPath != "" {
-					extrasRaw := scanExtrasInfo(mediaPath)
-					extras := make(map[string]interface{})
-					for k, v := range extrasRaw {
-						extras[k] = v
-					}
-					item["extras"] = extras
-				} else {
-					item["extras"] = map[string]interface{}{}
-				}
+				// Do NOT attach extras from collection; extras are only in the extras collection now
 			}
 		}
 		return items, nil
@@ -453,14 +375,7 @@ func loadCache(path string) ([]map[string]interface{}, error) {
 		for _, item := range items {
 			updateItemPath(item, mappings)
 			updateItemTitle(item, titleMap)
-			// Attach extras from collection
-			mediaPath, _ := item["path"].(string)
-			if mediaPath != "" {
-				extras := scanExtrasInfo(mediaPath)
-				item["extras"] = extras
-			} else {
-				item["extras"] = map[string]interface{}{}
-			}
+			// Do NOT attach extras from collection; extras are only in the extras collection now
 		}
 	}
 	return items, nil
@@ -603,9 +518,9 @@ func SyncMediaCacheJson(provider, apiPath, cacheFile string, filter func(map[str
 	ctx := context.Background()
 	for _, m := range allItems {
 		if filter(m) {
+			// Only record extras in the unified collection, not in the per-media cache
 			mediaPath, _ := m["path"].(string)
 			extrasByType := scanExtrasInfo(mediaPath)
-			// Only record extras in the unified collection, not in the per-media cache
 			mediaType := MediaTypeMovie
 			if provider == "sonarr" {
 				mediaType = MediaTypeTV
@@ -633,6 +548,7 @@ func SyncMediaCacheJson(provider, apiPath, cacheFile string, filter func(map[str
 				}
 			}
 			items = append(items, m)
+			// Do NOT attach extras to m; extras are only in the extras collection now
 		}
 	}
 	// Save to Redis for movies/series, file for others
@@ -673,8 +589,19 @@ func GetMissingExtrasHandler(wantedPath string) gin.HandlerFunc {
 		// Map config keys to canonical Plex type names
 		requiredTypes := GetEnabledCanonicalExtraTypes(cfg)
 		TrailarrLog(INFO, "GetMissingExtrasHandler", "Required extra types: %v", requiredTypes)
+		mediaType, _ := detectMediaTypeAndMainCachePath(wantedPath)
 		missing := Filter(items, func(media map[string]interface{}) bool {
-			return !HasAnyEnabledExtras(media, requiredTypes)
+			id := media["id"]
+			var mediaId int
+			switch v := id.(type) {
+			case float64:
+				mediaId = int(v)
+			case int:
+				mediaId = v
+			default:
+				return true // treat as missing if no id
+			}
+			return !HasAnyEnabledExtras(mediaType, mediaId, requiredTypes)
 		})
 		TrailarrLog(INFO, "GetMissingExtrasHandler", "Found %d items missing extras of types: %v", len(missing), requiredTypes)
 		respondJSON(c, http.StatusOK, gin.H{"items": missing})
@@ -779,31 +706,28 @@ func updateWantedStatusInMainJson(mediaType MediaType, cacheFile string) error {
 	if err != nil {
 		return err
 	}
-	mappings, err := GetPathMappings(mediaType)
-	if err != nil {
-		mappings = nil
-	}
-	var trailerPaths []string
-	for _, m := range mappings {
-		if len(m) > 1 && m[1] != "" {
-			trailerPaths = append(trailerPaths, m[1])
-		}
-	}
-	if len(trailerPaths) == 0 {
-		if mediaType == MediaTypeMovie {
-			trailerPaths = append(trailerPaths, "/Movies")
-		} else {
-			trailerPaths = append(trailerPaths, "/Series")
-		}
-	}
-	trailerSet := findMediaWithTrailers(trailerPaths...)
 	for _, item := range items {
-		path, ok := item["path"].(string)
-		if !ok {
+		id := item["id"]
+		var mediaId int
+		switch v := id.(type) {
+		case float64:
+			mediaId = int(v)
+		case int:
+			mediaId = v
+		default:
 			item["wanted"] = false
 			continue
 		}
-		item["wanted"] = !trailerSet[path]
+		// Query persistent extras collection for this media item
+		extras, _ := SearchExtras(mediaType, mediaId)
+		hasTrailer := false
+		for _, e := range extras {
+			if strings.EqualFold(e.ExtraType, "Trailer") {
+				hasTrailer = true
+				break
+			}
+		}
+		item["wanted"] = !hasTrailer
 	}
 	// Save to Redis for movies/series, file for others
 	if cacheFile == MoviesJSONPath || cacheFile == SeriesJSONPath {
@@ -842,43 +766,11 @@ func GetMediaByIdHandler(cacheFile, key string) gin.HandlerFunc {
 }
 
 // Returns true if the media has any extras of the enabled types (case/plural robust)
-func HasAnyEnabledExtras(media map[string]interface{}, enabledTypes []string) bool {
-	extras, ok := media["extras"]
-	if !ok {
-		return false
-	}
-	extrasMap, ok := extras.(map[string]interface{})
-	if !ok {
-		return false
-	}
-	lowerKeys := make(map[string]string)
-	for k := range extrasMap {
-		lowerKeys[strings.ToLower(k)] = k
-	}
-	for _, typ := range enabledTypes {
-		tLower := strings.ToLower(typ)
-		key, found := lowerKeys[tLower]
-		if !found && strings.HasSuffix(tLower, "s") {
-			key, found = lowerKeys[tLower[:len(tLower)-1]]
-		}
-		if !found && !strings.HasSuffix(tLower, "s") {
-			key, found = lowerKeys[tLower+"s"]
-		}
-		if found {
-			v := extrasMap[key]
-			switch vv := v.(type) {
-			case []interface{}:
-				if len(vv) > 0 {
-					return true
-				}
-			case string:
-				if strings.TrimSpace(vv) != "" {
-					return true
-				}
-			case nil:
-				// skip nil
-			default:
-				// Only return true for non-empty values
+func HasAnyEnabledExtras(mediaType MediaType, mediaId int, enabledTypes []string) bool {
+	extras, _ := SearchExtras(mediaType, mediaId)
+	for _, e := range extras {
+		for _, typ := range enabledTypes {
+			if strings.EqualFold(e.ExtraType, typ) || strings.EqualFold(e.ExtraType+"s", typ) || strings.EqualFold(e.ExtraType, typ+"s") {
 				return true
 			}
 		}

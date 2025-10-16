@@ -3,7 +3,7 @@ import IconButton from './IconButton.jsx';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faBookmark } from '@fortawesome/free-regular-svg-icons';
 
-export default function MediaCard({ media, mediaType, error }) {
+export default function MediaCard({ media, mediaType }) {
   const [cast, setCast] = useState([]);
   const [castLoading, setCastLoading] = useState(false);
   const [castError, setCastError] = useState("");
@@ -35,7 +35,7 @@ export default function MediaCard({ media, mediaType, error }) {
         setCast(Array.isArray(data.cast) ? data.cast : []);
         setCastLoading(false);
       })
-      .catch(e => {
+      .catch(() => {
         setCast([]);
         setCastError("Failed to load cast");
         setCastLoading(false);
