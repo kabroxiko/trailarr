@@ -14,6 +14,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type MediaType string
+
+const (
+	MediaTypeMovie MediaType = "movie"
+	MediaTypeTV    MediaType = "tv"
+)
+
 // SearchExtras merges extras from the main cache and the persistent extras collection for a media item
 func SearchExtras(mediaType MediaType, mediaId int) ([]Extra, error) {
 	ctx := context.Background()
@@ -47,137 +54,154 @@ func ProxyYouTubeImageHandler(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, "Missing youtubeId")
 		return
 	}
-	// Use MediaCoverPath/YouTube as cache directory
-	cacheDir := filepath.Join(MediaCoverPath, "YouTube")
-	// Ensure top-level MediaCoverPath exists
-	if err := os.MkdirAll(MediaCoverPath, 0775); err != nil {
-		TrailarrLog(WARN, "ProxyYouTubeImageHandler", "Failed to create MediaCoverPath %s: %v", MediaCoverPath, err)
-	}
-	// Ensure cacheDir exists
-	if err := os.MkdirAll(cacheDir, 0775); err != nil {
-		TrailarrLog(WARN, "ProxyYouTubeImageHandler", "Failed to create cacheDir %s: %v", cacheDir, err)
-	}
 
-	// Check for existing cached files with common extensions
-	exts := []string{".jpg", ".jpeg", ".png", ".webp", ".svg"}
-	var cachedPath string
-	var contentType string
-	for _, e := range exts {
-		p := filepath.Join(cacheDir, youtubeId+e)
-		if _, err := os.Stat(p); err == nil {
-			cachedPath = p
-			switch e {
-			case ".jpg", ".jpeg":
-				contentType = "image/jpeg"
-			case ".png":
-				contentType = "image/png"
-			case ".webp":
-				contentType = "image/webp"
-			case ".svg":
-				contentType = "image/svg+xml"
-			default:
-				contentType = "application/octet-stream"
-			}
-			break
-		}
-	}
-	if cachedPath != "" {
-		// Serve cached file
-		c.Header("Content-Type", contentType)
-		c.Header("Cache-Control", "public, max-age=86400")
-		c.File(cachedPath)
+	cacheDir := filepath.Join(MediaCoverPath, "YouTube")
+	ensureDirIfNeeded(MediaCoverPath, "MediaCoverPath")
+	ensureDirIfNeeded(cacheDir, "cacheDir")
+
+	if path, ct := cachedYouTubeImage(cacheDir, youtubeId); path != "" {
+		serveCachedFile(c, path, ct)
 		return
 	}
 
-	// Not cached — try to fetch from YouTube image servers
 	thumbUrls := []string{
 		"https://i.ytimg.com/vi/" + youtubeId + "/maxresdefault.jpg",
 		"https://i.ytimg.com/vi/" + youtubeId + "/hqdefault.jpg",
 	}
-	var resp *http.Response
-	var err error
-	for _, url := range thumbUrls {
-		resp, err = http.Get(url)
-		if err == nil && resp.StatusCode == 200 {
-			break
-		}
-		if resp != nil {
-			resp.Body.Close()
+	resp, err := fetchFirstSuccessful(thumbUrls)
+	if err != nil || resp == nil {
+		serveFallbackSVG(c)
+		return
+	}
+	defer resp.Body.Close()
+
+	ct := resp.Header.Get("Content-Type")
+	ext := detectImageExt(ct)
+	tmpPath := filepath.Join(cacheDir, youtubeId+".tmp")
+	finalPath := filepath.Join(cacheDir, youtubeId+ext)
+
+	if err := saveToTmp(resp.Body, tmpPath); err != nil {
+		// couldn't cache; stream the response directly
+		streamResponse(c, ct, resp.Body)
+		return
+	}
+	_ = os.Rename(tmpPath, finalPath)
+	serveCachedFile(c, finalPath, ct)
+}
+
+// helper: ensure directory exists but don't fail the whole handler
+func ensureDirIfNeeded(path, context string) {
+	if err := os.MkdirAll(path, 0775); err != nil {
+		TrailarrLog(WARN, "ProxyYouTubeImageHandler", "Failed to create %s %s: %v", context, path, err)
+	}
+}
+
+// helper: check cached files and return path + content type
+func cachedYouTubeImage(cacheDir, id string) (string, string) {
+	exts := []struct {
+		ext string
+		ct  string
+	}{
+		{".jpg", "image/jpeg"},
+		{".jpeg", "image/jpeg"},
+		{".png", "image/png"},
+		{".webp", "image/webp"},
+		{".svg", "image/svg+xml"},
+	}
+	for _, e := range exts {
+		p := filepath.Join(cacheDir, id+e.ext)
+		if _, err := os.Stat(p); err == nil {
+			return p, e.ct
 		}
 	}
-	if err != nil || resp == nil || resp.StatusCode != 200 {
-		// Serve a small inline SVG fallback that looks like FontAwesome's faBan
-		svg := `<?xml version="1.0" encoding="UTF-8"?>
+	return "", ""
+}
+
+func serveCachedFile(c *gin.Context, path, contentType string) {
+	c.Header("Content-Type", contentType)
+	c.Header("Cache-Control", "public, max-age=86400")
+	if c.Request.Method == http.MethodHead {
+		c.Status(http.StatusOK)
+		return
+	}
+	c.File(path)
+}
+
+// helper: fetch the first successful response from candidate URLs
+func fetchFirstSuccessful(urls []string) (*http.Response, error) {
+	for _, u := range urls {
+		resp, err := http.Get(u)
+		if err != nil {
+			if resp != nil {
+				resp.Body.Close()
+			}
+			continue
+		}
+		if resp.StatusCode == 200 {
+			return resp, nil
+		}
+		resp.Body.Close()
+	}
+	return nil, fmt.Errorf("no successful response")
+}
+
+func serveFallbackSVG(c *gin.Context) {
+	svg := `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="64" height="64" role="img" aria-label="Unavailable">
   <circle cx="64" cy="64" r="30" fill="none" stroke="#888" stroke-width="8" />
   <!-- diagonal from top-right to bottom-left -->
   <line x1="92" y1="36" x2="36" y2="92" stroke="#888" stroke-width="10" stroke-linecap="round" />
 </svg>`
-		c.Header("Content-Type", "image/svg+xml")
-		// Indicate to the frontend that this response is a fallback placeholder
-		c.Header("X-Proxy-Fallback", "1")
-		c.Header("Cache-Control", "public, max-age=86400")
-		c.Status(http.StatusOK)
-		// If this is a HEAD request, return headers only (no body)
-		if c.Request.Method == http.MethodHead {
-			return
-		}
-		_, _ = c.Writer.Write([]byte(svg))
-		return
-	}
-	defer resp.Body.Close()
-
-	// Determine extension from content-type
-	ct := resp.Header.Get("Content-Type")
-	ext := ".jpg"
-	switch {
-	case strings.Contains(ct, "jpeg"):
-		ext = ".jpg"
-	case strings.Contains(ct, "png"):
-		ext = ".png"
-	case strings.Contains(ct, "webp"):
-		ext = ".webp"
-	case strings.Contains(ct, "svg"):
-		ext = ".svg"
-	}
-
-	tmpPath := filepath.Join(cacheDir, youtubeId+".tmp")
-	finalPath := filepath.Join(cacheDir, youtubeId+ext)
-	out, err := os.Create(tmpPath)
-	if err != nil {
-		// Can't cache — just stream response
-		c.Header("Content-Type", ct)
-		c.Header("Cache-Control", "public, max-age=86400")
-		c.Status(http.StatusOK)
-		_, _ = io.Copy(c.Writer, resp.Body)
-		return
-	}
-	_, _ = io.Copy(out, resp.Body)
-	out.Close()
-	// Rename tmp to final
-	_ = os.Rename(tmpPath, finalPath)
-
-	// Serve the saved file
-	c.Header("Content-Type", ct)
+	c.Header("Content-Type", "image/svg+xml")
+	c.Header("X-Proxy-Fallback", "1")
 	c.Header("Cache-Control", "public, max-age=86400")
-	// If HEAD request, return headers only
+	c.Status(http.StatusOK)
 	if c.Request.Method == http.MethodHead {
-		c.Status(http.StatusOK)
 		return
 	}
-	c.File(finalPath)
+	_, _ = c.Writer.Write([]byte(svg))
 }
 
-type MediaType string
+// helper: determine extension from content type
+func detectImageExt(ct string) string {
+	switch {
+	case strings.Contains(ct, "jpeg"):
+		return ".jpg"
+	case strings.Contains(ct, "png"):
+		return ".png"
+	case strings.Contains(ct, "webp"):
+		return ".webp"
+	case strings.Contains(ct, "svg"):
+		return ".svg"
+	default:
+		return ".jpg"
+	}
+}
 
-const (
-	MediaTypeMovie MediaType = "movie"
-	MediaTypeTV    MediaType = "tv"
-)
+// helper: save response body to tmp file
+func saveToTmp(r io.Reader, path string) error {
+	out, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = io.Copy(out, r)
+	return err
+}
+
+func streamResponse(c *gin.Context, ct string, r io.Reader) {
+	c.Header("Content-Type", ct)
+	c.Header("Cache-Control", "public, max-age=86400")
+	c.Status(http.StatusOK)
+	if c.Request.Method == http.MethodHead {
+		return
+	}
+	_, _ = io.Copy(c.Writer, r)
+}
 
 // Syncs media cache and caches poster images for Radarr/Sonarr
 func SyncMedia(provider, apiPath, cacheFile string, filter func(map[string]interface{}) bool, posterDir string, posterSuffixes []string) error {
-	err := SyncMediaCacheJson(provider, apiPath, cacheFile, filter)
+	err := SyncMediaCache(provider, apiPath, cacheFile, filter)
 	if err != nil {
 		return err
 	}
@@ -345,40 +369,34 @@ func loadCache(path string) ([]map[string]interface{}, error) {
 		if err != nil {
 			return nil, err
 		}
-		mediaType, mainCachePath := detectMediaTypeAndMainCachePath(path)
-		titleMap := getTitleMap(mainCachePath, path)
-		if mediaType != "" {
-			mappings, err := GetPathMappings(mediaType)
-			if err != nil {
-				mappings = nil
-			}
-			for _, item := range items {
-				updateItemPath(item, mappings)
-				updateItemTitle(item, titleMap)
-				// Do NOT attach extras from collection; extras are only in the extras collection now
-			}
-		}
-		return items, nil
+		return processLoadedItems(items, path), nil
 	}
+
 	// Fallback to file for other paths
 	var items []map[string]interface{}
 	if err := ReadJSONFile(path, &items); err != nil {
 		return nil, err
 	}
+	return processLoadedItems(items, path), nil
+}
+
+// Helper to apply path mappings and title map to loaded items, if applicable.
+func processLoadedItems(items []map[string]interface{}, path string) []map[string]interface{} {
 	mediaType, mainCachePath := detectMediaTypeAndMainCachePath(path)
-	titleMap := getTitleMap(mainCachePath, path)
-	if mediaType != "" {
-		mappings, err := GetPathMappings(mediaType)
-		if err != nil {
-			mappings = nil
-		}
-		for _, item := range items {
-			updateItemPath(item, mappings)
-			updateItemTitle(item, titleMap)
-			// Do NOT attach extras from collection; extras are only in the extras collection now
-		}
+	if mediaType == "" {
+		return items
 	}
-	return items, nil
+	titleMap := getTitleMap(mainCachePath, path)
+	mappings, err := GetPathMappings(mediaType)
+	if err != nil {
+		mappings = nil
+	}
+	for _, item := range items {
+		updateItemPath(item, mappings)
+		updateItemTitle(item, titleMap)
+		// Do NOT attach extras from collection; extras are only in the extras collection now
+	}
+	return items
 }
 
 // LoadMediaFromRedis loads movies or series from Redis, expects path to be MoviesRedisKey or SeriesRedisKey
@@ -490,74 +508,25 @@ func updateItemTitle(item map[string]interface{}, titleMap map[string]string) {
 // Generic sync function for Radarr/Sonarr
 // Syncs only the JSON cache for Radarr/Sonarr, not the media files themselves
 // Pass mediaType (MediaTypeMovie or MediaTypeTV), apiPath (e.g. "/api/v3/movie"), cacheFile, and a filter function for items
-func SyncMediaCacheJson(provider, apiPath, cacheFile string, filter func(map[string]interface{}) bool) error {
-	providerURL, apiKey, err := GetProviderUrlAndApiKey(provider)
+func SyncMediaCache(provider, apiPath, cacheFile string, filter func(map[string]interface{}) bool) error {
+	allItems, err := fetchProviderItems(provider, apiPath)
 	if err != nil {
-		return fmt.Errorf("%s settings not found: %w", provider, err)
+		return err
 	}
-	req, err := http.NewRequest("GET", providerURL+apiPath, nil)
-	if err != nil {
-		return fmt.Errorf("error creating request: %w", err)
-	}
-	req.Header.Set(HeaderApiKey, apiKey)
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("error fetching %s: %w", provider, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		TrailarrLog(WARN, "SyncMediaCacheJson", "%s API error: %d", provider, resp.StatusCode)
-		return fmt.Errorf("%s API error: %d", provider, resp.StatusCode)
-	}
-	var allItems []map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&allItems); err != nil {
-		return fmt.Errorf("failed to decode %s response: %w", provider, err)
-	}
-	items := make([]map[string]interface{}, 0)
+
 	ctx := context.Background()
-	for _, m := range allItems {
-		if filter(m) {
-			// Only record extras in the unified collection, not in the per-media cache
-			mediaPath, _ := m["path"].(string)
-			extrasByType := scanExtrasInfo(mediaPath)
-			mediaType := MediaTypeMovie
-			if provider == "sonarr" {
-				mediaType = MediaTypeTV
-			}
-			mediaId, _ := parseMediaID(m["id"])
-			for extraType, extras := range extrasByType {
-				for _, extra := range extras {
-					title, _ := extra["Title"].(string)
-					fileName, _ := extra["FileName"].(string)
-					youtubeId, _ := extra["YoutubeId"].(string)
-					status, _ := extra["Status"].(string)
-					if status == "" {
-						status = "downloaded"
-					}
-					entry := ExtrasEntry{
-						MediaType:  mediaType,
-						MediaId:    mediaId,
-						ExtraTitle: title,
-						ExtraType:  extraType,
-						FileName:   fileName,
-						YoutubeId:  youtubeId,
-						Status:     status,
-					}
-					_ = AddOrUpdateExtra(ctx, entry)
-				}
-			}
-			items = append(items, m)
-			// Do NOT attach extras to m; extras are only in the extras collection now
-		}
-	}
-	// Save to Redis for movies/series, file for others
-	if cacheFile == MoviesRedisKey || cacheFile == SeriesRedisKey {
-		_ = SaveMediaToRedis(cacheFile, items)
-	} else {
-		_ = WriteJSONFile(cacheFile, items)
-	}
-	TrailarrLog(INFO, "SyncMediaCacheJson", "[Sync%s] Synced %d items to cache.", provider, len(items))
+	items := collectFilteredItems(ctx, provider, allItems, filter)
+
+	// Load previous items (if any) so we can detect newly added media
+	prevItems, _ := loadCache(cacheFile)
+
+	// Save items to the appropriate backend
+	_ = saveItems(cacheFile, items)
+
+	// Handle new items (best-effort, background tasks)
+	handleNewItems(provider, items, prevItems)
+
+	TrailarrLog(INFO, "SyncMediaCache", "[Sync%s] Synced %d items to cache.", provider, len(items))
 
 	// After syncing main cache, update wanted status in main JSON
 	var mediaType MediaType
@@ -567,6 +536,153 @@ func SyncMediaCacheJson(provider, apiPath, cacheFile string, filter func(map[str
 		mediaType = MediaTypeTV
 	}
 	_ = updateWantedStatusInMainJson(mediaType, cacheFile)
+	return nil
+}
+
+// collectFilteredItems applies the filter and records extras for each accepted item.
+func collectFilteredItems(ctx context.Context, provider string, allItems []map[string]interface{}, filter func(map[string]interface{}) bool) []map[string]interface{} {
+	items := make([]map[string]interface{}, 0)
+	for _, m := range allItems {
+		if !filter(m) {
+			continue
+		}
+		// Record extras into the unified collection (not attached to the item)
+		_ = addExtrasFromItem(ctx, provider, m)
+		items = append(items, m)
+	}
+	return items
+}
+
+// saveItems persists items either to Redis or to a file depending on cacheFile.
+func saveItems(cacheFile string, items []map[string]interface{}) error {
+	if cacheFile == MoviesRedisKey || cacheFile == SeriesRedisKey {
+		return SaveMediaToRedis(cacheFile, items)
+	}
+	return WriteJSONFile(cacheFile, items)
+}
+
+// handleNewItems detects newly added items and triggers background processing for each.
+func handleNewItems(provider string, items, prevItems []map[string]interface{}) {
+	if len(prevItems) == 0 {
+		return
+	}
+	prevIDs := make(map[int]struct{}, len(prevItems))
+	for _, pi := range prevItems {
+		if idRaw, ok := pi["id"]; ok {
+			if idInt, ok2 := parseMediaID(idRaw); ok2 {
+				prevIDs[idInt] = struct{}{}
+			}
+		}
+	}
+
+	mediaType := MediaTypeMovie
+	if provider == "sonarr" {
+		mediaType = MediaTypeTV
+	}
+
+	cfg, _ := GetExtraTypesConfig()
+
+	for _, it := range items {
+		idRaw, ok := it["id"]
+		if !ok {
+			continue
+		}
+		idInt, ok2 := parseMediaID(idRaw)
+		if !ok2 {
+			continue
+		}
+		if _, existed := prevIDs[idInt]; existed {
+			continue
+		}
+
+		// New item detected — trigger TMDB search + enqueue downloads in background
+		go processNewMediaExtras(mediaType, idInt, cfg)
+	}
+}
+
+// processNewMediaExtras fetches TMDB extras, marks downloaded state and enqueues downloads according to config.
+func processNewMediaExtras(mediaType MediaType, mediaID int, cfg interface{}) {
+	TrailarrLog(INFO, "SyncMediaCache", "New media detected, triggering extras search: mediaType=%v, id=%d", mediaType, mediaID)
+	extras, err := FetchTMDBExtrasForMedia(mediaType, mediaID)
+	if err != nil {
+		TrailarrLog(WARN, "SyncMediaCache", "Failed to fetch TMDB extras for mediaType=%v id=%d: %v", mediaType, mediaID, err)
+		return
+	}
+	cacheFile, _ := resolveCachePath(mediaType)
+	mediaPath, _ := FindMediaPathByID(cacheFile, mediaID)
+	MarkDownloadedExtras(extras, mediaPath, "type", "title")
+
+	// Ensure cfg is the expected ExtraTypesConfig type before calling filterAndDownloadExtras.
+	// If it's not present or of wrong type, fall back to zero value (defaults).
+	var etcfg ExtraTypesConfig
+	if cfg != nil {
+		if v, ok := cfg.(ExtraTypesConfig); ok {
+			etcfg = v
+		} else {
+			TrailarrLog(WARN, "SyncMediaCache", "Invalid extras config type; using defaults")
+		}
+	}
+	filterAndDownloadExtras(mediaType, mediaID, extras, etcfg)
+}
+
+// Helper: fetch provider items and decode JSON, with logging preserved
+func fetchProviderItems(provider, apiPath string) ([]map[string]interface{}, error) {
+	providerURL, apiKey, err := GetProviderUrlAndApiKey(provider)
+	if err != nil {
+		return nil, fmt.Errorf("%s settings not found: %w", provider, err)
+	}
+	req, err := http.NewRequest("GET", providerURL+apiPath, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %w", err)
+	}
+	req.Header.Set(HeaderApiKey, apiKey)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching %s: %w", provider, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		TrailarrLog(WARN, "SyncMediaCache", "%s API error: %d", provider, resp.StatusCode)
+		return nil, fmt.Errorf("%s API error: %d", provider, resp.StatusCode)
+	}
+	var allItems []map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&allItems); err != nil {
+		return nil, fmt.Errorf("failed to decode %s response: %w", provider, err)
+	}
+	return allItems, nil
+}
+
+// Helper: scan extras for a single item and persist them to the unified extras collection
+func addExtrasFromItem(ctx context.Context, provider string, m map[string]interface{}) error {
+	mediaPath, _ := m["path"].(string)
+	extrasByType := scanExtrasInfo(mediaPath)
+	mediaType := MediaTypeMovie
+	if provider == "sonarr" {
+		mediaType = MediaTypeTV
+	}
+	mediaId, _ := parseMediaID(m["id"])
+	for extraType, extras := range extrasByType {
+		for _, extra := range extras {
+			title, _ := extra["Title"].(string)
+			fileName, _ := extra["FileName"].(string)
+			youtubeId, _ := extra["YoutubeId"].(string)
+			status, _ := extra["Status"].(string)
+			if status == "" {
+				status = "downloaded"
+			}
+			entry := ExtrasEntry{
+				MediaType:  mediaType,
+				MediaId:    mediaId,
+				ExtraTitle: title,
+				ExtraType:  extraType,
+				FileName:   fileName,
+				YoutubeId:  youtubeId,
+				Status:     status,
+			}
+			_ = AddOrUpdateExtra(ctx, entry)
+		}
+	}
 	return nil
 }
 
@@ -615,41 +731,24 @@ func sharedExtrasHandler(mediaType MediaType) gin.HandlerFunc {
 		var id int
 		fmt.Sscanf(idStr, "%d", &id)
 
-		// 1. Get merged extras from disk and persistent
+		// 1. Load persistent extras
 		extras, err := SearchExtras(mediaType, id)
 		if err != nil {
 			respondError(c, http.StatusInternalServerError, err.Error())
 			return
 		}
 
-		// 2. Get TMDB extras (from API)
+		// 2. Load TMDB extras (best-effort)
 		tmdbExtras, err := FetchTMDBExtrasForMedia(mediaType, id)
 		if err != nil {
 			TrailarrLog(WARN, "sharedExtrasHandler", "Failed to fetch TMDB extras: %v", err)
 			tmdbExtras = nil
 		}
 
-		// 3. Merge all sources: persistent/disk (extras) + TMDB (tmdbExtras)
-		// Use YoutubeId+ExtraType+ExtraTitle as key
-		allMap := make(map[string]Extra)
-		for _, e := range extras {
-			key := e.YoutubeId + ":" + e.ExtraType + ":" + e.ExtraTitle
-			allMap[key] = e
-		}
-		for _, e := range tmdbExtras {
-			key := e.YoutubeId + ":" + e.ExtraType + ":" + e.ExtraTitle
-			// Only add if not already present (persistent/disk takes precedence)
-			if _, exists := allMap[key]; !exists {
-				allMap[key] = e
-			}
-		}
-		// Convert map to slice
-		finalExtras := make([]Extra, 0, len(allMap))
-		for _, e := range allMap {
-			finalExtras = append(finalExtras, e)
-		}
+		// 3. Merge sources with persistent taking precedence
+		finalExtras := mergeExtrasPrioritizePersistent(extras, tmdbExtras)
 
-		// 4. Mark downloaded and rejected status
+		// 4. Mark downloaded extras
 		cacheFile, _ := resolveCachePath(mediaType)
 		mediaPath, err := FindMediaPathByID(cacheFile, id)
 		if err != nil {
@@ -657,37 +756,73 @@ func sharedExtrasHandler(mediaType MediaType) gin.HandlerFunc {
 			return
 		}
 		MarkDownloadedExtras(finalExtras, mediaPath, "type", "title")
+
+		// 5. Apply rejected extras (preserve reason and include missing rejected entries)
 		rejectedExtras := GetRejectedExtrasForMedia(mediaType, id)
 		TrailarrLog(DEBUG, "sharedExtrasHandler", "Rejected extras: %+v", rejectedExtras)
-		youtubeIdInResults := make(map[string]struct{})
-		for _, extra := range finalExtras {
-			youtubeIdInResults[extra.YoutubeId] = struct{}{}
-		}
-		// Set status to "rejected" and copy Reason for any extra whose YoutubeId matches a rejected extra
-		rejectedReasonMap := make(map[string]string)
-		for _, rejected := range rejectedExtras {
-			rejectedReasonMap[rejected.YoutubeId] = rejected.Reason
-		}
-		for i := range finalExtras {
-			if reason, exists := rejectedReasonMap[finalExtras[i].YoutubeId]; exists {
-				finalExtras[i].Status = "rejected"
-				finalExtras[i].Reason = reason
-			}
-		}
-		// Also append any rejected extras not already present in extras
-		for _, rejected := range rejectedExtras {
-			if _, exists := youtubeIdInResults[rejected.YoutubeId]; !exists {
-				finalExtras = append(finalExtras, Extra{
-					ExtraType:  rejected.ExtraType,
-					ExtraTitle: rejected.ExtraTitle,
-					YoutubeId:  rejected.YoutubeId,
-					Status:     "rejected",
-					Reason:     rejected.Reason,
-				})
-			}
-		}
+		finalExtras = applyRejectedExtras(finalExtras, rejectedExtras)
+
 		respondJSON(c, http.StatusOK, gin.H{"extras": finalExtras})
 	}
+}
+
+// mergeExtrasPrioritizePersistent merges persistent and TMDB extras using YoutubeId+ExtraType+ExtraTitle as key,
+// giving priority to persistent entries when duplicates exist.
+func mergeExtrasPrioritizePersistent(persistent, tmdb []Extra) []Extra {
+	allMap := make(map[string]Extra)
+	keyFor := func(e Extra) string {
+		return e.YoutubeId + ":" + e.ExtraType + ":" + e.ExtraTitle
+	}
+	for _, e := range persistent {
+		allMap[keyFor(e)] = e
+	}
+	for _, e := range tmdb {
+		k := keyFor(e)
+		if _, exists := allMap[k]; !exists {
+			allMap[k] = e
+		}
+	}
+	result := make([]Extra, 0, len(allMap))
+	for _, e := range allMap {
+		result = append(result, e)
+	}
+	return result
+}
+
+// applyRejectedExtras updates finalExtras with rejected statuses and includes rejected entries not already present.
+func applyRejectedExtras(finalExtras []Extra, rejectedExtras []RejectedExtra) []Extra {
+	youtubeInFinal := make(map[string]struct{}, len(finalExtras))
+	for i := range finalExtras {
+		youtubeInFinal[finalExtras[i].YoutubeId] = struct{}{}
+	}
+
+	// Map of youtubeId -> reason for quick lookup
+	rejectedReason := make(map[string]string, len(rejectedExtras))
+	for _, r := range rejectedExtras {
+		rejectedReason[r.YoutubeId] = r.Reason
+	}
+
+	// Apply reasons to existing extras
+	for i := range finalExtras {
+		if reason, ok := rejectedReason[finalExtras[i].YoutubeId]; ok {
+			finalExtras[i].Status = "rejected"
+			finalExtras[i].Reason = reason
+		}
+	}
+
+	// Append rejected extras that are not present in finalExtras
+	for _, r := range rejectedExtras {
+		if _, exists := youtubeInFinal[r.YoutubeId]; !exists {
+			finalExtras = append(finalExtras, Extra{
+				ExtraType:  r.ExtraType,
+				ExtraTitle: r.ExtraTitle,
+				YoutubeId:  r.YoutubeId,
+				Status:     "rejected",
+				Reason:     r.Reason,
+			})
+		}
+	}
+	return finalExtras
 }
 
 // respondError is a helper for Gin error responses

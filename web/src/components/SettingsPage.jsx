@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import PropTypes from 'prop-types';
 import IconButton from './IconButton.jsx';
 import SectionHeader from './SectionHeader.jsx';
 import DirectoryPicker from './DirectoryPicker';
@@ -20,7 +21,7 @@ export default function SettingsPage({ type }) {
 
   useEffect(() => {
     const setColors = () => {
-        const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const isDark = (typeof globalThis.matchMedia === 'function') ? globalThis.matchMedia('(prefers-color-scheme: dark)').matches : false;
         document.documentElement.style.setProperty('--settings-bg', isDark ? '#222' : '#fff');
         document.documentElement.style.setProperty('--settings-text', isDark ? '#eee' : '#222');
         document.documentElement.style.setProperty('--save-lane-bg', isDark ? '#333' : '#e5e7eb');
@@ -33,9 +34,10 @@ export default function SettingsPage({ type }) {
         document.documentElement.style.setProperty('--settings-table-header-text', isDark ? '#fff' : '#222');
     };
     setColors();
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', setColors);
+    const mq = (typeof globalThis.matchMedia === 'function') ? globalThis.matchMedia('(prefers-color-scheme: dark)') : null;
+    mq?.addEventListener('change', setColors);
     return () => {
-      window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', setColors);
+      mq?.removeEventListener('change', setColors);
     };
   }, []);
 
@@ -72,6 +74,18 @@ export default function SettingsPage({ type }) {
         setLoading(false);
       });
   }, [type]);
+
+      // Clear test status when switching between Radarr/Sonarr pages
+      useEffect(() => {
+        setTestResult('');
+        setTesting(false);
+      }, [type]);
+
+      // Clear test status when provider URL or API key change (so the badge isn't stale)
+      useEffect(() => {
+        // Only clear when user edits these fields after a test
+        setTestResult('');
+      }, [settings.providerURL, settings.apiKey]);
 
   function isSettingsChanged() {
     if (!originalSettings) return false;
@@ -120,43 +134,46 @@ export default function SettingsPage({ type }) {
     setSaving(false);
   };
 
+  const fetchAndUpdateRootFolders = async () => {
+    try {
+      const foldersRes = await fetch(`/api/rootfolders?providerURL=${encodeURIComponent(settings.providerURL)}&apiKey=${encodeURIComponent(settings.apiKey)}&type=${type}`);
+      if (!foldersRes.ok) return;
+      const folders = await foldersRes.json();
+      // Update pathMappings in settings and originalSettings
+      const folderPaths = folders.map(f => f.path || f);
+      let pathMappings = Array.isArray(settings.pathMappings) ? settings.pathMappings : [];
+      pathMappings = folderPaths.map((path) => {
+        const existing = pathMappings.find(m => m.from === path);
+        return existing || { from: path, to: '' };
+      });
+      setSettings(s => ({ ...s, pathMappings }));
+      setOriginalSettings(s => ({ ...s, pathMappings }));
+    } catch {
+      // ignore
+    }
+  };
+
   const testConnection = async () => {
     setTesting(true);
     setTestResult('');
     try {
-      const res = await fetch(`/api/test/${type}?url=${encodeURIComponent(settings.url)}&apiKey=${encodeURIComponent(settings.apiKey)}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          setTestResult('Connection successful!');
-          // Refresh path mappings after successful test (removed setRootFolders)
-          try {
-            const foldersRes = await fetch(`/api/rootfolders?providerURL=${encodeURIComponent(settings.providerURL)}&apiKey=${encodeURIComponent(settings.apiKey)}&type=${type}`);
-            if (foldersRes.ok) {
-              const folders = await foldersRes.json();
-              // Update pathMappings in settings and originalSettings
-              const folderPaths = folders.map(f => f.path || f);
-              let pathMappings = Array.isArray(settings.pathMappings) ? settings.pathMappings : [];
-              pathMappings = folderPaths.map((path) => {
-                const existing = pathMappings.find(m => m.from === path);
-                return existing || { from: path, to: '' };
-              });
-              setSettings(s => ({ ...s, pathMappings }));
-              setOriginalSettings(s => ({ ...s, pathMappings }));
-            }
-          } catch {
-            // ignore
-          }
-        } else {
-          setTestResult(data.error || 'Connection failed.');
-        }
-      } else {
+  const res = await fetch(`/api/test/${type}?url=${encodeURIComponent(settings.providerURL)}&apiKey=${encodeURIComponent(settings.apiKey)}`);
+      if (!res.ok) {
         setTestResult('Connection failed.');
+        return;
       }
+      const data = await res.json();
+      if (!data.success) {
+        setTestResult(data.error || 'Connection failed.');
+        return;
+      }
+      setTestResult('Connection successful!');
+      await fetchAndUpdateRootFolders();
     } catch {
       setTestResult('Connection failed.');
+    } finally {
+      setTesting(false);
     }
-    setTesting(false);
   };
 
   return (
@@ -181,12 +198,12 @@ export default function SettingsPage({ type }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', width: '100%' }}>
                   <IconButton
                     onClick={testConnection}
-                    disabled={testing || !settings.url || !settings.apiKey}
+                    disabled={testing || !settings.providerURL || !settings.apiKey}
                     title="Test Connection"
                     aria-label="Test Connection"
                     style={{
-                      cursor: testing || !settings.url || !settings.apiKey ? 'not-allowed' : 'pointer',
-                      opacity: testing || !settings.url || !settings.apiKey ? 0.6 : 1,
+                      cursor: testing || !settings.providerURL || !settings.apiKey ? 'not-allowed' : 'pointer',
+                      opacity: testing || !settings.providerURL || !settings.apiKey ? 0.6 : 1,
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -293,3 +310,7 @@ export default function SettingsPage({ type }) {
     </Container>
   );
 }
+
+SettingsPage.propTypes = {
+  type: PropTypes.oneOf(['radarr', 'sonarr']).isRequired
+};

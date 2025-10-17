@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import IconButton from './IconButton.jsx';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faBookmark } from '@fortawesome/free-regular-svg-icons';
 import { faLanguage } from '@fortawesome/free-solid-svg-icons';
 
-export default function MediaInfoLane({ media, mediaType, darkMode = false, error = '' }) {
+export default function MediaInfoLane({ media, mediaType, darkMode = false, error: _error = '' }) {
+	// Reference unused prop to satisfy ESLint's no-unused-vars rule without changing behavior
+	void _error;
 	const [cast, setCast] = useState([]);
 	const [castLoading, setCastLoading] = useState(false);
 	const [castError, setCastError] = useState('');
@@ -49,9 +52,11 @@ export default function MediaInfoLane({ media, mediaType, darkMode = false, erro
 
 	let background;
 	if (mediaType === 'tv') {
-		background = `url(/mediacover/Series/${media.id}/fanart-1280.jpg) center center/cover no-repeat`;
+		// Position background slightly below the top (around 30%) to show upper-to-middle of the fanart
+		background = `url(/mediacover/Series/${media.id}/fanart-1280.jpg) center 30%/cover no-repeat`;
 	} else {
-		background = `url(/mediacover/Movies/${media.id}/fanart-1280.jpg) center center/cover no-repeat`;
+		// Position background slightly below the top (around 30%) to show upper-to-middle of the fanart
+		background = `url(/mediacover/Movies/${media.id}/fanart-1280.jpg) center 30%/cover no-repeat`;
 	}
 
 	return (
@@ -209,3 +214,10 @@ export default function MediaInfoLane({ media, mediaType, darkMode = false, erro
 		</div>
 	);
 }
+
+MediaInfoLane.propTypes = {
+	media: PropTypes.object,
+	mediaType: PropTypes.oneOf(['movie', 'series', 'tv']),
+	darkMode: PropTypes.bool,
+	error: PropTypes.string,
+};

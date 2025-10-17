@@ -111,7 +111,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
   }, [youtubeModal.open]);
   // (removed duplicate declaration)
   const [extras, setExtras] = useState([]);
-  const [searchLoading, setSearchLoading] = useState(false);
+  const [_searchLoading, setSearchLoading] = useState(false);
   const [error, setError] = useState('');
   const [modalMsg, setModalMsg] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -210,7 +210,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
     );
   }
 
-  const handleSearchExtras = async () => {
+  const _handleSearchExtras = async () => {
     setSearchLoading(true);
     setError('');
     try {
