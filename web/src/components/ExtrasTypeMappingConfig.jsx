@@ -1,8 +1,7 @@
 import React from "react";
+import PropTypes from "prop-types";
 import {
-  Typography,
   Box,
-  CircularProgress,
   Paper,
 } from "@mui/material";
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
@@ -59,6 +58,22 @@ function TmdbChip({ tmdbType, plexType, onMove, isDark }) {
   );
 }
 
+ExtrasTypeMappingConfig.propTypes = {
+  mapping: PropTypes.object,
+  onMappingChange: PropTypes.func,
+  tmdbTypes: PropTypes.array,
+  plexTypes: PropTypes.array,
+  isDark: PropTypes.bool,
+};
+
+ExtrasTypeMappingConfig.defaultProps = {
+  mapping: {},
+  onMappingChange: null,
+  tmdbTypes: [],
+  plexTypes: [],
+  isDark: false,
+};
+
 function PlexTypeBox({ plexType, onDropChip, children, isDark }) {
   const [{ isOver, canDrop }, drop] = useDrop({
     accept: ItemTypes.CHIP,
@@ -69,6 +84,11 @@ function PlexTypeBox({ plexType, onDropChip, children, isDark }) {
       canDrop: monitor.canDrop(),
     }),
   });
+
+  const activeBackground = isDark ? '#047857' : '#d1fae5';
+  const idleBackground = isDark ? '#333' : '#f5f5f5';
+  const backgroundColor = isOver && canDrop ? activeBackground : idleBackground;
+
   return (
     <Box
       ref={drop}
@@ -77,9 +97,7 @@ function PlexTypeBox({ plexType, onDropChip, children, isDark }) {
         flexWrap: 'wrap',
         alignItems: 'center',
         minHeight: 36,
-        background: isOver && canDrop
-          ? (isDark ? '#047857' : '#d1fae5')
-          : (isDark ? '#333' : '#f5f5f5'),
+        background: backgroundColor,
         border: isDark ? '1px solid #e5e7eb' : '1px solid #000',
         borderRadius: 2,
         padding: '4px 8px',
@@ -90,6 +108,19 @@ function PlexTypeBox({ plexType, onDropChip, children, isDark }) {
     </Box>
   );
 }
+
+PlexTypeBox.propTypes = {
+  plexType: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  onDropChip: PropTypes.func,
+  children: PropTypes.node,
+  isDark: PropTypes.bool,
+};
+
+PlexTypeBox.defaultProps = {
+  onDropChip: () => {},
+  children: null,
+  isDark: false,
+};
 
 export default function ExtrasTypeMappingConfig({ mapping, onMappingChange, tmdbTypes, plexTypes, isDark = false }) {
     const handleMoveChip = (tmdbType, newPlexType) => {
@@ -114,19 +145,24 @@ export default function ExtrasTypeMappingConfig({ mapping, onMappingChange, tmdb
           background: 'transparent',
           color: isDark ? '#e5e7eb' : '#222',
         }}>
-          {plexTypes.map((plexType) => {
-            const assignedTmdbTypes = tmdbTypes.filter(
-              (tmdbType) => mapping[tmdbType] === plexType
+          { (plexTypes || []).map((plexTypeObj) => {
+            // plexTypeObj expected shape: { key, label, value }
+            const plexKey = plexTypeObj?.key ?? String(plexTypeObj);
+            const plexLabel = plexTypeObj?.label ?? String(plexTypeObj);
+            // mapping values are the display label (e.g. "Trailers"), so compare to plexLabel
+            const assignedTmdbTypes = (tmdbTypes || []).filter(
+              (tmdbType) => mapping[tmdbType] === plexLabel
             );
             return (
-              <Box key={plexType} display="flex" alignItems="center" mb={1}>
+              <Box key={plexKey} display="flex" alignItems="center" mb={1}>
                 <Box minWidth={120} fontWeight={500} fontSize={14} textAlign="left" sx={{ color: isDark ? '#e5e7eb' : '#222' }}>
-                  {plexType}
+                  {plexLabel}
                 </Box>
                 <Box flex={1} ml={1}>
-                  <PlexTypeBox plexType={plexType} assignedTmdbTypes={assignedTmdbTypes} onDropChip={handleMoveChip} isDark={isDark}>
+                  {/* Pass the display label to the drop handler so mapping stores the label value */}
+                  <PlexTypeBox plexType={plexKey} assignedTmdbTypes={assignedTmdbTypes} onDropChip={(tmdbType) => handleMoveChip(tmdbType, plexLabel)} isDark={isDark}>
                     {assignedTmdbTypes.map((tmdbType) => (
-                      <TmdbChip key={tmdbType} tmdbType={tmdbType} plexType={plexType} onMove={handleMoveChip} isDark={isDark} />
+                      <TmdbChip key={tmdbType} tmdbType={tmdbType} plexType={plexLabel} onMove={handleMoveChip} isDark={isDark} />
                     ))}
                   </PlexTypeBox>
                 </Box>

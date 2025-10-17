@@ -1,4 +1,5 @@
 import React, { useEffect, useState, Suspense } from 'react';
+import PropTypes from 'prop-types';
 import Select from 'react-select';
 import axios from 'axios';
 import Container from './Container.jsx';
@@ -73,16 +74,29 @@ export default function ExtrasSettings({ darkMode }) {
       axios.get('/api/settings/ytdlpflags'),
     ])
       .then(([tmdbRes, plexRes, mapRes, ytRes]) => {
-        setTmdbTypes(tmdbRes.data.tmdbExtraTypes || []);
-        setPlexTypes(Object.keys(plexRes.data));
-        const initialMapping = { ...mapRes.data.mapping };
-        tmdbRes.data.tmdbExtraTypes.forEach(type => {
-          if (!initialMapping[type]) {
-            initialMapping[type] = "Other";
+        setTmdbTypes(tmdbRes.data.tmdbExtraTypes);
+          // Backend returns an array (mapp) of { key,label,value }
+          if (!Array.isArray(plexRes.data)) {
+            setError('Server response missing mapp array in /api/settings/extratypes');
+            return;
           }
-        });
-        setMapping(initialMapping);
-        setSettings(plexRes.data);
+          const mapp = plexRes.data;
+          setPlexTypes(mapp);
+          // Build settings object from mapp array
+          const settingsFromMapp = {};
+          mapp.forEach(entry => {
+            if (entry && entry.key) {
+              settingsFromMapp[entry.key] = !!entry.value;
+            }
+          });
+          const initialMapping = { ...mapRes.data.mapping };
+          tmdbRes.data.tmdbExtraTypes.forEach(type => {
+            if (!initialMapping[type]) {
+              initialMapping[type] = "Other";
+            }
+          });
+          setMapping(initialMapping);
+          setSettings(settingsFromMapp);
         setYtFlags(ytRes.data);
       })
       .catch(() => {
@@ -226,19 +240,7 @@ export default function ExtrasSettings({ darkMode }) {
             mapping={mapping}
             onMappingChange={handleMappingChange}
             tmdbTypes={tmdbTypes}
-            plexTypes={plexTypes.map(key => {
-              switch (key) {
-                case "behindTheScenes": return "Behind The Scenes";
-                case "deletedScenes": return "Deleted Scenes";
-                case "featurettes": return "Featurettes";
-                case "interviews": return "Interviews";
-                case "scenes": return "Scenes";
-                case "shorts": return "Shorts";
-                case "trailers": return "Trailers";
-                case "other": return "Other";
-                default: return key;
-              }
-            })}
+            plexTypes={plexTypes}
           />
         </Suspense>
         <hr style={{ margin: '2em 0', borderColor: isDark ? '#444' : '#eee' }} />
@@ -289,3 +291,11 @@ export default function ExtrasSettings({ darkMode }) {
     </Container>
   );
 }
+
+ExtrasSettings.propTypes = {
+  darkMode: PropTypes.bool,
+};
+
+ExtrasSettings.defaultProps = {
+  darkMode: false,
+};

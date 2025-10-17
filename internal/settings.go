@@ -51,6 +51,29 @@ func LoadConfig() error {
 	return nil
 }
 
+type PlexType string
+
+const (
+	BehindTheScenes PlexType = "Behind The Scenes"
+	DeletedScenes   PlexType = "Deleted Scenes"
+	Featurettes     PlexType = "Featurettes"
+	Interviews      PlexType = "Interviews"
+	Scenes          PlexType = "Scenes"
+	Shorts          PlexType = "Shorts"
+	Trailers        PlexType = "Trailers"
+	Other           PlexType = "Other"
+)
+
+var defaultExtraTypes = ExtraTypesConfig{
+	Trailers:        true,
+	Scenes:          false,
+	BehindTheScenes: false,
+	Interviews:      false,
+	Featurettes:     false,
+	DeletedScenes:   false,
+	Other:           false,
+}
+
 // CanonicalizeExtraTypeConfig holds mapping from TMDB extra types to Plex extra types
 type CanonicalizeExtraTypeConfig struct {
 	Mapping map[string]string `yaml:"mapping" json:"mapping"`
@@ -123,143 +146,198 @@ func EnsureConfigDefaults() error {
 	var changed bool
 	config, err := readConfigFileRaw()
 	if err != nil {
-		// Create file with all defaults
+		// Create file with core defaults when missing
 		config = map[string]interface{}{
 			"general":    DefaultGeneralConfig(),
 			"ytdlpFlags": DefaultYtdlpFlagsConfig(),
 		}
 		changed = true
 	}
-	// Fill in missing sections/keys even if file exists
-	// General
-	if config["general"] == nil {
-		config["general"] = DefaultGeneralConfig()
+	// Ensure each section's defaults via helper functions
+	if ensureGeneralDefaults(config) {
 		changed = true
-	} else {
-		general := config["general"].(map[string]interface{})
-		for k, v := range DefaultGeneralConfig() {
-			if _, ok := general[k]; !ok {
-				general[k] = v
-				changed = true
-			}
-		}
-		config["general"] = general
 	}
-	// ytdlpFlags
-	if config["ytdlpFlags"] == nil {
-		config["ytdlpFlags"] = DefaultYtdlpFlagsConfig()
+	if ensureYtdlpDefaults(config) {
 		changed = true
-	} else {
-		// Ensure cookiesFromBrowser is set to 'chrome' if not present
-		ytdlpFlags, ok := config["ytdlpFlags"].(map[string]interface{})
-		if ok {
-			if _, ok := ytdlpFlags["cookiesFromBrowser"]; !ok {
-				ytdlpFlags["cookiesFromBrowser"] = "chrome"
-				config["ytdlpFlags"] = ytdlpFlags
-				changed = true
-			}
-		}
 	}
-	// radarr
-	if config["radarr"] == nil {
-		config["radarr"] = map[string]interface{}{
-			"url":          "http://localhost:7878",
-			"apiKey":       "",
-			"pathMappings": []map[string]string{},
-		}
+	if ensureRadarrDefaults(config) {
 		changed = true
-	} else {
-		radarr := config["radarr"].(map[string]interface{})
-		if _, ok := radarr["url"]; !ok {
-			radarr["url"] = "http://localhost:7878"
-			changed = true
-		}
-		if _, ok := radarr["apiKey"]; !ok {
-			radarr["apiKey"] = ""
-			changed = true
-		}
-		if _, ok := radarr["pathMappings"]; !ok {
-			radarr["pathMappings"] = []map[string]string{}
-			changed = true
-		}
-		config["radarr"] = radarr
 	}
-	// sonarr
-	if config["sonarr"] == nil {
-		config["sonarr"] = map[string]interface{}{
-			"url":          "http://localhost:8989",
-			"apiKey":       "",
-			"pathMappings": []map[string]string{},
-		}
+	if ensureSonarrDefaults(config) {
 		changed = true
-	} else {
-		sonarr := config["sonarr"].(map[string]interface{})
-		if _, ok := sonarr["url"]; !ok {
-			sonarr["url"] = "http://localhost:8989"
-			changed = true
-		}
-		if _, ok := sonarr["apiKey"]; !ok {
-			sonarr["apiKey"] = ""
-			changed = true
-		}
-		if _, ok := sonarr["pathMappings"]; !ok {
-			sonarr["pathMappings"] = []map[string]string{}
-			changed = true
-		}
-		config["sonarr"] = sonarr
 	}
-	// extraTypes
-	if config["extraTypes"] == nil {
-		config["extraTypes"] = map[string]interface{}{
-			"trailers":        true,
-			"scenes":          true,
-			"behindTheScenes": true,
-			"interviews":      true,
-			"featurettes":     true,
-			"deletedScenes":   true,
-			"other":           true,
-		}
+	if ensureExtraTypesDefaults(config) {
 		changed = true
-	} else {
-		extraTypes := config["extraTypes"].(map[string]interface{})
-		defaults := map[string]bool{
-			"trailers":        true,
-			"scenes":          true,
-			"behindTheScenes": true,
-			"interviews":      true,
-			"featurettes":     true,
-			"deletedScenes":   true,
-			"other":           true,
-		}
-		for k, v := range defaults {
-			if _, ok := extraTypes[k]; !ok {
-				extraTypes[k] = v
-				changed = true
-			}
-		}
-		config["extraTypes"] = extraTypes
 	}
-	// Ensure canonicalizeExtraType mapping exists
-	if config["canonicalizeExtraType"] == nil {
-		// Default mapping: singular TMDB types to Plex types
-		config["canonicalizeExtraType"] = map[string]interface{}{
-			"mapping": map[string]string{
-				"Trailer":          "Trailers",
-				"Featurette":       "Featurettes",
-				"Behind the Scene": "Behind The Scenes",
-				"Deleted Scene":    "Deleted Scenes",
-				"Interview":        "Interviews",
-				"Scene":            "Scenes",
-				"Short":            "Shorts",
-				"Other":            "Other",
-			},
-		}
+	if ensureCanonicalizeExtraTypeDefaults(config) {
 		changed = true
 	}
 	if changed {
 		return writeConfigFile(config)
 	}
 	return nil
+}
+
+func ensureGeneralDefaults(config map[string]interface{}) bool {
+	defaults := DefaultGeneralConfig()
+	if config["general"] == nil {
+		config["general"] = defaults
+		return true
+	}
+	general, ok := config["general"].(map[string]interface{})
+	if !ok {
+		config["general"] = defaults
+		return true
+	}
+	changed := false
+	for k, v := range defaults {
+		if _, ok := general[k]; !ok {
+			general[k] = v
+			changed = true
+		}
+	}
+	config["general"] = general
+	return changed
+}
+
+func ensureYtdlpDefaults(config map[string]interface{}) bool {
+	if config["ytdlpFlags"] == nil {
+		config["ytdlpFlags"] = DefaultYtdlpFlagsConfig()
+		return true
+	}
+	ytdlpFlags, ok := config["ytdlpFlags"].(map[string]interface{})
+	if !ok {
+		config["ytdlpFlags"] = DefaultYtdlpFlagsConfig()
+		return true
+	}
+	if _, ok := ytdlpFlags["cookiesFromBrowser"]; !ok {
+		ytdlpFlags["cookiesFromBrowser"] = "chrome"
+		config["ytdlpFlags"] = ytdlpFlags
+		return true
+	}
+	return false
+}
+
+func ensureRadarrDefaults(config map[string]interface{}) bool {
+	defaultConfig := map[string]interface{}{
+		"url":          "http://localhost:7878",
+		"apiKey":       "",
+		"pathMappings": []map[string]string{},
+	}
+	if config["radarr"] == nil {
+		config["radarr"] = defaultConfig
+		return true
+	}
+	radarr, ok := config["radarr"].(map[string]interface{})
+	if !ok {
+		config["radarr"] = defaultConfig
+		return true
+	}
+	changed := false
+	if _, ok := radarr["url"]; !ok {
+		radarr["url"] = defaultConfig["url"]
+		changed = true
+	}
+	if _, ok := radarr["apiKey"]; !ok {
+		radarr["apiKey"] = defaultConfig["apiKey"]
+		changed = true
+	}
+	if _, ok := radarr["pathMappings"]; !ok {
+		radarr["pathMappings"] = defaultConfig["pathMappings"]
+		changed = true
+	}
+	config["radarr"] = radarr
+	return changed
+}
+
+func ensureSonarrDefaults(config map[string]interface{}) bool {
+	defaultConfig := map[string]interface{}{
+		"url":          "http://localhost:8989",
+		"apiKey":       "",
+		"pathMappings": []map[string]string{},
+	}
+	if config["sonarr"] == nil {
+		config["sonarr"] = defaultConfig
+		return true
+	}
+	sonarr, ok := config["sonarr"].(map[string]interface{})
+	if !ok {
+		config["sonarr"] = defaultConfig
+		return true
+	}
+	changed := false
+	if _, ok := sonarr["url"]; !ok {
+		sonarr["url"] = defaultConfig["url"]
+		changed = true
+	}
+	if _, ok := sonarr["apiKey"]; !ok {
+		sonarr["apiKey"] = defaultConfig["apiKey"]
+		changed = true
+	}
+	if _, ok := sonarr["pathMappings"]; !ok {
+		sonarr["pathMappings"] = defaultConfig["pathMappings"]
+		changed = true
+	}
+	config["sonarr"] = sonarr
+	return changed
+}
+
+func ensureExtraTypesDefaults(config map[string]interface{}) bool {
+	if config["extraTypes"] == nil {
+		config["extraTypes"] = map[string]interface{}{
+			"trailers":        defaultExtraTypes.Trailers,
+			"scenes":          defaultExtraTypes.Scenes,
+			"behindTheScenes": defaultExtraTypes.BehindTheScenes,
+			"interviews":      defaultExtraTypes.Interviews,
+			"featurettes":     defaultExtraTypes.Featurettes,
+			"deletedScenes":   defaultExtraTypes.DeletedScenes,
+			"other":           defaultExtraTypes.Other,
+		}
+		return true
+	}
+	extraTypes, ok := config["extraTypes"].(map[string]interface{})
+	if !ok {
+		config["extraTypes"] = map[string]interface{}{}
+		extraTypes = config["extraTypes"].(map[string]interface{})
+	}
+	changed := false
+	defaults := map[string]bool{
+		"trailers":        defaultExtraTypes.Trailers,
+		"scenes":          defaultExtraTypes.Scenes,
+		"behindTheScenes": defaultExtraTypes.BehindTheScenes,
+		"interviews":      defaultExtraTypes.Interviews,
+		"featurettes":     defaultExtraTypes.Featurettes,
+		"deletedScenes":   defaultExtraTypes.DeletedScenes,
+		"other":           defaultExtraTypes.Other,
+	}
+	for k, v := range defaults {
+		if _, ok := extraTypes[k]; !ok {
+			extraTypes[k] = v
+			changed = true
+		}
+	}
+	config["extraTypes"] = extraTypes
+	return changed
+}
+
+func ensureCanonicalizeExtraTypeDefaults(config map[string]interface{}) bool {
+	if config["canonicalizeExtraType"] == nil {
+		// Default mapping: singular TMDB types to Plex types
+		config["canonicalizeExtraType"] = map[string]interface{}{
+			"mapping": map[string]string{
+				"Trailer":          string(Trailers),
+				"Featurette":       string(Featurettes),
+				"Behind the Scene": string(BehindTheScenes),
+				"Deleted Scene":    string(DeletedScenes),
+				"Interview":        string(Interviews),
+				"Scene":            string(Scenes),
+				"Short":            string(Shorts),
+				"Other":            string(Other),
+			},
+		}
+		return true
+	}
+	return false
 }
 
 // Raw config file reader (no defaults)
@@ -339,66 +417,128 @@ func GetYtdlpFlagsConfig() (YtdlpFlagsConfig, error) {
 	if !ok {
 		return cfg, nil
 	}
-	// Map each field
-	if v, ok := sec["quiet"].(bool); ok {
-		cfg.Quiet = v
-	}
-	if v, ok := sec["noprogress"].(bool); ok {
-		cfg.NoProgress = v
-	}
-	if v, ok := sec["cookiesFromBrowser"].(string); ok {
-		cfg.CookiesFromBrowser = v
-	}
-	if v, ok := sec["writesubs"].(bool); ok {
-		cfg.WriteSubs = v
-	}
-	if v, ok := sec["writeautosubs"].(bool); ok {
-		cfg.WriteAutoSubs = v
-	}
-	if v, ok := sec["embedsubs"].(bool); ok {
-		cfg.EmbedSubs = v
-	}
-	if v, ok := sec["remuxvideo"].(string); ok {
-		cfg.RemuxVideo = v
-	}
-	if v, ok := sec["subformat"].(string); ok {
-		cfg.SubFormat = v
-	}
-	if v, ok := sec["sublangs"].(string); ok {
-		cfg.SubLangs = v
-	}
-	if v, ok := sec["requestedformats"].(string); ok {
-		cfg.RequestedFormats = v
-	}
-	if v, ok := sec["timeout"].(float64); ok {
-		cfg.Timeout = v
-	} else if v, ok := sec["timeout"].(int); ok {
-		cfg.Timeout = float64(v)
-	}
-	if v, ok := sec["sleepInterval"].(float64); ok {
-		cfg.SleepInterval = v
-	} else if v, ok := sec["sleepInterval"].(int); ok {
-		cfg.SleepInterval = float64(v)
-	}
-	if v, ok := sec["maxDownloads"].(int); ok {
-		cfg.MaxDownloads = v
-	} else if v, ok := sec["maxDownloads"].(float64); ok {
-		cfg.MaxDownloads = int(v)
-	}
-	if v, ok := sec["limitRate"].(string); ok {
-		cfg.LimitRate = v
-	}
-	if v, ok := sec["sleepRequests"].(float64); ok {
-		cfg.SleepRequests = v
-	} else if v, ok := sec["sleepRequests"].(int); ok {
-		cfg.SleepRequests = float64(v)
-	}
-	if v, ok := sec["maxSleepInterval"].(float64); ok {
-		cfg.MaxSleepInterval = v
-	} else if v, ok := sec["maxSleepInterval"].(int); ok {
-		cfg.MaxSleepInterval = float64(v)
-	}
+
+	applyYtdlpFlags(sec, &cfg)
 	return cfg, nil
+}
+
+// helper converters extracted to reduce cognitive complexity
+func toBool(v interface{}) (bool, bool) {
+	if b, ok := v.(bool); ok {
+		return b, true
+	}
+	return false, false
+}
+
+func toString(v interface{}) (string, bool) {
+	if s, ok := v.(string); ok {
+		return s, true
+	}
+	return "", false
+}
+
+func toFloat64(v interface{}) (float64, bool) {
+	switch t := v.(type) {
+	case float64:
+		return t, true
+	case float32:
+		return float64(t), true
+	case int:
+		return float64(t), true
+	case int64:
+		return float64(t), true
+	case string:
+		var parsed float64
+		_, err := fmt.Sscanf(t, "%f", &parsed)
+		if err == nil {
+			return parsed, true
+		}
+	}
+	return 0, false
+}
+
+func toInt(v interface{}) (int, bool) {
+	switch t := v.(type) {
+	case int:
+		return t, true
+	case int64:
+		return int(t), true
+	case float64:
+		return int(t), true
+	case string:
+		var parsed int
+		_, err := fmt.Sscanf(t, "%d", &parsed)
+		if err == nil {
+			return parsed, true
+		}
+	}
+	return 0, false
+}
+
+// applyYtdlpFlags applies values from the parsed 'ytdlpFlags' section into cfg using a table-driven setter map.
+func applyYtdlpFlags(sec map[string]interface{}, cfg *YtdlpFlagsConfig) {
+	if sec == nil || cfg == nil {
+		return
+	}
+	setters := ytdlpFlagSetters(cfg)
+	for k, v := range sec {
+		if setter, exists := setters[k]; exists {
+			setter(v)
+		}
+	}
+}
+
+// ytdlpFlagSetters returns the map of setters for ytdlp flags bound to the provided cfg.
+// Extracting the large table into its own function reduces the cognitive complexity of applyYtdlpFlags.
+func ytdlpFlagSetters(cfg *YtdlpFlagsConfig) map[string]func(interface{}) {
+	// Factory helpers produce small, typed setter functions to keep this function simple.
+	boolSetter := func(dst *bool) func(interface{}) {
+		return func(v interface{}) {
+			if val, ok := toBool(v); ok {
+				*dst = val
+			}
+		}
+	}
+	stringSetter := func(dst *string) func(interface{}) {
+		return func(v interface{}) {
+			if val, ok := toString(v); ok {
+				*dst = val
+			}
+		}
+	}
+	floatSetter := func(dst *float64) func(interface{}) {
+		return func(v interface{}) {
+			if val, ok := toFloat64(v); ok {
+				*dst = val
+			}
+		}
+	}
+	intSetter := func(dst *int) func(interface{}) {
+		return func(v interface{}) {
+			if val, ok := toInt(v); ok {
+				*dst = val
+			}
+		}
+	}
+
+	return map[string]func(interface{}){
+		"quiet":              boolSetter(&cfg.Quiet),
+		"noprogress":         boolSetter(&cfg.NoProgress),
+		"cookiesFromBrowser": stringSetter(&cfg.CookiesFromBrowser),
+		"writesubs":          boolSetter(&cfg.WriteSubs),
+		"writeautosubs":      boolSetter(&cfg.WriteAutoSubs),
+		"embedsubs":          boolSetter(&cfg.EmbedSubs),
+		"remuxvideo":         stringSetter(&cfg.RemuxVideo),
+		"subformat":          stringSetter(&cfg.SubFormat),
+		"sublangs":           stringSetter(&cfg.SubLangs),
+		"requestedformats":   stringSetter(&cfg.RequestedFormats),
+		"timeout":            floatSetter(&cfg.Timeout),
+		"sleepInterval":      floatSetter(&cfg.SleepInterval),
+		"maxDownloads":       intSetter(&cfg.MaxDownloads),
+		"limitRate":          stringSetter(&cfg.LimitRate),
+		"sleepRequests":      floatSetter(&cfg.SleepRequests),
+		"maxSleepInterval":   floatSetter(&cfg.MaxSleepInterval),
+	}
 }
 
 // Saves yt-dlp flags config to config.yml
@@ -462,54 +602,38 @@ type ExtraTypesConfig struct {
 	Interviews      bool `yaml:"interviews" json:"interviews"`
 	Featurettes     bool `yaml:"featurettes" json:"featurettes"`
 	DeletedScenes   bool `yaml:"deletedScenes" json:"deletedScenes"`
+	Shorts          bool `yaml:"shorts" json:"shorts"`
 	Other           bool `yaml:"other" json:"other"`
 }
 
 // GetExtraTypesConfig loads extra types config from config.yml
 func GetExtraTypesConfig() (ExtraTypesConfig, error) {
 	if Config == nil {
-		return ExtraTypesConfig{Trailers: true, Scenes: true, BehindTheScenes: true, Interviews: true, Featurettes: true, DeletedScenes: true, Other: true}, nil
+		return defaultExtraTypes, nil
 	}
-	sec, ok := Config["extraTypes"].(map[string]interface{})
+	sec, _ := Config["extraTypes"].(map[string]interface{})
 	cfg := ExtraTypesConfig{}
-	if !ok {
-		return ExtraTypesConfig{Trailers: true, Scenes: true, BehindTheScenes: true, Interviews: true, Featurettes: true, DeletedScenes: true, Other: true}, nil
+
+	// helper returns the boolean value from the section or the provided default
+	getBool := func(key string, def bool) bool {
+		if sec == nil {
+			return def
+		}
+		if v, ok := sec[key].(bool); ok {
+			return v
+		}
+		return def
 	}
-	if v, ok := sec["trailers"].(bool); ok {
-		cfg.Trailers = v
-	} else {
-		cfg.Trailers = false
-	}
-	if v, ok := sec["scenes"].(bool); ok {
-		cfg.Scenes = v
-	} else {
-		cfg.Scenes = false
-	}
-	if v, ok := sec["behindTheScenes"].(bool); ok {
-		cfg.BehindTheScenes = v
-	} else {
-		cfg.BehindTheScenes = false
-	}
-	if v, ok := sec["interviews"].(bool); ok {
-		cfg.Interviews = v
-	} else {
-		cfg.Interviews = false
-	}
-	if v, ok := sec["featurettes"].(bool); ok {
-		cfg.Featurettes = v
-	} else {
-		cfg.Featurettes = false
-	}
-	if v, ok := sec["deletedScenes"].(bool); ok {
-		cfg.DeletedScenes = v
-	} else {
-		cfg.DeletedScenes = false
-	}
-	if v, ok := sec["other"].(bool); ok {
-		cfg.Other = v
-	} else {
-		cfg.Other = false
-	}
+
+	cfg.Trailers = getBool("trailers", defaultExtraTypes.Trailers)
+	cfg.Scenes = getBool("scenes", defaultExtraTypes.Scenes)
+	cfg.BehindTheScenes = getBool("behindTheScenes", defaultExtraTypes.BehindTheScenes)
+	cfg.Interviews = getBool("interviews", defaultExtraTypes.Interviews)
+	cfg.Featurettes = getBool("featurettes", defaultExtraTypes.Featurettes)
+	cfg.DeletedScenes = getBool("deletedScenes", defaultExtraTypes.DeletedScenes)
+	cfg.Shorts = getBool("shorts", defaultExtraTypes.Shorts)
+	cfg.Other = getBool("other", defaultExtraTypes.Other)
+
 	return cfg, nil
 }
 
@@ -542,10 +666,29 @@ func SaveExtraTypesConfig(cfg ExtraTypesConfig) error {
 func GetExtraTypesConfigHandler(c *gin.Context) {
 	cfg, err := GetExtraTypesConfig()
 	if err != nil {
-		respondJSON(c, http.StatusOK, cfg)
+		// Even on error, return defaults plus plex type labels
+		plexTypes := []string{string(Trailers), string(Scenes), string(BehindTheScenes), string(Interviews), string(Featurettes), string(DeletedScenes), string(Other)}
+		resp := map[string]interface{}{
+			"plexTypes": plexTypes,
+		}
+		respondJSON(c, http.StatusOK, resp)
 		return
 	}
-	respondJSON(c, http.StatusOK, cfg)
+
+	// Build resp array with entries of { key, label, value }
+	resp := []map[string]interface{}{
+		{"key": "trailers", "label": string(Trailers), "value": cfg.Trailers},
+		{"key": "scenes", "label": string(Scenes), "value": cfg.Scenes},
+		{"key": "behindTheScenes", "label": string(BehindTheScenes), "value": cfg.BehindTheScenes},
+		{"key": "interviews", "label": string(Interviews), "value": cfg.Interviews},
+		{"key": "featurettes", "label": string(Featurettes), "value": cfg.Featurettes},
+		{"key": "deletedScenes", "label": string(DeletedScenes), "value": cfg.DeletedScenes},
+		{"key": "shorts", "label": string(Shorts), "value": cfg.Shorts},
+		{"key": "other", "label": string(Other), "value": cfg.Other},
+	}
+
+	// Respond with only the resp array (frontend expects key/label/value and will use them as-is)
+	respondJSON(c, http.StatusOK, resp)
 }
 
 // Handler to save extra types config
@@ -569,24 +712,13 @@ func EnsureSyncTimingsConfig() (map[string]int, error) {
 		"sonarr": 15,
 		"extras": 360,
 	}
-	// Check if config file exists
+
+	// If the file doesn't exist create it with defaults
 	if _, err := os.Stat(ConfigPath); os.IsNotExist(err) {
-		// Create config with only syncTimings
-		cfg := map[string]interface{}{"syncTimings": defaultTimings}
-		out, err := yaml.Marshal(cfg)
-		if err != nil {
-			return defaultTimings, err
-		}
-		// Ensure parent dir exists
-		if err := os.MkdirAll(TrailarrRoot+"/config", 0775); err != nil {
-			return defaultTimings, err
-		}
-		if err := os.WriteFile(ConfigPath, out, 0644); err != nil {
-			return defaultTimings, err
-		}
-		return defaultTimings, nil
+		return createConfigWithTimings(defaultTimings)
 	}
-	// Load config
+
+	// Load existing config
 	data, err := os.ReadFile(ConfigPath)
 	if err != nil {
 		return defaultTimings, err
@@ -595,17 +727,15 @@ func EnsureSyncTimingsConfig() (map[string]int, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return defaultTimings, err
 	}
+
+	// Extract timings section, write defaults if missing
 	timings, ok := cfg["syncTimings"].(map[string]interface{})
 	if !ok {
-		// Add syncTimings without touching other config
-		cfg["syncTimings"] = defaultTimings
-		out, err := yaml.Marshal(cfg)
-		if err == nil {
-			_ = os.WriteFile(ConfigPath, out, 0644)
-		}
+		_ = writeSyncTimingsToConfig(cfg, defaultTimings)
 		return defaultTimings, nil
 	}
-	// Ensure 'extras' interval is present
+
+	// Ensure extras key exists
 	if _, hasExtras := timings["extras"]; !hasExtras {
 		timings["extras"] = 360
 		cfg["syncTimings"] = timings
@@ -614,7 +744,42 @@ func EnsureSyncTimingsConfig() (map[string]int, error) {
 			_ = os.WriteFile(ConfigPath, out, 0644)
 		}
 	}
-	// Convert loaded timings to map[string]int (robust for all numeric types)
+
+	// Convert to map[string]int and return
+	return convertTimings(timings), nil
+}
+
+// createConfigWithTimings writes a new config file with only syncTimings set to the provided map.
+func createConfigWithTimings(timings map[string]int) (map[string]int, error) {
+	cfg := map[string]interface{}{"syncTimings": timings}
+	out, err := yaml.Marshal(cfg)
+	if err != nil {
+		return timings, err
+	}
+	// Ensure parent dir exists
+	if err := os.MkdirAll(TrailarrRoot+"/config", 0775); err != nil {
+		return timings, err
+	}
+	if err := os.WriteFile(ConfigPath, out, 0644); err != nil {
+		return timings, err
+	}
+	return timings, nil
+}
+
+// writeSyncTimingsToConfig adds/updates the syncTimings section in the provided config map and writes the file.
+// It ignores write errors to preserve original behavior where write failures were non-fatal.
+func writeSyncTimingsToConfig(cfg map[string]interface{}, timings map[string]int) error {
+	cfg["syncTimings"] = timings
+	out, err := yaml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	_ = os.WriteFile(ConfigPath, out, 0644)
+	return nil
+}
+
+// convertTimings converts a map[string]interface{} of timing values into map[string]int.
+func convertTimings(timings map[string]interface{}) map[string]int {
 	result := map[string]int{}
 	for k, v := range timings {
 		switch val := v.(type) {
@@ -642,7 +807,7 @@ func EnsureSyncTimingsConfig() (map[string]int, error) {
 			}
 		}
 	}
-	return result, nil
+	return result
 }
 
 // Loads settings for a given section ("radarr" or "sonarr")
@@ -692,21 +857,32 @@ func GetPathMappings(mediaType MediaType) ([][]string, error) {
 		return nil, err
 	}
 	sec, _ := config[section].(map[string]interface{})
-	var mappings [][]string
-	if sec != nil {
-		if pm, ok := sec["pathMappings"].([]interface{}); ok {
-			for _, m := range pm {
-				if mMap, ok := m.(map[string]interface{}); ok {
-					from, _ := mMap["from"].(string)
-					to, _ := mMap["to"].(string)
-					if from != "" && to != "" {
-						mappings = append(mappings, []string{from, to})
-					}
-				}
-			}
-		}
+	return extractPathMappings(sec), nil
+}
+
+// extractPathMappings converts a section's pathMappings into [][]string.
+func extractPathMappings(sec map[string]interface{}) [][]string {
+	if sec == nil {
+		return nil
 	}
-	return mappings, nil
+	result := [][]string{}
+	pm, ok := sec["pathMappings"].([]interface{})
+	if !ok {
+		return result
+	}
+	for _, m := range pm {
+		mMap, ok := m.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		from, _ := mMap["from"].(string)
+		to, _ := mMap["to"].(string)
+		if from == "" || to == "" {
+			continue
+		}
+		result = append(result, []string{from, to})
+	}
+	return result
 }
 
 // Returns a Gin handler for settings (url, apiKey, pathMappings) for a given section ("radarr" or "sonarr")
@@ -737,71 +913,87 @@ func GetSettingsHandler(section string) gin.HandlerFunc {
 			respondJSON(c, http.StatusOK, gin.H{"providerURL": "", "apiKey": ""})
 			return
 		}
+
 		var config map[string]interface{}
 		if err := yaml.Unmarshal(data, &config); err != nil {
 			respondJSON(c, http.StatusOK, gin.H{"providerURL": "", "apiKey": "", "pathMappings": []interface{}{}})
 			return
 		}
-		sectionData, _ := config[section].(map[string]interface{})
-		var mappings []map[string]string
-		mappingSet := map[string]bool{}
-		var pathMappings []map[string]interface{}
-		if sectionData != nil {
-			if pm, ok := sectionData["pathMappings"].([]interface{}); ok {
-				for _, m := range pm {
-					if mMap, ok := m.(map[string]interface{}); ok {
-						from := ""
-						to := ""
-						if v, ok := mMap["from"].(string); ok {
-							from = v
-						}
-						if v, ok := mMap["to"].(string); ok {
-							to = v
-						}
-						mappings = append(mappings, map[string]string{"from": from, "to": to})
-						mappingSet[from] = true
-						pathMappings = append(pathMappings, map[string]interface{}{"from": from, "to": to})
-					}
-				}
-			}
-		}
-		// Add any root folder from API response to settings if missing
-		var folders []map[string]interface{}
-		var providerURL, apiKey string
+
+		sectionData, mappings, mappingSet, pathMappings := parseSectionPathMappings(config, section)
+
+		providerURL, apiKey := "", ""
 		if sectionData != nil {
 			providerURL, _ = sectionData["url"].(string)
 			apiKey, _ = sectionData["apiKey"].(string)
-			switch section {
-			case "radarr":
-				folders, _ = FetchRootFolders(providerURL, apiKey)
-			case "sonarr":
-				folders, _ = FetchRootFolders(providerURL, apiKey)
-			}
 		}
-		updated := false
-		for _, f := range folders {
-			if path, ok := f["path"].(string); ok {
-				if !mappingSet[path] {
-					pathMappings = append(pathMappings, map[string]interface{}{"from": path, "to": ""})
-					mappings = append(mappings, map[string]string{"from": path, "to": ""})
-					updated = true
-				}
-			}
+
+		// Fetch root folders (if any) and merge missing ones into mappings
+		var folders []map[string]interface{}
+		if sectionData != nil {
+			folders, _ = FetchRootFolders(providerURL, apiKey)
 		}
+		mergedPathMappings, mergedMappings, updated := mergeFoldersIntoMappings(pathMappings, mappings, mappingSet, folders)
+
 		if updated && sectionData != nil {
-			sectionData["pathMappings"] = pathMappings
+			sectionData["pathMappings"] = mergedPathMappings
 			config[section] = sectionData
 			out, _ := yaml.Marshal(config)
-			err := os.WriteFile(ConfigPath, out, 0644)
-			if err != nil {
+			if err := os.WriteFile(ConfigPath, out, 0644); err != nil {
 				TrailarrLog(ERROR, "Settings", "Failed to save updated config: %v", err)
 			} else {
 				TrailarrLog(INFO, "Settings", "Updated config with new root folders")
 			}
 		}
-		TrailarrLog(DEBUG, "Settings", "Loaded settings for %s: URL=%s, APIKey=%s, Mappings=%v", section, providerURL, apiKey, mappings)
-		respondJSON(c, http.StatusOK, gin.H{"providerURL": providerURL, "apiKey": apiKey, "pathMappings": mappings})
+
+		TrailarrLog(DEBUG, "Settings", "Loaded settings for %s: URL=%s, APIKey=%s, Mappings=%v", section, providerURL, apiKey, mergedMappings)
+		respondJSON(c, http.StatusOK, gin.H{"providerURL": providerURL, "apiKey": apiKey, "pathMappings": mergedMappings})
 	}
+}
+
+// parseSectionPathMappings extracts section data and path mappings from a loaded config.
+// Returns sectionData (may be nil), mappings (slice of {"from","to"}), mappingSet (set of from paths), and pathMappings (slice of map[string]interface{}).
+func parseSectionPathMappings(config map[string]interface{}, section string) (map[string]interface{}, []map[string]string, map[string]bool, []map[string]interface{}) {
+	sectionData, _ := config[section].(map[string]interface{})
+	var mappings []map[string]string
+	mappingSet := map[string]bool{}
+	var pathMappings []map[string]interface{}
+	if sectionData == nil {
+		return sectionData, mappings, mappingSet, pathMappings
+	}
+	if pm, ok := sectionData["pathMappings"].([]interface{}); ok {
+		for _, m := range pm {
+			if mMap, ok := m.(map[string]interface{}); ok {
+				from := ""
+				to := ""
+				if v, ok := mMap["from"].(string); ok {
+					from = v
+				}
+				if v, ok := mMap["to"].(string); ok {
+					to = v
+				}
+				mappings = append(mappings, map[string]string{"from": from, "to": to})
+				mappingSet[from] = true
+				pathMappings = append(pathMappings, map[string]interface{}{"from": from, "to": to})
+			}
+		}
+	}
+	return sectionData, mappings, mappingSet, pathMappings
+}
+
+// mergeFoldersIntoMappings adds any unknown folders to the mappings and returns updated slices and a boolean flag if changes were made.
+func mergeFoldersIntoMappings(pathMappings []map[string]interface{}, mappings []map[string]string, mappingSet map[string]bool, folders []map[string]interface{}) ([]map[string]interface{}, []map[string]string, bool) {
+	updated := false
+	for _, f := range folders {
+		if path, ok := f["path"].(string); ok {
+			if !mappingSet[path] {
+				pathMappings = append(pathMappings, map[string]interface{}{"from": path, "to": ""})
+				mappings = append(mappings, map[string]string{"from": path, "to": ""})
+				updated = true
+			}
+		}
+	}
+	return pathMappings, mappings, updated
 }
 
 // Returns a Gin handler to save settings (providerURL, apiKey, pathMappings) for a given section ("radarr" or "sonarr")
@@ -928,7 +1120,7 @@ func FetchRootFolders(apiURL, apiKey string) ([]map[string]interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("X-Api-Key", apiKey)
+	req.Header.Set(HeaderApiKey, apiKey)
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -960,7 +1152,7 @@ func testMediaConnection(providerURL, apiKey, _ string) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("X-Api-Key", apiKey)
+	req.Header.Set(HeaderApiKey, apiKey)
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {

@@ -15,12 +15,13 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+const extrasEntryKeyFmt = "%s:%s:%d"
+
 // RemoveAll429Rejections removes all extras with status 'rejected' and reason containing '429' from the extras collection
 func RemoveAll429Rejections() error {
 	ctx := context.Background()
 	client := GetRedisClient()
-	key := ExtrasRedisKey
-	vals, err := client.HVals(ctx, key).Result()
+	vals, err := client.HVals(ctx, ExtrasRedisKey).Result()
 	if err != nil {
 		return err
 	}
@@ -28,12 +29,12 @@ func RemoveAll429Rejections() error {
 		var entry ExtrasEntry
 		if err := json.Unmarshal([]byte(v), &entry); err == nil {
 			if entry.Status == "rejected" && strings.Contains(entry.Reason, "429") {
-				entryKey := fmt.Sprintf("%s:%s:%d", entry.YoutubeId, entry.MediaType, entry.MediaId)
-				if err := client.HDel(ctx, key, entryKey).Err(); err != nil {
+				entryKey := fmt.Sprintf(extrasEntryKeyFmt, entry.YoutubeId, entry.MediaType, entry.MediaId)
+				if err := client.HDel(ctx, ExtrasRedisKey, entryKey).Err(); err != nil {
 					TrailarrLog(WARN, "Extras", "Failed to remove 429 rejected extra: %v", err)
 				}
 				// Also remove from per-media hash
-				perMediaKey := fmt.Sprintf("trailarr:extras:%s:%d", entry.MediaType, entry.MediaId)
+				perMediaKey := fmt.Sprintf(extrasEntryKeyFmt, ExtrasRedisKey, entry.MediaType, entry.MediaId)
 				_ = client.HDel(ctx, perMediaKey, entryKey).Err()
 			}
 		}
@@ -45,34 +46,42 @@ func RemoveAll429Rejections() error {
 func GetExtrasForMedia(ctx context.Context, mediaType MediaType, mediaId int) ([]ExtrasEntry, error) {
 	client := GetRedisClient()
 	perMediaKey := fmt.Sprintf("trailarr:extras:%s:%d", mediaType, mediaId)
+
 	vals, err := client.HVals(ctx, perMediaKey).Result()
 	if err != nil && err != redis.Nil {
 		return nil, err
 	}
-	var result []ExtrasEntry
-	for _, v := range vals {
-		var entry ExtrasEntry
-		if err := json.Unmarshal([]byte(v), &entry); err == nil {
-			result = append(result, entry)
-		}
-	}
-	// Fallback: if nothing found, try global (legacy)
-	if len(result) == 0 {
-		key := ExtrasRedisKey
-		vals, err := client.HVals(ctx, key).Result()
-		if err != nil {
-			return nil, err
-		}
-		for _, v := range vals {
+
+	parseEntries := func(raw []string) []ExtrasEntry {
+		var out []ExtrasEntry
+		for _, v := range raw {
 			var entry ExtrasEntry
 			if err := json.Unmarshal([]byte(v), &entry); err == nil {
-				if entry.MediaType == mediaType && entry.MediaId == mediaId {
-					result = append(result, entry)
-				}
+				out = append(out, entry)
 			}
 		}
+		return out
 	}
-	return result, nil
+
+	// Try per-media hash first
+	result := parseEntries(vals)
+	if len(result) > 0 {
+		return result, nil
+	}
+
+	// Fallback: if nothing found, try global (legacy) and filter
+	globalVals, err := client.HVals(ctx, ExtrasRedisKey).Result()
+	if err != nil {
+		return nil, err
+	}
+	all := parseEntries(globalVals)
+	var filtered []ExtrasEntry
+	for _, entry := range all {
+		if entry.MediaType == mediaType && entry.MediaId == mediaId {
+			filtered = append(filtered, entry)
+		}
+	}
+	return filtered, nil
 }
 
 // ListSubdirectories returns all subdirectories for a given path
@@ -127,7 +136,7 @@ func AddOrUpdateExtra(ctx context.Context, entry ExtrasEntry) error {
 	client := GetRedisClient()
 	key := ExtrasRedisKey
 	// Use YoutubeId+MediaType+MediaId as unique identifier
-	entryKey := fmt.Sprintf("%s:%s:%d", entry.YoutubeId, entry.MediaType, entry.MediaId)
+	entryKey := fmt.Sprintf(extrasEntryKeyFmt, entry.YoutubeId, entry.MediaType, entry.MediaId)
 	data, err := json.Marshal(entry)
 	if err != nil {
 		return err
@@ -148,7 +157,7 @@ func AddOrUpdateExtra(ctx context.Context, entry ExtrasEntry) error {
 func GetExtraByYoutubeId(ctx context.Context, youtubeId string, mediaType MediaType, mediaId int) (*ExtrasEntry, error) {
 	client := GetRedisClient()
 	key := ExtrasRedisKey
-	entryKey := fmt.Sprintf("%s:%s:%d", youtubeId, mediaType, mediaId)
+	entryKey := fmt.Sprintf(extrasEntryKeyFmt, youtubeId, mediaType, mediaId)
 	val, err := client.HGet(ctx, key, entryKey).Result()
 	if err == redis.Nil {
 		return nil, nil
@@ -163,6 +172,37 @@ func GetExtraByYoutubeId(ctx context.Context, youtubeId string, mediaType MediaT
 }
 
 // GetAllExtras returns all extras in the collection
+func loadTitles(cacheKey string) map[int]string {
+	titles := make(map[int]string)
+	items, _ := loadCache(cacheKey)
+	for _, m := range items {
+		idInt, ok := parseMediaID(m["id"])
+		if !ok {
+			continue
+		}
+		if t, ok := m["title"].(string); ok {
+			titles[idInt] = t
+		}
+	}
+	return titles
+}
+
+func fillMediaTitle(entry *ExtrasEntry, movieTitles, seriesTitles map[int]string) {
+	if entry.MediaTitle != "" {
+		return
+	}
+	switch entry.MediaType {
+	case MediaTypeMovie:
+		if t, ok := movieTitles[entry.MediaId]; ok {
+			entry.MediaTitle = t
+		}
+	case MediaTypeTV:
+		if t, ok := seriesTitles[entry.MediaId]; ok {
+			entry.MediaTitle = t
+		}
+	}
+}
+
 func GetAllExtras(ctx context.Context) ([]ExtrasEntry, error) {
 	client := GetRedisClient()
 	key := ExtrasRedisKey
@@ -171,46 +211,18 @@ func GetAllExtras(ctx context.Context) ([]ExtrasEntry, error) {
 		return nil, err
 	}
 	var result []ExtrasEntry
-	// Build a map for quick lookup of media titles
-	movieTitles := make(map[int]string)
-	seriesTitles := make(map[int]string)
-	// Load movie and series caches once
-	movieItems, _ := loadCache(MoviesRedisKey)
-	for _, m := range movieItems {
-		idInt, ok := parseMediaID(m["id"])
-		if ok {
-			if t, ok := m["title"].(string); ok {
-				movieTitles[idInt] = t
-			}
-		}
-	}
-	seriesItems, _ := loadCache(SeriesRedisKey)
-	for _, m := range seriesItems {
-		idInt, ok := parseMediaID(m["id"])
-		if ok {
-			if t, ok := m["title"].(string); ok {
-				seriesTitles[idInt] = t
-			}
-		}
-	}
+
+	// Load movie and series title maps once
+	movieTitles := loadTitles(MoviesRedisKey)
+	seriesTitles := loadTitles(SeriesRedisKey)
+
 	for _, v := range vals {
 		var entry ExtrasEntry
-		if err := json.Unmarshal([]byte(v), &entry); err == nil {
-			// Fill in MediaTitle if missing or empty
-			if entry.MediaTitle == "" {
-				switch entry.MediaType {
-				case MediaTypeMovie:
-					if t, ok := movieTitles[entry.MediaId]; ok {
-						entry.MediaTitle = t
-					}
-				case MediaTypeTV:
-					if t, ok := seriesTitles[entry.MediaId]; ok {
-						entry.MediaTitle = t
-					}
-				}
-			}
-			result = append(result, entry)
+		if err := json.Unmarshal([]byte(v), &entry); err != nil {
+			continue
 		}
+		fillMediaTitle(&entry, movieTitles, seriesTitles)
+		result = append(result, entry)
 	}
 	return result, nil
 }
@@ -219,9 +231,21 @@ func GetAllExtras(ctx context.Context) ([]ExtrasEntry, error) {
 func RemoveExtra(ctx context.Context, youtubeId string, mediaType MediaType, mediaId int) error {
 	client := GetRedisClient()
 	key := ExtrasRedisKey
-	entryKey := fmt.Sprintf("%s:%s:%d", youtubeId, mediaType, mediaId)
-	err := client.HDel(ctx, key, entryKey).Err()
-	return err
+	entryKey := fmt.Sprintf(extrasEntryKeyFmt, youtubeId, mediaType, mediaId)
+	// Remove from the global extras hash
+	errGlobal := client.HDel(ctx, key, entryKey).Err()
+	// Also remove from the per-media hash for fast lookup
+	perMediaKey := fmt.Sprintf("trailarr:extras:%s:%d", mediaType, mediaId)
+	errPerMedia := client.HDel(ctx, perMediaKey, entryKey).Err()
+
+	if errGlobal != nil {
+		// If per-media deletion also failed, combine errors
+		if errPerMedia != nil {
+			return fmt.Errorf("global: %v; per-media: %v", errGlobal, errPerMedia)
+		}
+		return errGlobal
+	}
+	return errPerMedia
 }
 
 type Extra struct {
@@ -401,16 +425,6 @@ func recordDeleteHistory(mediaType MediaType, mediaId int, extraType, extraTitle
 	_ = AppendHistoryEvent(event)
 }
 
-type ExtraType string
-
-const (
-	ExtraTypeBehindTheScenes ExtraType = "Behind The Scenes"
-	ExtraTypeFeaturettes     ExtraType = "Featurettes"
-	ExtraTypeScenes          ExtraType = "Scenes"
-	ExtraTypeTrailers        ExtraType = "Trailers"
-	ExtraTypeOther           ExtraType = "Other"
-)
-
 func canonicalizeExtraType(extraType string) string {
 	cfg, err := GetCanonicalizeExtraTypeConfig()
 	if err == nil {
@@ -446,6 +460,44 @@ func FetchTMDBExtrasForMedia(mediaType MediaType, id int) ([]Extra, error) {
 }
 
 // Handler to list existing extras for a movie path
+func collectExistingFromSubdir(subdir string, dupCount map[string]int) []map[string]interface{} {
+	var results []map[string]interface{}
+	dirName := filepath.Base(subdir)
+	files, _ := os.ReadDir(subdir)
+	for _, f := range files {
+		if f.IsDir() || !strings.HasSuffix(f.Name(), ".mkv") {
+			continue
+		}
+		metaFile := filepath.Join(subdir, strings.TrimSuffix(f.Name(), ".mkv")+".mkv.json")
+		var meta struct {
+			ExtraType  string `json:"extraType"`
+			ExtraTitle string `json:"extraTitle"`
+			FileName   string `json:"fileName"`
+			YoutubeId  string `json:"youtubeId"`
+			Status     string `json:"status"`
+		}
+		status := "not-downloaded"
+		if err := ReadJSONFile(metaFile, &meta); err == nil {
+			status = meta.Status
+			if status == "" {
+				status = "downloaded"
+			}
+		}
+		key := dirName + "|" + meta.ExtraTitle
+		dupCount[key]++
+		results = append(results, map[string]interface{}{
+			"type":       dirName,
+			"extraType":  meta.ExtraType,
+			"extraTitle": meta.ExtraTitle,
+			"fileName":   meta.FileName,
+			"YoutubeId":  meta.YoutubeId,
+			"_dupIndex":  dupCount[key],
+			"status":     status,
+		})
+	}
+	return results
+}
+
 func existingExtrasHandler(c *gin.Context) {
 	moviePath := c.Query("moviePath")
 	if moviePath == "" {
@@ -462,38 +514,7 @@ func existingExtrasHandler(c *gin.Context) {
 	// Track duplicate index for each extraType/extraTitle
 	dupCount := make(map[string]int)
 	for _, subdir := range subdirs {
-		dirName := filepath.Base(subdir)
-		files, _ := os.ReadDir(subdir)
-		for _, f := range files {
-			if !f.IsDir() && strings.HasSuffix(f.Name(), ".mkv") {
-				metaFile := subdir + "/" + strings.TrimSuffix(f.Name(), ".mkv") + ".mkv.json"
-				var meta struct {
-					ExtraType  string `json:"extraType"`
-					ExtraTitle string `json:"extraTitle"`
-					FileName   string `json:"fileName"`
-					YoutubeId  string `json:"youtubeId"`
-					Status     string `json:"status"`
-				}
-				status := "not-downloaded"
-				if err := ReadJSONFile(metaFile, &meta); err == nil {
-					status = meta.Status
-					if status == "" {
-						status = "downloaded"
-					}
-				}
-				key := dirName + "|" + meta.ExtraTitle
-				dupCount[key]++
-				existing = append(existing, map[string]interface{}{
-					"type":       dirName,
-					"extraType":  meta.ExtraType,
-					"extraTitle": meta.ExtraTitle,
-					"fileName":   meta.FileName,
-					"YoutubeId":  meta.YoutubeId,
-					"_dupIndex":  dupCount[key],
-					"status":     status,
-				})
-			}
-		}
+		existing = append(existing, collectExistingFromSubdir(subdir, dupCount)...)
 	}
 	respondJSON(c, http.StatusOK, gin.H{"existing": existing})
 }
@@ -564,8 +585,7 @@ func shouldDownloadExtra(extra Extra, config ExtraTypesConfig) bool {
 	if extra.Status == "rejected" {
 		return false
 	}
-	typeName := extra.ExtraType
-	canonical := canonicalizeExtraType(typeName)
+	canonical := canonicalizeExtraType(extra.ExtraType)
 	return isExtraTypeEnabled(config, canonical)
 }
 
@@ -692,10 +712,29 @@ func filterAndDownloadExtras(mediaType MediaType, mediaId int, extras []Extra, c
 		rejectedYoutubeIds[r.YoutubeId] = struct{}{}
 	}
 	MarkRejectedExtrasInMemory(extras, rejectedYoutubeIds)
+	// Filter extras according to config and status
 	filtered := Filter(extras, func(extra Extra) bool {
 		return shouldDownloadExtra(extra, config)
 	})
+	// Debug: log what will be processed
+	if len(extras) == 0 {
+		TrailarrLog(DEBUG, "Extras", "No extras found for mediaType=%v id=%d", mediaType, mediaId)
+	} else {
+		idsAll := make([]string, 0, len(extras))
+		for _, e := range extras {
+			idsAll = append(idsAll, e.YoutubeId)
+		}
+		idsFiltered := make([]string, 0, len(filtered))
+		for _, e := range filtered {
+			idsFiltered = append(idsFiltered, e.YoutubeId)
+		}
+		// Only log when we will process some filtered extras
+		if len(filtered) > 0 {
+			TrailarrLog(INFO, "Extras", "Media %v:%d — will process %d extras: %v", mediaType, mediaId, len(filtered), idsFiltered)
+		}
+	}
 	for _, extra := range filtered {
+		TrailarrLog(INFO, "Extras", "Enqueuing extra for mediaType=%v id=%d youtubeId=%s title=%s", mediaType, mediaId, extra.YoutubeId, extra.ExtraTitle)
 		err := handleExtraDownload(mediaType, mediaId, extra)
 		if err != nil {
 			TrailarrLog(WARN, "Extras", "Failed to download extra: %v", err)
@@ -704,6 +743,29 @@ func filterAndDownloadExtras(mediaType MediaType, mediaId int, extras []Extra, c
 }
 
 // Helper: Scan extras directories and collect info for a media path
+func isMkvJSONFile(name string) bool {
+	return strings.HasSuffix(name, ".mkv.json")
+}
+
+func canonicalizeMeta(meta map[string]interface{}) map[string]interface{} {
+	canonical := make(map[string]interface{})
+	for k, v := range meta {
+		switch strings.ToLower(k) {
+		case "title", "extratitle":
+			canonical["Title"] = v
+		case "filename", "fileName":
+			canonical["FileName"] = v
+		case "youtubeid":
+			canonical["YoutubeId"] = v
+		case "status":
+			canonical["Status"] = v
+		default:
+			canonical[k] = v
+		}
+	}
+	return canonical
+}
+
 func scanExtrasInfo(mediaPath string) map[string][]map[string]interface{} {
 	extrasInfo := make(map[string][]map[string]interface{})
 	if mediaPath == "" {
@@ -717,29 +779,17 @@ func scanExtrasInfo(mediaPath string) map[string][]map[string]interface{} {
 		extraType := filepath.Base(subdir)
 		files, _ := os.ReadDir(subdir)
 		for _, f := range files {
-			if f.IsDir() || !strings.HasSuffix(f.Name(), ".json") || !strings.HasSuffix(f.Name(), ".mkv.json") {
+			if f.IsDir() {
 				continue
 			}
-			filePath := filepath.Join(subdir, f.Name())
+			name := f.Name()
+			if !isMkvJSONFile(name) {
+				continue
+			}
+			filePath := filepath.Join(subdir, name)
 			var meta map[string]interface{}
 			if err := ReadJSONFile(filePath, &meta); err == nil {
-				// Standardize keys
-				canonical := make(map[string]interface{})
-				for k, v := range meta {
-					switch strings.ToLower(k) {
-					case "title", "extratitle":
-						canonical["Title"] = v
-					case "filename", "fileName":
-						canonical["FileName"] = v
-					case "youtubeid":
-						canonical["YoutubeId"] = v
-					case "status":
-						canonical["Status"] = v
-					default:
-						canonical[k] = v
-					}
-				}
-				extrasInfo[extraType] = append(extrasInfo[extraType], canonical)
+				extrasInfo[extraType] = append(extrasInfo[extraType], canonicalizeMeta(meta))
 			}
 		}
 	}

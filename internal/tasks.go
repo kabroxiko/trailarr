@@ -141,47 +141,62 @@ func AllTaskIDs() []TaskID {
 
 func LoadTaskStates() (TaskStates, error) {
 	// Redis-backed task states; disk fallback removed
-	// First try Redis
 	client := GetRedisClient()
 	ctx := context.Background()
 	vals, err := client.LRange(ctx, TaskTimesRedisKey, 0, -1).Result()
+
 	states := make(TaskStates)
 	if err == nil && len(vals) > 0 {
-		// parse stored JSON array entries
-		for _, v := range vals {
-			var t TaskState
-			if err := json.Unmarshal([]byte(v), &t); err == nil {
-				t.Status = "idle"
-				states[t.ID] = t
-			}
-		}
-	} else {
-		// No disk fallback; if Redis empty, initialization below will create defaults
+		states = parseStatesFromVals(vals)
 	}
-	// If still empty, initialize defaults
+
 	if len(states) == 0 {
-		zeroTime := time.Time{}
-		for id := range tasksMeta {
-			interval := 0
-			if v, ok := Timings[string(id)]; ok {
-				interval = v
-			}
-			if interval == 0 {
-				states[id] = TaskState{ID: id, LastExecution: time.Now(), LastDuration: 0}
-			} else {
-				states[id] = TaskState{ID: id, LastExecution: zeroTime, LastDuration: 0}
-			}
-		}
+		initializeDefaultStates(states)
 		_ = saveTaskStates(states)
 	}
-	// Ensure all tasks exist
+
+	ensureAllTasksExist(states)
+
+	GlobalTaskStates = states
+	return states, nil
+}
+
+// parseStatesFromVals parses JSON entries from Redis into TaskStates and marks them idle.
+func parseStatesFromVals(vals []string) TaskStates {
+	states := make(TaskStates)
+	for _, v := range vals {
+		var t TaskState
+		if err := json.Unmarshal([]byte(v), &t); err == nil {
+			t.Status = "idle"
+			states[t.ID] = t
+		}
+	}
+	return states
+}
+
+// initializeDefaultStates populates states with sensible defaults based on Timings.
+func initializeDefaultStates(states TaskStates) {
+	zeroTime := time.Time{}
+	for id := range tasksMeta {
+		interval := 0
+		if v, ok := Timings[string(id)]; ok {
+			interval = v
+		}
+		if interval == 0 {
+			states[id] = TaskState{ID: id, LastExecution: time.Now(), LastDuration: 0}
+		} else {
+			states[id] = TaskState{ID: id, LastExecution: zeroTime, LastDuration: 0}
+		}
+	}
+}
+
+// ensureAllTasksExist makes sure every task from tasksMeta has an entry in states.
+func ensureAllTasksExist(states TaskStates) {
 	for id := range tasksMeta {
 		if _, ok := states[id]; !ok {
 			states[id] = TaskState{ID: id}
 		}
 	}
-	GlobalTaskStates = states
-	return states, nil
 }
 
 func saveTaskStates(states TaskStates) error {
@@ -390,6 +405,15 @@ func TaskHandler() gin.HandlerFunc {
 	}
 }
 
+type bgTask struct {
+	id        TaskID
+	started   *bool
+	syncFunc  func()
+	interval  time.Duration
+	lastExec  time.Time
+	logPrefix string
+}
+
 func StartBackgroundTasks() {
 	TrailarrLog(INFO, "Tasks", "StartBackgroundTasks called. PID=%d, time=%s", os.Getpid(), time.Now().Format(time.RFC3339Nano))
 	states, err := LoadTaskStates()
@@ -397,15 +421,20 @@ func StartBackgroundTasks() {
 		TrailarrLog(WARN, "Tasks", "Could not load last task times: %v", err)
 	}
 
-	type bgTask struct {
-		id        TaskID
-		started   *bool
-		syncFunc  func()
-		interval  time.Duration
-		lastExec  time.Time
-		logPrefix string
+	taskList := buildBgTasks(states)
+
+	for i := range taskList {
+		t := taskList[i]
+		if t.interval <= 0 {
+			TrailarrLog(WARN, "Tasks", "Task %s has non-positive interval, skipping scheduling", t.logPrefix)
+			continue
+		}
+		go scheduleTask(t)
 	}
-	// Build taskList from tasksMeta
+	TrailarrLog(INFO, "Tasks", "Native Go scheduler started. Jobs will persist last execution times to Redis key %s", TaskTimesRedisKey)
+}
+
+func buildBgTasks(states TaskStates) []bgTask {
 	var taskList []bgTask
 	for id, meta := range tasksMeta {
 		intervalVal, ok := Timings[string(id)]
@@ -428,46 +457,37 @@ func StartBackgroundTasks() {
 			logPrefix: meta.Name,
 		})
 	}
+	return taskList
+}
 
-	// Native Go scheduler: one goroutine per task using time.Ticker
-	for i := range taskList {
-		task := &taskList[i]
-		interval := task.interval
-		if interval <= 0 {
-			TrailarrLog(WARN, "Tasks", "Task %s has non-positive interval, skipping scheduling", task.logPrefix)
-			continue
-		}
-		go func(t bgTask) {
-			now := time.Now()
-			initialDelay := t.lastExec.Add(interval).Sub(now)
-			if initialDelay < 0 {
-				initialDelay = 0
-			}
-			time.Sleep(initialDelay)
-			ticker := time.NewTicker(interval)
-			defer ticker.Stop()
-			for {
-				// Gate extras: only run after radarr and sonarr have executed at least once
-				if t.id == "extras" {
-					// Wait (block) until radarr and sonarr have executed at least once
-					for {
-						st := GlobalTaskStates
-						radLast := st["radarr"].LastExecution
-						sonLast := st["sonarr"].LastExecution
-						if !radLast.IsZero() && !sonLast.IsZero() {
-							break
-						}
-						TrailarrLog(INFO, "Tasks", "Waiting for radarr/sonarr to run before extras")
-						// Sleep a short while and re-check; this goroutine blocks only the extras scheduler
-						time.Sleep(5 * time.Second)
-					}
-				}
-				go runTaskAsync(TaskID(t.id), t.syncFunc)
-				<-ticker.C
-			}
-		}(*task)
+func scheduleTask(t bgTask) {
+	now := time.Now()
+	initialDelay := t.lastExec.Add(t.interval).Sub(now)
+	if initialDelay < 0 {
+		initialDelay = 0
 	}
-	TrailarrLog(INFO, "Tasks", "Native Go scheduler started. Jobs will persist last execution times to Redis key %s", TaskTimesRedisKey)
+	time.Sleep(initialDelay)
+
+	ticker := time.NewTicker(t.interval)
+	defer ticker.Stop()
+
+	for {
+		if t.id == "extras" {
+			// Wait until radarr and sonarr have executed at least once
+			for {
+				st := GlobalTaskStates
+				radLast := st["radarr"].LastExecution
+				sonLast := st["sonarr"].LastExecution
+				if !radLast.IsZero() && !sonLast.IsZero() {
+					break
+				}
+				TrailarrLog(INFO, "Tasks", "Waiting for radarr/sonarr to run before extras")
+				time.Sleep(5 * time.Second)
+			}
+		}
+		go runTaskAsync(TaskID(t.id), t.syncFunc)
+		<-ticker.C
+	}
 }
 
 func processExtras(ctx context.Context) {
@@ -530,74 +550,99 @@ func downloadMissingExtrasWithTypeFilter(ctx context.Context, cfg ExtraTypesConf
 			wantedItems = append(wantedItems, item)
 		}
 	}
+
 	for _, item := range wantedItems {
 		if ctx != nil && ctx.Err() != nil {
 			TrailarrLog(INFO, "Tasks", "Extras download cancelled before processing item.")
 			break
 		}
-		mediaId, _ := parseMediaID(item["id"])
-		title, _ := item["title"].(string)
-		extras, err := SearchExtras(mediaType, mediaId)
+		processWantedItem(ctx, cfg, mediaType, cacheFile, item, enabledTypes)
+	}
+}
+
+// processWantedItem encapsulates per-item processing previously inline in the large function.
+func processWantedItem(ctx context.Context, cfg ExtraTypesConfig, mediaType MediaType, cacheFile string, item map[string]interface{}, enabledTypes interface{}) {
+	mediaId, _ := parseMediaID(item["id"])
+	title, _ := item["title"].(string)
+
+	extras, usedTMDB, err := fetchExtrasOrTMDB(mediaType, mediaId, title, enabledTypes)
+	if err != nil {
+		TrailarrLog(WARN, "Tasks", "SearchExtras/TMDB failed for mediaId=%v, title=%q: %v", mediaId, title, err)
+		return
+	}
+	if len(extras) == 0 {
+		// Nothing to do
+		return
+	}
+
+	mediaPath, err := FindMediaPathByID(cacheFile, mediaId)
+	if err != nil || mediaPath == "" {
+		TrailarrLog(WARN, "Tasks", "FindMediaPathByID failed for mediaId=%v, title=%q: %v", mediaId, title, err)
+		return
+	}
+
+	TrailarrLog(INFO, "Tasks", "Searching extras for %s %v: %s", mediaType, mediaId, item["title"])
+
+	var toDownload []Extra
+	if usedTMDB {
+		toDownload = extras
+	} else {
+		MarkDownloadedExtras(extras, mediaPath, "type", "title")
+		// Defensive: mark rejected extras before any download
+		rejectedExtras := GetRejectedExtrasForMedia(mediaType, mediaId)
+		rejectedYoutubeIds := make(map[string]struct{}, len(rejectedExtras))
+		for _, r := range rejectedExtras {
+			rejectedYoutubeIds[r.YoutubeId] = struct{}{}
+		}
+		MarkRejectedExtrasInMemory(extras, rejectedYoutubeIds)
+		toDownload = extras
+	}
+
+	// For each extra, download sequentially using a helper to reduce nesting.
+	for _, extra := range toDownload {
+		if ctx != nil && ctx.Err() != nil {
+			TrailarrLog(INFO, "Tasks", "Extras download cancelled before processing extra.")
+			break
+		}
+		processExtraDownload(ctx, cfg, mediaType, mediaId, extra, usedTMDB)
+	}
+}
+
+// fetchExtrasOrTMDB centralizes SearchExtras + TMDB fallback and reduces branching in the caller.
+func fetchExtrasOrTMDB(mediaType MediaType, mediaId int, title string, enabledTypes interface{}) ([]Extra, bool, error) {
+	extras, err := SearchExtras(mediaType, mediaId)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(extras) == 0 {
+		TrailarrLog(INFO, "Tasks", "No extras found for mediaId=%v, title=%q, enabledTypes=%v, attempting TMDB fetch...", mediaId, title, enabledTypes)
+		tmdbExtras, err := FetchTMDBExtrasForMedia(mediaType, mediaId)
 		if err != nil {
-			TrailarrLog(WARN, "Tasks", "SearchExtras failed for mediaId=%v, title=%q: %v", mediaId, title, err)
-			continue
+			return nil, false, err
 		}
-		var tmdbExtras []Extra
-		usedTMDB := false
-		if len(extras) == 0 {
-			TrailarrLog(INFO, "Tasks", "No extras found for mediaId=%v, title=%q, enabledTypes=%v, attempting TMDB fetch...", mediaId, title, enabledTypes)
-			tmdbExtras, err = FetchTMDBExtrasForMedia(mediaType, mediaId)
-			if err != nil {
-				TrailarrLog(WARN, "Tasks", "TMDB fetch failed for mediaId=%v, title=%q: %v", mediaId, title, err)
-				continue
-			}
-			if len(tmdbExtras) == 0 {
-				TrailarrLog(INFO, "Tasks", "Still no extras after TMDB fetch for mediaId=%v, title=%q", mediaId, title)
-				continue
-			}
-			usedTMDB = true
+		if len(tmdbExtras) == 0 {
+			TrailarrLog(INFO, "Tasks", "Still no extras after TMDB fetch for mediaId=%v, title=%q", mediaId, title)
+			return nil, false, nil
 		}
-		mediaPath, err := FindMediaPathByID(cacheFile, mediaId)
-		if err != nil || mediaPath == "" {
-			TrailarrLog(WARN, "Tasks", "FindMediaPathByID failed for mediaId=%v, title=%q: %v", mediaId, title, err)
-			continue
-		}
-		TrailarrLog(INFO, "Tasks", "Searching extras for %s %v: %s", mediaType, mediaId, item["title"])
-		var toDownload []Extra
-		if usedTMDB {
-			toDownload = tmdbExtras
-		} else {
-			MarkDownloadedExtras(extras, mediaPath, "type", "title")
-			// Defensive: mark rejected extras before any download
-			rejectedExtras := GetRejectedExtrasForMedia(mediaType, mediaId)
-			rejectedYoutubeIds := make(map[string]struct{})
-			for _, r := range rejectedExtras {
-				rejectedYoutubeIds[r.YoutubeId] = struct{}{}
-			}
-			MarkRejectedExtrasInMemory(extras, rejectedYoutubeIds)
-			toDownload = extras
-		}
-		// For each extra, download sequentially
-		for _, extra := range toDownload {
-			if ctx != nil && ctx.Err() != nil {
-				TrailarrLog(INFO, "Tasks", "Extras download cancelled before processing extra.")
-				break
-			}
-			typ := canonicalizeExtraType(extra.ExtraType)
-			if !isExtraTypeEnabled(cfg, typ) {
-				continue
-			}
-			// Only check rejection for local extras, not TMDB-fetched
-			if !usedTMDB && extra.Status == "rejected" {
-				continue
-			}
-			// For TMDB-fetched, always treat as missing if not present locally
-			if (usedTMDB && extra.YoutubeId != "") || (!usedTMDB && extra.Status == "missing" && extra.YoutubeId != "") {
-				err := handleTypeFilteredExtraDownload(mediaType, mediaId, extra)
-				if err != nil {
-					TrailarrLog(WARN, "Tasks", "[SEQ] Download failed: %v", err)
-				}
-			}
+		return tmdbExtras, true, nil
+	}
+	return extras, false, nil
+}
+
+// processExtraDownload handles the per-extra checks and enqueues downloads when appropriate.
+func processExtraDownload(ctx context.Context, cfg ExtraTypesConfig, mediaType MediaType, mediaId int, extra Extra, usedTMDB bool) {
+	typ := canonicalizeExtraType(extra.ExtraType)
+	if !isExtraTypeEnabled(cfg, typ) {
+		return
+	}
+	// Only check rejection for local extras, not TMDB-fetched
+	if !usedTMDB && extra.Status == "rejected" {
+		return
+	}
+	// For TMDB-fetched, always treat as missing if not present locally
+	if (usedTMDB && extra.YoutubeId != "") || (!usedTMDB && extra.Status == "missing" && extra.YoutubeId != "") {
+		if err := handleTypeFilteredExtraDownload(mediaType, mediaId, extra); err != nil {
+			TrailarrLog(WARN, "Tasks", "[SEQ] Download failed: %v", err)
 		}
 	}
 }
@@ -616,19 +661,9 @@ func handleTypeFilteredExtraDownload(mediaType MediaType, mediaId int, extra Ext
 	AddToDownloadQueue(item, "task")
 	TrailarrLog(INFO, "QUEUE", "[handleTypeFilteredExtraDownload] Enqueued extra: mediaType=%v, mediaId=%v, type=%s, title=%s, youtubeId=%s", mediaType, mediaId, extra.ExtraType, extra.ExtraTitle, extra.YoutubeId)
 
-	// Record download event in history
-	cacheFile, _ := resolveCachePath(mediaType)
-	mediaTitle := lookupMediaTitle(cacheFile, mediaId)
-	event := HistoryEvent{
-		Action:     "download",
-		MediaTitle: mediaTitle,
-		MediaType:  mediaType,
-		MediaId:    mediaId,
-		ExtraType:  extra.ExtraType,
-		ExtraTitle: extra.ExtraTitle,
-		Date:       time.Now(),
-	}
-	_ = AppendHistoryEvent(event)
+	// Do not record a "queued" history event here. The downloader will record
+	// the final "download" event when the download completes.
+	_, _ = resolveCachePath(mediaType) // keep functionality that may require cache resolution
 	return nil
 }
 

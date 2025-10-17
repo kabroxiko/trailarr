@@ -1,10 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import MediaCard from './MediaCard.jsx';
+import PropTypes from 'prop-types';
 
 // basePath: e.g. '/wanted/movies' or '/movies'
 export default function MediaList({ items, darkMode, type, basePath }) {
   const [showEmpty, setShowEmpty] = useState(false);
+
+  // Prepare a sorted copy of items by sortTitle (case-insensitive). Fall back to title when sortTitle is missing.
+  const sortedItems = (items || []).slice().sort((a, b) => {
+    const aKey = (a.sortTitle || a.title || '').toString().toLowerCase();
+    const bKey = (b.sortTitle || b.title || '').toString().toLowerCase();
+    if (aKey < bKey) return -1;
+    if (aKey > bKey) return 1;
+    return 0;
+  });
 
   useEffect(() => {
     let t;
@@ -65,7 +75,16 @@ export default function MediaList({ items, darkMode, type, basePath }) {
             alignItems: 'start',
           }}
         >
-          {items.map((item) => (
+          {sortedItems.map((item) => {
+            let linkTo;
+            if (basePath) {
+              linkTo = `${basePath}/${item.id}`;
+            } else if (type === 'series') {
+              linkTo = `/series/${item.id}`;
+            } else {
+              linkTo = `/movies/${item.id}`;
+            }
+            return (
           <div
             key={item.id + '-' + type}
             style={{
@@ -85,11 +104,7 @@ export default function MediaList({ items, darkMode, type, basePath }) {
             }}
           >
             <Link
-              to={
-                basePath
-                  ? `${basePath}/${item.id}`
-                  : (type === 'series' ? `/series/${item.id}` : `/movies/${item.id}`)
-              }
+              to={linkTo}
               style={{
                 width: '100%',
                 display: 'flex',
@@ -105,9 +120,24 @@ export default function MediaList({ items, darkMode, type, basePath }) {
               </div>
             </Link>
           </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
+
+MediaList.propTypes = {
+  items: PropTypes.arrayOf(PropTypes.object),
+  darkMode: PropTypes.bool,
+  type: PropTypes.string,
+  basePath: PropTypes.string,
+};
+
+MediaList.defaultProps = {
+  items: [],
+  darkMode: false,
+  type: 'movies',
+  basePath: '',
+};
