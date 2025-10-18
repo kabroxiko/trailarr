@@ -4,6 +4,29 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTrashCan, faCheckSquare } from '@fortawesome/free-regular-svg-icons';
 import { faPlay, faDownload, faBan, faCircleXmark, faClock } from '@fortawesome/free-solid-svg-icons';
 
+import PropTypes from 'prop-types';
+
+ExtraCard.propTypes = {
+  extra: PropTypes.shape({
+    Reason: PropTypes.string,
+    ExtraTitle: PropTypes.string,
+    ExtraType: PropTypes.string,
+    YoutubeId: PropTypes.string,
+    Status: PropTypes.string,
+  }).isRequired,
+  idx: PropTypes.number,
+  typeExtras: PropTypes.array,
+  darkMode: PropTypes.bool,
+  media: PropTypes.object,
+  mediaType: PropTypes.string,
+  setExtras: PropTypes.func,
+  setModalMsg: PropTypes.func,
+  setShowModal: PropTypes.func,
+  rejected: PropTypes.bool,
+  onPlay: PropTypes.func,
+  showToast: PropTypes.func,
+};
+
 export default function ExtraCard({
   extra,
   idx,
@@ -93,7 +116,6 @@ export default function ExtraCard({
               {
                 ...extra,
                 Status: 'queued',
-                reason: '',
                 Reason: '',
                 ExtraType: baseType,
                 ExtraTitle: baseTitle,
@@ -196,7 +218,7 @@ export default function ExtraCard({
   }
   return (
     <div
-      title={rejected ? (extra.reason ? `Rejected: ${extra.reason}` : 'Rejected (cannot download)') : undefined}
+      title={rejected ? extra.Reason : undefined}
       style={{
         width: 180,
         height: 210,
@@ -325,7 +347,7 @@ export default function ExtraCard({
                   <FontAwesomeIcon icon={faDownload} color="#fff" size="lg" />
                 )
               }
-              title={rejected ? (extra.reason ? `Rejected: ${extra.reason}` : 'Rejected (cannot download)') : isDownloading ? 'Downloading...' : isQueued ? 'Queued' : 'Download'}
+              title={rejected ? extra.Reason : isDownloading ? 'Downloading...' : isQueued ? 'Queued' : 'Download'}
               onClick={rejected || isDownloading || isQueued
                 ? undefined
                 : (e => {

@@ -75,7 +75,7 @@ func ProxyYouTubeImageHandler(c *gin.Context) {
 	}
 	defer resp.Body.Close()
 
-	ct := resp.Header.Get("Content-Type")
+	ct := resp.Header.Get(HeaderContentType)
 	ext := detectImageExt(ct)
 	tmpPath := filepath.Join(cacheDir, youtubeId+".tmp")
 	finalPath := filepath.Join(cacheDir, youtubeId+ext)
@@ -118,7 +118,7 @@ func cachedYouTubeImage(cacheDir, id string) (string, string) {
 }
 
 func serveCachedFile(c *gin.Context, path, contentType string) {
-	c.Header("Content-Type", contentType)
+	c.Header(HeaderContentType, contentType)
 	c.Header("Cache-Control", "public, max-age=86400")
 	if c.Request.Method == http.MethodHead {
 		c.Status(http.StatusOK)
@@ -152,7 +152,7 @@ func serveFallbackSVG(c *gin.Context) {
   <!-- diagonal from top-right to bottom-left -->
   <line x1="92" y1="36" x2="36" y2="92" stroke="#888" stroke-width="10" stroke-linecap="round" />
 </svg>`
-	c.Header("Content-Type", "image/svg+xml")
+	c.Header(HeaderContentType, "image/svg+xml")
 	c.Header("X-Proxy-Fallback", "1")
 	c.Header("Cache-Control", "public, max-age=86400")
 	c.Status(http.StatusOK)
@@ -190,7 +190,7 @@ func saveToTmp(r io.Reader, path string) error {
 }
 
 func streamResponse(c *gin.Context, ct string, r io.Reader) {
-	c.Header("Content-Type", ct)
+	c.Header(HeaderContentType, ct)
 	c.Header("Cache-Control", "public, max-age=86400")
 	c.Status(http.StatusOK)
 	if c.Request.Method == http.MethodHead {

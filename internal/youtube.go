@@ -18,9 +18,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const YtDlpCmd = "yt-dlp"
+
 // YouTube trailer search SSE handler (progressive results)
 func YouTubeTrailerSearchStreamHandler(c *gin.Context) {
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set(HeaderContentType, "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache")
 	c.Writer.Header().Set("Connection", "keep-alive")
 	c.Writer.Flush()
@@ -41,32 +43,19 @@ func YouTubeTrailerSearchStreamHandler(c *gin.Context) {
 	}
 	TrailarrLog(INFO, "YouTube", "YouTubeTrailerSearchStreamHandler GET: mediaType=%s, mediaId=%d", mediaType, mediaId)
 
-	// Lookup media title/originalTitle
-	var title, originalTitle string
-	cacheFile, _ := resolveCachePath(MediaType(mediaType))
-	items, err := loadCache(cacheFile)
+	// Lookup media title/originalTitle using existing helper
+	title, originalTitle, err := getTitlesFromCache(MediaType(mediaType), mediaId)
 	if err != nil {
 		TrailarrLog(ERROR, "YouTube", "Failed to load cache for mediaType=%s: %v", mediaType, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Media cache not found"})
 		return
-	}
-	for _, m := range items {
-		idInt, ok := parseMediaID(m["id"])
-		if ok && idInt == mediaId {
-			if t, ok := m["title"].(string); ok {
-				title = t
-			}
-			if ot, ok := m["originalTitle"].(string); ok {
-				originalTitle = ot
-			}
-			break
-		}
 	}
 	if title == "" && originalTitle == "" {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Media not found"})
 		return
 	}
 
+	// Build search terms (original title first, then title if different)
 	var searchTerms []string
 	if originalTitle != "" {
 		searchTerms = append(searchTerms, originalTitle)
@@ -75,87 +64,153 @@ func YouTubeTrailerSearchStreamHandler(c *gin.Context) {
 		searchTerms = append(searchTerms, title)
 	}
 	videoIdSet := make(map[string]bool)
-	count := 0
+	totalCount := 0
+	const maxResults = 10
+
 	for _, term := range searchTerms {
-		searchQuery := term + " trailer"
-		ytDlpArgs := []string{"-j", "ytsearch10:" + searchQuery, "--skip-download"}
-		TrailarrLog(INFO, "YouTube", "yt-dlp command (SSE): yt-dlp %v", ytDlpArgs)
-		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-		cmd := exec.CommandContext(ctx, "yt-dlp", ytDlpArgs...)
-		stdout, err := cmd.StdoutPipe()
+		if totalCount >= maxResults {
+			break
+		}
+		added, err := streamYtDlpSearchForTerm(term, maxResults-totalCount, videoIdSet, c)
 		if err != nil {
-			TrailarrLog(ERROR, "YouTube", "Failed to get StdoutPipe: %v", err)
-			cancel()
-			continue
+			TrailarrLog(ERROR, "YouTube", "yt-dlp search error for term '%s': %v", term, err)
+			// continue to next term
 		}
-		if err := cmd.Start(); err != nil {
-			TrailarrLog(ERROR, "YouTube", "Failed to start yt-dlp: %v", err)
-			cancel()
-			continue
-		}
-		TrailarrLog(INFO, "YouTube", "Started yt-dlp process (SSE streaming)...")
-		reader := bufio.NewReader(stdout)
-		for {
-			line, err := reader.ReadBytes('\n')
-			if len(line) == 0 && err != nil {
-				break
-			}
-			var item struct {
-				ID          string `json:"id"`
-				Title       string `json:"title"`
-				Description string `json:"description"`
-				Thumbnail   string `json:"thumbnail"`
-				Channel     string `json:"channel"`
-				ChannelID   string `json:"channel_id"`
-			}
-			parseErr := json.Unmarshal(bytes.TrimSpace(line), &item)
-			if parseErr == nil {
-				if item.ID != "" && !videoIdSet[item.ID] {
-					videoIdSet[item.ID] = true
-					result := gin.H{
-						"id": gin.H{"videoId": item.ID},
-						"snippet": gin.H{
-							"title":       item.Title,
-							"description": item.Description,
-							"thumbnails": gin.H{
-								"default": gin.H{"url": item.Thumbnail},
-							},
-							"channelTitle": item.Channel,
-							"channelId":    item.ChannelID,
-						},
-					}
-					b, _ := json.Marshal(result)
-					fmt.Fprintf(c.Writer, "data: %s\n\n", b)
-					c.Writer.Flush()
-					count++
-					if count >= 10 {
-						break
-					}
-				}
-			}
-			if err != nil {
-				if err != io.EOF {
-					TrailarrLog(ERROR, "YouTube", "[SSE] Reader error: %v", err)
-				}
-				break
-			}
-		}
-		if count >= 10 {
-			_ = cmd.Process.Kill()
-		}
+		totalCount += added
+	}
+
+	// Send done event and flush
+	fmt.Fprintf(c.Writer, "event: done\ndata: {}\n\n")
+	c.Writer.Flush()
+}
+
+// streamYtDlpSearchForTerm runs a single yt-dlp search for "term trailer", streams JSON lines,
+// emits SSE events to the gin context writer for unique video IDs, and returns how many items were added.
+func streamYtDlpSearchForTerm(term string, remaining int, videoIdSet map[string]bool, c *gin.Context) (int, error) {
+	if remaining <= 0 {
+		return 0, nil
+	}
+	searchQuery := term + " trailer"
+	ytDlpArgs := []string{"-j", "ytsearch10:" + searchQuery, "--skip-download"}
+	TrailarrLog(INFO, "YouTube", "yt-dlp command (SSE): yt-dlp %v", ytDlpArgs)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+
+	reader, cmd, err := startYtDlpCommand(ctx, YtDlpCmd, ytDlpArgs)
+	if err != nil {
+		return 0, err
+	}
+	// Ensure we wait for the command to exit
+	defer func() {
 		_ = cmd.Wait()
-		cancel()
-		if ctx.Err() == context.DeadlineExceeded {
-			TrailarrLog(ERROR, "YouTube", "[SSE] yt-dlp search timed out for query: %s", searchQuery)
-			continue
-		}
-		if count >= 10 {
+	}()
+
+	added, err := streamYtDlpOutput(reader, cmd, remaining, videoIdSet, c)
+	if ctx.Err() == context.DeadlineExceeded {
+		TrailarrLog(ERROR, "YouTube", "[SSE] yt-dlp search timed out for query: %s", searchQuery)
+	}
+	return added, err
+}
+
+// startYtDlpCommand starts the yt-dlp command with the provided args and returns a buffered reader for stdout.
+func startYtDlpCommand(ctx context.Context, cmdName string, args []string) (*bufio.Reader, *exec.Cmd, error) {
+	cmd := exec.CommandContext(ctx, cmdName, args...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		TrailarrLog(ERROR, "YouTube", "Failed to get StdoutPipe: %v", err)
+		return nil, nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		TrailarrLog(ERROR, "YouTube", "Failed to start yt-dlp: %v", err)
+		return nil, nil, err
+	}
+	TrailarrLog(INFO, "YouTube", "Started yt-dlp process (SSE streaming)...")
+	return bufio.NewReader(stdout), cmd, nil
+}
+
+// streamYtDlpOutput reads lines from reader and processes JSON lines until remaining items are found or reader ends.
+func streamYtDlpOutput(reader *bufio.Reader, cmd *exec.Cmd, remaining int, videoIdSet map[string]bool, c *gin.Context) (int, error) {
+	added := 0
+
+	for added < remaining {
+		done, err := readProcessLine(reader, &added, remaining, videoIdSet, c)
+		if done {
+			if err != nil && err != io.EOF {
+				TrailarrLog(ERROR, "YouTube", "[SSE] Reader error: %v", err)
+			}
 			break
 		}
 	}
-	// Optionally send a done event
-	fmt.Fprintf(c.Writer, "event: done\ndata: {}\n\n")
+
+	// kill process early if we collected enough results
+	if added >= remaining && cmd != nil && cmd.Process != nil {
+		_ = cmd.Process.Kill()
+	}
+	return added, nil
+}
+
+// readProcessLine reads a single line from the reader, processes it and updates added; it returns
+// (true, err) when the caller should stop the loop (on error or if added reached remaining).
+func readProcessLine(reader *bufio.Reader, added *int, remaining int, videoIdSet map[string]bool, c *gin.Context) (bool, error) {
+	line, err := reader.ReadBytes('\n')
+
+	// process any non-empty trimmed line
+	if len(bytes.TrimSpace(line)) > 0 {
+		if inc, ok := handleYtDlpJSONLine(line, videoIdSet, c); ok {
+			*added += inc
+			if *added >= remaining {
+				return true, nil
+			}
+		}
+	}
+
+	// if there was an error reading, indicate caller should stop
+	if err != nil {
+		return len(bytes.TrimSpace(line)) == 0, err
+	}
+	return false, nil
+}
+
+// handleYtDlpJSONLine parses a single JSON line from yt-dlp, sends an SSE event for a new ID,
+// and returns (increment, true) on success or (0, false) if nothing was emitted.
+func handleYtDlpJSONLine(line []byte, videoIdSet map[string]bool, c *gin.Context) (int, bool) {
+	var item struct {
+		ID          string `json:"id"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		Thumbnail   string `json:"thumbnail"`
+		Channel     string `json:"channel"`
+		ChannelID   string `json:"channel_id"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(line), &item); err != nil {
+		// ignore unparsable lines silently for streaming
+		if len(bytes.TrimSpace(line)) > 0 {
+			TrailarrLog(DEBUG, "YouTube", "Ignored unparsable line: %s | error: %v", string(line), err)
+		}
+		return 0, false
+	}
+	if item.ID == "" || videoIdSet[item.ID] {
+		return 0, false
+	}
+
+	videoIdSet[item.ID] = true
+	result := gin.H{
+		"id": gin.H{"videoId": item.ID},
+		"snippet": gin.H{
+			"title":       item.Title,
+			"description": item.Description,
+			"thumbnails": gin.H{
+				"default": gin.H{"url": item.Thumbnail},
+			},
+			"channelTitle": item.Channel,
+			"channelId":    item.ChannelID,
+		},
+	}
+	b, _ := json.Marshal(result)
+	fmt.Fprintf(c.Writer, "data: %s\n\n", b)
 	c.Writer.Flush()
+	return 1, true
 }
 
 type YtdlpFlagsConfig struct {
@@ -219,59 +274,16 @@ func GetBatchDownloadStatusHandler(c *gin.Context) {
 		return
 	}
 	TrailarrLog(INFO, "BATCH", "/api/extras/status/batch request: %+v", req)
+
 	statuses := make(map[string]*DownloadStatus, len(req.YoutubeIds))
-	// Load persistent queue from Redis
-	var queue []DownloadQueueItem
-	{
-		ctx := context.Background()
-		client := GetRedisClient()
-		TrailarrLog(INFO, "QUEUE", "[AddToDownloadQueue] RedisKey=%v, RedisClient=%#v", DownloadQueue, client)
-		items, err := client.LRange(ctx, DownloadQueue, 0, -1).Result()
-		if err == nil {
-			for _, itemStr := range items {
-				var item DownloadQueueItem
-				if err := json.Unmarshal([]byte(itemStr), &item); err == nil {
-					queue = append(queue, item)
-				}
-			}
-		}
-	}
-	// Build a map for quick lookup of rejected extras using the hash
+
 	ctx := context.Background()
-	rejectedMap := make(map[string]RejectedExtra)
-	extras, err := GetAllExtras(ctx)
-	if err == nil {
-		for _, e := range extras {
-			if e.Status == "rejected" {
-				rejectedMap[e.YoutubeId] = RejectedExtra{
-					MediaType:  e.MediaType,
-					MediaId:    e.MediaId,
-					ExtraType:  e.ExtraType,
-					ExtraTitle: e.ExtraTitle,
-					YoutubeId:  e.YoutubeId,
-					Reason:     e.Reason,
-				}
-			}
-		}
-	}
-	// Load cache files (movies/series)
-	var movieCache, seriesCache []map[string]interface{}
-	movieCache, _ = LoadMediaFromRedis(MoviesRedisKey)
-	seriesCache, _ = LoadMediaFromRedis(SeriesRedisKey)
-	// Helper to check existence in cache
-	existsInCache := func(yid string) bool {
-		for _, m := range movieCache {
-			if v, ok := m["youtubeId"]; ok && v == yid {
-				return true
-			}
-		}
-		for _, m := range seriesCache {
-			if v, ok := m["youtubeId"]; ok && v == yid {
-				return true
-			}
-		}
-		return false
-	}
+	queue := loadQueueFromRedis(ctx)
+	rejectedMap := buildRejectedMap(ctx)
+	movieCache, _ := LoadMediaFromRedis(MoviesRedisKey)
+	seriesCache, _ := LoadMediaFromRedis(SeriesRedisKey)
+	existsInCache := makeExistsInCacheFunc(movieCache, seriesCache)
+
 	queueMutex.Lock()
 	for _, id := range req.YoutubeIds {
 		// 1. In-memory status
@@ -280,15 +292,8 @@ func GetBatchDownloadStatusHandler(c *gin.Context) {
 			continue
 		}
 		// 2. Persistent queue file (last known status)
-		found := false
-		for i := len(queue) - 1; i >= 0; i-- {
-			if queue[i].YouTubeID == id {
-				statuses[id] = &DownloadStatus{Status: queue[i].Status, UpdatedAt: queue[i].QueuedAt}
-				found = true
-				break
-			}
-		}
-		if found {
+		if st := findLastQueueStatus(queue, id); st != nil {
+			statuses[id] = st
 			continue
 		}
 		// 3. Rejected file
@@ -305,6 +310,7 @@ func GetBatchDownloadStatusHandler(c *gin.Context) {
 		statuses[id] = &DownloadStatus{Status: "missing"}
 	}
 	queueMutex.Unlock()
+
 	// Log actual status values, not just pointers
 	statusLog := make(map[string]DownloadStatus)
 	for k, v := range statuses {
@@ -314,6 +320,73 @@ func GetBatchDownloadStatusHandler(c *gin.Context) {
 	}
 	TrailarrLog(INFO, "BATCH", "/api/extras/status/batch response: %+v", statusLog)
 	c.JSON(http.StatusOK, BatchStatusResponse{Statuses: statuses})
+}
+
+// loadQueueFromRedis returns the persisted queue entries from Redis as DownloadQueueItem slice.
+func loadQueueFromRedis(ctx context.Context) []DownloadQueueItem {
+	var queue []DownloadQueueItem
+	client := GetRedisClient()
+	TrailarrLog(INFO, "QUEUE", "[loadQueueFromRedis] RedisKey=%v, RedisClient=%#v", DownloadQueue, client)
+	items, err := client.LRange(ctx, DownloadQueue, 0, -1).Result()
+	if err != nil {
+		return queue
+	}
+	for _, itemStr := range items {
+		var item DownloadQueueItem
+		if err := json.Unmarshal([]byte(itemStr), &item); err == nil {
+			queue = append(queue, item)
+		}
+	}
+	return queue
+}
+
+// buildRejectedMap builds a quick lookup map of rejected extras by youtubeId.
+func buildRejectedMap(ctx context.Context) map[string]RejectedExtra {
+	rejectedMap := make(map[string]RejectedExtra)
+	extras, err := GetAllExtras(ctx)
+	if err != nil {
+		return rejectedMap
+	}
+	for _, e := range extras {
+		if e.Status == "rejected" {
+			rejectedMap[e.YoutubeId] = RejectedExtra{
+				MediaType:  e.MediaType,
+				MediaId:    e.MediaId,
+				ExtraType:  e.ExtraType,
+				ExtraTitle: e.ExtraTitle,
+				YoutubeId:  e.YoutubeId,
+				Reason:     e.Reason,
+			}
+		}
+	}
+	return rejectedMap
+}
+
+// findLastQueueStatus returns the last known DownloadStatus for youtubeId from the queue, or nil.
+func findLastQueueStatus(queue []DownloadQueueItem, youtubeId string) *DownloadStatus {
+	for i := len(queue) - 1; i >= 0; i-- {
+		if queue[i].YouTubeID == youtubeId {
+			return &DownloadStatus{Status: queue[i].Status, UpdatedAt: queue[i].QueuedAt}
+		}
+	}
+	return nil
+}
+
+// makeExistsInCacheFunc returns a function that checks the provided movie/series caches for a youtubeId.
+func makeExistsInCacheFunc(movieCache, seriesCache []map[string]interface{}) func(string) bool {
+	return func(yid string) bool {
+		for _, m := range movieCache {
+			if v, ok := m["youtubeId"]; ok && v == yid {
+				return true
+			}
+		}
+		for _, m := range seriesCache {
+			if v, ok := m["youtubeId"]; ok && v == yid {
+				return true
+			}
+		}
+		return false
+	}
 }
 
 // AddToDownloadQueue adds a new download request to the queue and persists in Redis
@@ -327,45 +400,12 @@ func AddToDownloadQueue(item DownloadQueueItem, source string) {
 
 	// If source is "task", block if queue not empty (i.e., if any item is queued or downloading)
 	if source == "task" {
-		for {
-			queue, err := client.LRange(ctx, DownloadQueue, 0, -1).Result()
-			busy := false
-			if err == nil {
-				for _, qstr := range queue {
-					var q DownloadQueueItem
-					if err := json.Unmarshal([]byte(qstr), &q); err == nil {
-						if q.Status == "queued" || q.Status == "downloading" {
-							busy = true
-							break
-						}
-					}
-				}
-			} else {
-				TrailarrLog(ERROR, "QUEUE", "[AddToDownloadQueue] Error reading queue from Redis: %v", err)
-			}
-			if !busy {
-				break
-			}
-			time.Sleep(2 * time.Second)
-		}
+		waitForQueueReady(ctx)
 	}
 
 	// Lookup media title if not set
-	if item.MediaTitle == "" {
-		cacheFile, _ := resolveCachePath(item.MediaType)
-		if cacheFile != "" {
-			items, _ := loadCache(cacheFile)
-			for _, m := range items {
-				idInt, ok := parseMediaID(m["id"])
-				if ok && idInt == item.MediaId {
-					if t, ok := m["title"].(string); ok {
-						item.MediaTitle = t
-						break
-					}
-				}
-			}
-		}
-	}
+	fillMediaTitleIfMissing(&item)
+
 	item.Status = "queued"
 	item.QueuedAt = time.Now()
 	b, err := json.Marshal(item)
@@ -386,6 +426,54 @@ func AddToDownloadQueue(item DownloadQueueItem, source string) {
 	}
 	downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: "queued", UpdatedAt: time.Now()}
 	TrailarrLog(INFO, "QUEUE", "[AddToDownloadQueue] Enqueued: mediaType=%v, mediaId=%v, extraType=%s, extraTitle=%s, youtubeId=%s, source=%s", item.MediaType, item.MediaId, item.ExtraType, item.ExtraTitle, item.YouTubeID, source)
+}
+
+// waitForQueueReady polls the Redis queue until no item is in 'queued' or 'downloading' state.
+// This mirrors the previous behavior but encapsulates the loop to reduce cognitive complexity.
+func waitForQueueReady(ctx context.Context) {
+	for isQueueBusy(ctx) {
+		time.Sleep(2 * time.Second)
+	}
+}
+
+// isQueueBusy checks the Redis queue and returns true if any item is in 'queued' or 'downloading'.
+func isQueueBusy(ctx context.Context) bool {
+	queue, err := GetRedisClient().LRange(ctx, DownloadQueue, 0, -1).Result()
+	if err != nil {
+		TrailarrLog(ERROR, "QUEUE", "[AddToDownloadQueue] Error reading queue from Redis: %v", err)
+		return false
+	}
+	for _, qstr := range queue {
+		var q DownloadQueueItem
+		if err := json.Unmarshal([]byte(qstr), &q); err != nil {
+			continue
+		}
+		if q.Status == "queued" || q.Status == "downloading" {
+			return true
+		}
+	}
+	return false
+}
+
+// fillMediaTitleIfMissing attempts to populate MediaTitle on the queue item using the cache.
+func fillMediaTitleIfMissing(item *DownloadQueueItem) {
+	if item.MediaTitle != "" {
+		return
+	}
+	cacheFile, _ := resolveCachePath(item.MediaType)
+	if cacheFile == "" {
+		return
+	}
+	items, _ := loadCache(cacheFile)
+	for _, m := range items {
+		idInt, ok := parseMediaID(m["id"])
+		if ok && idInt == item.MediaId {
+			if t, ok := m["title"].(string); ok {
+				item.MediaTitle = t
+				return
+			}
+		}
+	}
 }
 
 // GetDownloadStatus returns the status for a YouTube ID
@@ -430,86 +518,137 @@ func StartDownloadQueueWorker() {
 				time.Sleep(2 * time.Second)
 				continue
 			}
-			// Prevent re-downloading if extra is rejected (hash-based)
-			entry, err := GetExtraByYoutubeId(ctx, item.YouTubeID, item.MediaType, item.MediaId)
-			if err == nil && entry != nil && entry.Status == "rejected" {
-				TrailarrLog(WARN, "QUEUE", "[StartDownloadQueueWorker] Skipping rejected extra: mediaType=%v, mediaId=%v, extraType=%s, extraTitle=%s, youtubeId=%s", item.MediaType, item.MediaId, item.ExtraType, item.ExtraTitle, item.YouTubeID)
-				// Remove from queue immediately
-				b, _ := json.Marshal(item)
-				_ = client.LRem(ctx, DownloadQueue, 1, b).Err()
-				BroadcastDownloadQueueChanges([]DownloadQueueItem{item})
-				continue
+			if err := processQueueItem(ctx, idx, item); err != nil {
+				TrailarrLog(ERROR, "QUEUE", "[StartDownloadQueueWorker] processQueueItem error: %v", err)
 			}
-			// Mark as downloading in Redis
-			queue, err := client.LRange(ctx, DownloadQueue, 0, -1).Result()
-			if err == nil && idx >= 0 && idx < len(queue) {
-				var q DownloadQueueItem
-				if err := json.Unmarshal([]byte(queue[idx]), &q); err == nil {
-					q.Status = "downloading"
-					b, _ := json.Marshal(q)
-					_ = client.LSet(ctx, DownloadQueue, int64(idx), b).Err()
-					downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: "downloading", UpdatedAt: time.Now()}
-					BroadcastDownloadQueueChanges([]DownloadQueueItem{q})
-				}
-			}
-			// Perform the download
-			meta, metaErr := DownloadYouTubeExtra(item.MediaType, item.MediaId, item.ExtraType, item.ExtraTitle, item.YouTubeID)
-			// If we hit a 429, pause the queue for 5 minutes
-			if metaErr != nil {
-				if tooMany, ok := metaErr.(*TooManyRequestsError); ok {
-					TrailarrLog(WARN, "QUEUE", "[StartDownloadQueueWorker] 429 detected, pausing queue for 5 minutes: %s", tooMany.Error())
-					pauseUntil := time.Now().Add(5 * time.Minute)
-					for time.Now().Before(pauseUntil) {
-						TrailarrLog(INFO, "QUEUE", "[StartDownloadQueueWorker] Queue paused for 429. Resuming in %v seconds...", int(time.Until(pauseUntil).Seconds()))
-						time.Sleep(30 * time.Second)
-					}
-					TrailarrLog(INFO, "QUEUE", "[StartDownloadQueueWorker] 5-minute pause for 429 complete. Resuming queue.")
-				}
-			}
-			// Update status in Redis
-			queue, err = client.LRange(ctx, DownloadQueue, 0, -1).Result()
-			var finalStatus string
-			var failReason string
-			if metaErr != nil {
-				finalStatus = "failed"
-				failReason = metaErr.Error()
-				downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: finalStatus, UpdatedAt: time.Now(), Error: failReason}
-			} else if meta != nil {
-				finalStatus = meta.Status
-				downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: finalStatus, UpdatedAt: time.Now()}
-			} else {
-				// meta == nil && metaErr == nil: treat as failed
-				finalStatus = "failed"
-				failReason = "No metadata returned from download"
-				downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: finalStatus, UpdatedAt: time.Now(), Error: failReason}
-			}
-			// After download attempt, update status in Redis and broadcast only the final status
-			if err == nil && idx >= 0 && idx < len(queue) {
-				var q DownloadQueueItem
-				if err := json.Unmarshal([]byte(queue[idx]), &q); err == nil {
-					q.Status = finalStatus
-					if finalStatus == "failed" && failReason != "" {
-						q.Reason = failReason
-					}
-					b, _ := json.Marshal(q)
-					_ = client.LSet(ctx, DownloadQueue, int64(idx), b).Err()
-					BroadcastDownloadQueueChanges([]DownloadQueueItem{q})
-				}
-			} else {
-				// If we can't update in Redis, still broadcast the failed status
-				item.Status = finalStatus
-				if finalStatus == "failed" && failReason != "" {
-					item.Reason = failReason
-				}
-				BroadcastDownloadQueueChanges([]DownloadQueueItem{item})
-			}
-			// Wait 10 seconds, then remove the item from the queue
-			time.Sleep(10 * time.Second)
-			// Remove the item at idx (by value, since Redis LREM removes by value)
-			b, _ := json.Marshal(item)
-			_ = client.LRem(ctx, DownloadQueue, 1, b).Err()
 		}
 	}()
+}
+
+// processQueueItem handles a single queue item end-to-end and returns an error only for unexpected conditions.
+func processQueueItem(ctx context.Context, idx int, item DownloadQueueItem) error {
+	client := GetRedisClient()
+
+	// 1) Skip and remove rejected extras
+	if skipped, err := skipRejectedExtra(ctx, item); err != nil {
+		return err
+	} else if skipped {
+		return nil
+	}
+
+	// 2) Mark as downloading
+	if err := markItemDownloading(ctx, idx, item); err != nil {
+		// log and continue attempting download even if marking failed
+		TrailarrLog(WARN, "QUEUE", "[processQueueItem] Failed to mark downloading in Redis: %v", err)
+	}
+
+	// 3) Perform the download
+	meta, metaErr := DownloadYouTubeExtra(item.MediaType, item.MediaId, item.ExtraType, item.ExtraTitle, item.YouTubeID)
+
+	// 4) If 429, pause the queue (handled inside)
+	if metaErr != nil {
+		if tooMany, ok := metaErr.(*TooManyRequestsError); ok {
+			handleTooManyRequestsPause(tooMany)
+		}
+	}
+
+	// 5) Determine final status and update in-memory map
+	var finalStatus, failReason string
+	if metaErr != nil {
+		finalStatus = "failed"
+		failReason = metaErr.Error()
+		downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: finalStatus, UpdatedAt: time.Now(), Error: failReason}
+	} else if meta != nil {
+		finalStatus = meta.Status
+		downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: finalStatus, UpdatedAt: time.Now()}
+	} else {
+		finalStatus = "failed"
+		failReason = "No metadata returned from download"
+		downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: finalStatus, UpdatedAt: time.Now(), Error: failReason}
+	}
+
+	// 6) Update Redis queue entry and broadcast final status
+	if err := updateFinalStatusInRedis(ctx, idx, finalStatus, failReason); err != nil {
+		// If updating Redis failed, still broadcast the status using the item
+		item.Status = finalStatus
+		if finalStatus == "failed" && failReason != "" {
+			item.Reason = failReason
+		}
+		BroadcastDownloadQueueChanges([]DownloadQueueItem{item})
+	}
+
+	// 7) Wait briefly then remove from queue
+	time.Sleep(10 * time.Second)
+	b, _ := json.Marshal(item)
+	_ = client.LRem(ctx, DownloadQueue, 1, b).Err()
+
+	return nil
+}
+
+func skipRejectedExtra(ctx context.Context, item DownloadQueueItem) (bool, error) {
+	entry, err := GetExtraByYoutubeId(ctx, item.YouTubeID, item.MediaType, item.MediaId)
+	if err != nil {
+		// treat errors as non-fatal; log and proceed
+		TrailarrLog(DEBUG, "QUEUE", "[skipRejectedExtra] lookup error: %v", err)
+		return false, nil
+	}
+	if entry != nil && entry.Status == "rejected" {
+		TrailarrLog(WARN, "QUEUE", "[StartDownloadQueueWorker] Skipping rejected extra: mediaType=%v, mediaId=%v, extraType=%s, extraTitle=%s, youtubeId=%s", item.MediaType, item.MediaId, item.ExtraType, item.ExtraTitle, item.YouTubeID)
+		b, _ := json.Marshal(item)
+		// Remove from queue immediately
+		_ = GetRedisClient().LRem(ctx, DownloadQueue, 1, b).Err()
+		BroadcastDownloadQueueChanges([]DownloadQueueItem{item})
+		return true, nil
+	}
+	return false, nil
+}
+
+func markItemDownloading(ctx context.Context, idx int, item DownloadQueueItem) error {
+	queue, err := GetRedisClient().LRange(ctx, DownloadQueue, 0, -1).Result()
+	if err != nil {
+		return err
+	}
+	if idx >= 0 && idx < len(queue) {
+		var q DownloadQueueItem
+		if err := json.Unmarshal([]byte(queue[idx]), &q); err == nil {
+			q.Status = "downloading"
+			b, _ := json.Marshal(q)
+			_ = GetRedisClient().LSet(ctx, DownloadQueue, int64(idx), b).Err()
+			downloadStatusMap[item.YouTubeID] = &DownloadStatus{Status: "downloading", UpdatedAt: time.Now()}
+			BroadcastDownloadQueueChanges([]DownloadQueueItem{q})
+		}
+	}
+	return nil
+}
+
+func handleTooManyRequestsPause(err429 *TooManyRequestsError) {
+	TrailarrLog(WARN, "QUEUE", "[StartDownloadQueueWorker] 429 detected, pausing queue for 5 minutes: %s", err429.Error())
+	pauseUntil := time.Now().Add(5 * time.Minute)
+	for time.Now().Before(pauseUntil) {
+		TrailarrLog(INFO, "QUEUE", "[StartDownloadQueueWorker] Queue paused for 429. Resuming in %v seconds...", int(time.Until(pauseUntil).Seconds()))
+		time.Sleep(30 * time.Second)
+	}
+	TrailarrLog(INFO, "QUEUE", "[StartDownloadQueueWorker] 5-minute pause for 429 complete. Resuming queue.")
+}
+
+func updateFinalStatusInRedis(ctx context.Context, idx int, finalStatus, failReason string) error {
+	queue, err := GetRedisClient().LRange(ctx, DownloadQueue, 0, -1).Result()
+	if err != nil {
+		return err
+	}
+	if idx >= 0 && idx < len(queue) {
+		var q DownloadQueueItem
+		if err := json.Unmarshal([]byte(queue[idx]), &q); err == nil {
+			q.Status = finalStatus
+			if finalStatus == "failed" && failReason != "" {
+				q.Reason = failReason
+			}
+			b, _ := json.Marshal(q)
+			_ = GetRedisClient().LSet(ctx, DownloadQueue, int64(idx), b).Err()
+			BroadcastDownloadQueueChanges([]DownloadQueueItem{q})
+		}
+	}
+	return nil
 }
 
 // GetDownloadStatusHandler returns the status of a download by YouTube ID
@@ -597,38 +736,22 @@ type RejectedExtra struct {
 func DownloadYouTubeExtra(mediaType MediaType, mediaId int, extraType, extraTitle, youtubeId string, forceDownload ...bool) (*ExtraDownloadMetadata, error) {
 	TrailarrLog(DEBUG, "YouTube", "DownloadYouTubeExtra called with mediaType=%s, mediaId=%d, extraType=%s, extraTitle=%s, youtubeId=%s, forceDownload=%v",
 		mediaType, mediaId, extraType, extraTitle, youtubeId, forceDownload)
-	var downloadInfo *downloadInfo
-	var err error
 
-	// Lookup media title from cache for logging
-	var mediaTitle string
-	var cacheFile string
-	cacheFile, _ = resolveCachePath(mediaType)
-	if cacheFile != "" {
-		items, _ := loadCache(cacheFile)
-		for _, m := range items {
-			idInt, ok := parseMediaID(m["id"])
-			if ok && idInt == mediaId {
-				if t, ok := m["title"].(string); ok {
-					mediaTitle = t
-					break
-				}
-			}
-		}
-	}
-	TrailarrLog(INFO, "YouTube", "Downloading YouTube extra: mediaType=%s, mediaTitle=%s, type=%s, title=%s, youtubeId=%s",
-		mediaType, mediaTitle, extraType, extraTitle, youtubeId)
-
-	downloadInfo, err = prepareDownloadInfo(mediaType, mediaId, extraType, extraTitle, youtubeId)
+	downloadInfo, err := prepareDownloadInfo(mediaType, mediaId, extraType, extraTitle, youtubeId)
 	if err != nil {
 		return nil, err
 	}
+
 	// Always clean up temp dir after download attempt
 	defer func() {
 		if downloadInfo != nil && downloadInfo.TempDir != "" {
 			os.RemoveAll(downloadInfo.TempDir)
 		}
 	}()
+
+	// Log resolved media title and download intent
+	TrailarrLog(INFO, "YouTube", "Downloading YouTube extra: mediaType=%s, mediaTitle=%s, type=%s, title=%s, youtubeId=%s",
+		downloadInfo.MediaType, downloadInfo.MediaTitle, extraType, extraTitle, youtubeId)
 
 	// Check if extra is rejected or already exists
 	if meta, err := checkExistingExtra(downloadInfo, youtubeId); meta != nil || err != nil {
@@ -654,90 +777,33 @@ type downloadInfo struct {
 }
 
 func prepareDownloadInfo(mediaType MediaType, mediaId int, extraType, extraTitle, youtubeID string) (*downloadInfo, error) {
-	// Robust base path resolution using cache and path mappings
-	var basePath string
-	var mappings [][]string
-	var err error
-	var cacheFile string
-	var mediaTitle string
+	// Resolve cache file and media title
+	cacheFile, mediaTitle := resolveCacheAndTitle(mediaType, mediaId)
 
-	// Step 1: Resolve cache path
-	cacheFile, _ = resolveCachePath(mediaType)
+	// Get path mappings (log on error, but continue)
+	mappings := getPathMappingsSafe(mediaType)
 
-	// Lookup media title from cache (mimic lookupMediaTitle from extras.go)
-	if cacheFile != "" {
-		items, _ := loadCache(cacheFile)
-		for _, m := range items {
-			idInt, ok := parseMediaID(m["id"])
-			if ok && idInt == mediaId {
-				if t, ok := m["title"].(string); ok {
-					mediaTitle = t
-					break
-				}
-			}
-		}
-	}
+	// Try to find a mapped media path using cache + mappings
+	mappedMediaPath := findMappedMediaPath(cacheFile, mappings, mediaId)
 
-	// Step 2: Get path mappings using GetPathMappings
-	mappings, err = GetPathMappings(mediaType)
-	if err != nil {
-		TrailarrLog(ERROR, "YouTube", "Failed to get path mappings: %v", err)
-		mappings = [][]string{}
-	}
+	// Derive base path using mapped path, mappings fallback, or media title
+	basePath := deriveBasePath(mappedMediaPath, mappings, mediaTitle)
 
-	var mappedMediaPath string
-	if err == nil && cacheFile != "" {
-		// Step 3: Look up media path from cache using mediaId
-		mediaPath, lookupErr := FindMediaPathByID(cacheFile, mediaId)
-		if lookupErr == nil && mediaPath != "" && len(mappings) > 0 {
-			// Step 4: Apply path mappings to convert root folder path
-			mappedMediaPath = mediaPath
-			for _, m := range mappings {
-				if len(m) > 1 && strings.HasPrefix(mediaPath, m[0]) {
-					mappedMediaPath = m[1] + mediaPath[len(m[0]):]
-					break
-				}
-			}
-		}
-	}
-
-	if mappedMediaPath != "" {
-		basePath = mappedMediaPath
-	} else if len(mappings) > 0 && len(mappings[0]) > 1 && mappings[0][1] != "" {
-		basePath = mediaTitle
-		if mediaTitle != "" {
-			basePath = filepath.Join(mappings[0][1], mediaTitle)
-		} else {
-			basePath = mappings[0][1]
-		}
-	} else {
-		if mediaTitle != "" {
-			basePath = mediaTitle
-		} else {
-			basePath = ""
-		}
-	}
-
+	// Build output directory and sanitize title
 	canonicalType := canonicalizeExtraType(extraType)
 	outDir := filepath.Join(basePath, canonicalType)
+	safeTitle := sanitizeFileName(extraTitle)
 
-	// Sanitize title for filename
-	forbidden := []string{"/", "\\", ":", "*", "?", "\"", "<", ">", "|"}
-	safeTitle := extraTitle
-	for _, c := range forbidden {
-		safeTitle = strings.ReplaceAll(safeTitle, c, "_")
-	}
-
+	// Prepare filenames
 	outExt := "mkv"
 	outFile := filepath.Join(outDir, fmt.Sprintf("%s.%s", safeTitle, outExt))
 
-	// Create temp directory
-	tempDir, err := os.MkdirTemp("", "yt-dlp-tmp-*")
+	// Create temp directory and temp file path
+	tempDir, tempFile, err := createTempPaths(safeTitle, outExt)
 	if err != nil {
 		TrailarrLog(ERROR, "YouTube", "Failed to create temp dir for yt-dlp: %v", err)
 		return nil, fmt.Errorf("failed to create temp dir for yt-dlp: %w", err)
 	}
-	tempFile := filepath.Join(tempDir, fmt.Sprintf("%s.%s", safeTitle, outExt))
 
 	TrailarrLog(DEBUG, "YouTube", "Resolved output directory: %s", outDir)
 	TrailarrLog(DEBUG, "YouTube", "Resolved safe title: %s", safeTitle)
@@ -757,6 +823,90 @@ func prepareDownloadInfo(mediaType MediaType, mediaId int, extraType, extraTitle
 		ExtraTitle: extraTitle,
 		SafeTitle:  safeTitle,
 	}, nil
+}
+
+// Helper: resolve cache path and media title
+func resolveCacheAndTitle(mediaType MediaType, mediaId int) (string, string) {
+	cacheFile, _ := resolveCachePath(mediaType)
+	if cacheFile == "" {
+		return "", ""
+	}
+	items, _ := loadCache(cacheFile)
+	for _, m := range items {
+		idInt, ok := parseMediaID(m["id"])
+		if ok && idInt == mediaId {
+			if t, ok := m["title"].(string); ok {
+				return cacheFile, t
+			}
+		}
+	}
+	return cacheFile, ""
+}
+
+// Helper: safely get path mappings, log errors and return empty slice on failure
+func getPathMappingsSafe(mediaType MediaType) [][]string {
+	mappings, err := GetPathMappings(mediaType)
+	if err != nil {
+		TrailarrLog(ERROR, "YouTube", "Failed to get path mappings: %v", err)
+		return [][]string{}
+	}
+	return mappings
+}
+
+// Helper: find mapped media path by applying mappings to the media path found in cache
+func findMappedMediaPath(cacheFile string, mappings [][]string, mediaId int) string {
+	if cacheFile == "" || len(mappings) == 0 {
+		return ""
+	}
+	mediaPath, lookupErr := FindMediaPathByID(cacheFile, mediaId)
+	if lookupErr != nil || mediaPath == "" {
+		return ""
+	}
+	// Apply first mapping that matches prefix
+	for _, m := range mappings {
+		if len(m) > 1 && strings.HasPrefix(mediaPath, m[0]) {
+			return m[1] + mediaPath[len(m[0]):]
+		}
+	}
+	// If no mapping matched, return the raw media path
+	return mediaPath
+}
+
+// Helper: derive base path from mapped path, fallback to mappings[0][1] + title, or title, or empty
+func deriveBasePath(mappedMediaPath string, mappings [][]string, mediaTitle string) string {
+	if mappedMediaPath != "" {
+		return mappedMediaPath
+	}
+	if len(mappings) > 0 && len(mappings[0]) > 1 && mappings[0][1] != "" {
+		if mediaTitle != "" {
+			return filepath.Join(mappings[0][1], mediaTitle)
+		}
+		return mappings[0][1]
+	}
+	if mediaTitle != "" {
+		return mediaTitle
+	}
+	return ""
+}
+
+// Helper: sanitize a filename/title for use as a file (replace forbidden chars with _)
+func sanitizeFileName(name string) string {
+	forbidden := []string{"/", "\\", ":", "*", "?", "\"", "<", ">", "|"}
+	safe := name
+	for _, c := range forbidden {
+		safe = strings.ReplaceAll(safe, c, "_")
+	}
+	return safe
+}
+
+// Helper: create temp dir and return tempDir and tempFile path
+func createTempPaths(safeTitle, ext string) (string, string, error) {
+	tempDir, err := os.MkdirTemp("", "yt-dlp-tmp-*")
+	if err != nil {
+		return "", "", err
+	}
+	tempFile := filepath.Join(tempDir, fmt.Sprintf("%s.%s", safeTitle, ext))
+	return tempDir, tempFile, nil
 }
 
 func checkExistingExtra(info *downloadInfo, youtubeId string) (*ExtraDownloadMetadata, error) {
@@ -785,18 +935,16 @@ func checkRejectedExtras(info *downloadInfo, youtubeId string) *ExtraDownloadMet
 }
 
 func performDownload(info *downloadInfo, youtubeId string) (*ExtraDownloadMetadata, error) {
-
-	// Build yt-dlp command args
 	args := buildYtDlpArgs(info, youtubeId, true)
 	// Execute yt-dlp command
-	cmd := exec.Command("yt-dlp", args...)
+	cmd := exec.Command(YtDlpCmd, args...)
 	cmd.Dir = info.TempDir
 	output, err := cmd.CombinedOutput()
 
 	if err != nil && isImpersonationErrorNative(string(output)) {
 		fmt.Printf("[DownloadYouTubeExtra] Impersonation failed, retrying without impersonation: %s\n", youtubeId)
 		args = buildYtDlpArgs(info, youtubeId, false)
-		cmd = exec.Command("yt-dlp", args...)
+		cmd = exec.Command(YtDlpCmd, args...)
 		cmd.Dir = info.TempDir
 		output, err = cmd.CombinedOutput()
 	}
@@ -1024,18 +1172,48 @@ func YouTubeTrailerSearchHandler(c *gin.Context) {
 	}
 	TrailarrLog(INFO, "YouTube", "YouTubeTrailerSearchHandler POST: mediaType=%s, mediaId=%d", req.MediaType, req.MediaId)
 
-	// Lookup media title/originalTitle
-	var title, originalTitle string
-	cacheFile, _ := resolveCachePath(MediaType(req.MediaType))
-	items, err := loadCache(cacheFile)
+	title, originalTitle, err := getTitlesFromCache(MediaType(req.MediaType), req.MediaId)
 	if err != nil {
 		TrailarrLog(ERROR, "YouTube", "Failed to load cache for mediaType=%s: %v", req.MediaType, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Media cache not found"})
 		return
 	}
+	if title == "" && originalTitle == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Media not found"})
+		return
+	}
+
+	// Build search terms (original title first, then title if different)
+	var searchTerms []string
+	if originalTitle != "" {
+		searchTerms = append(searchTerms, originalTitle)
+	}
+	if title != "" && originalTitle != title {
+		searchTerms = append(searchTerms, title)
+	}
+
+	results, _ := searchYtDlpForTerms(searchTerms, 10)
+	if len(results) > 10 {
+		results = results[:10]
+	}
+	TrailarrLog(INFO, "YouTube", "YouTubeTrailerSearchHandler returning %d results", len(results))
+	c.JSON(http.StatusOK, gin.H{"items": results})
+}
+
+// getTitlesFromCache fetches title and originalTitle for the given media type/id
+func getTitlesFromCache(mediaType MediaType, mediaId int) (string, string, error) {
+	cacheFile, _ := resolveCachePath(mediaType)
+	if cacheFile == "" {
+		return "", "", fmt.Errorf("no cache file")
+	}
+	items, err := loadCache(cacheFile)
+	if err != nil {
+		return "", "", err
+	}
+	var title, originalTitle string
 	for _, m := range items {
 		idInt, ok := parseMediaID(m["id"])
-		if ok && idInt == req.MediaId {
+		if ok && idInt == mediaId {
 			if t, ok := m["title"].(string); ok {
 				title = t
 			}
@@ -1045,102 +1223,109 @@ func YouTubeTrailerSearchHandler(c *gin.Context) {
 			break
 		}
 	}
-	if title == "" && originalTitle == "" {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Media not found"})
-		return
-	}
+	return title, originalTitle, nil
+}
 
-	// Search both originalTitle and title (if different), aggregate up to 10 unique results
-	var searchTerms []string
-	if originalTitle != "" {
-		searchTerms = append(searchTerms, originalTitle)
-	}
-	if title != "" && originalTitle != title {
-		searchTerms = append(searchTerms, title)
-	}
+// searchYtDlpForTerms runs yt-dlp searches for the provided terms and returns up to maxResults unique items
+func searchYtDlpForTerms(terms []string, maxResults int) ([]gin.H, error) {
 	var allResults []gin.H
 	videoIdSet := make(map[string]bool)
-	for _, term := range searchTerms {
+	for _, term := range terms {
+		if len(allResults) >= maxResults {
+			break
+		}
 		searchQuery := term + " trailer"
-		ytDlpArgs := []string{"-j", "ytsearch10:" + searchQuery, "--skip-download"}
-		TrailarrLog(INFO, "YouTube", "yt-dlp command: yt-dlp %v", ytDlpArgs)
-		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-		cmd := exec.CommandContext(ctx, "yt-dlp", ytDlpArgs...)
-		stdout, err := cmd.StdoutPipe()
-		if err != nil {
-			TrailarrLog(ERROR, "YouTube", "Failed to get StdoutPipe: %v", err)
-			cancel()
-			continue
+		TrailarrLog(INFO, "YouTube", "yt-dlp command: yt-dlp %v", []string{"-j", "ytsearch10:" + searchQuery, "--skip-download"})
+		if err := runYtDlpSearch(searchQuery, videoIdSet, &allResults, maxResults); err != nil {
+			TrailarrLog(ERROR, "YouTube", "yt-dlp search error for query '%s': %v", searchQuery, err)
+			// continue searching other terms despite the error
 		}
-		if err := cmd.Start(); err != nil {
-			TrailarrLog(ERROR, "YouTube", "Failed to start yt-dlp: %v", err)
-			cancel()
-			continue
+	}
+	return allResults, nil
+}
+
+// runYtDlpSearch executes yt-dlp for a single searchQuery, appending unique results to results up to maxResults.
+func runYtDlpSearch(searchQuery string, videoIdSet map[string]bool, results *[]gin.H, maxResults int) error {
+	ytDlpArgs := []string{"-j", "ytsearch10:" + searchQuery, "--skip-download"}
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, YtDlpCmd, ytDlpArgs...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get StdoutPipe: %w", err)
+	}
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start yt-dlp: %w", err)
+	}
+	TrailarrLog(INFO, "YouTube", "Started yt-dlp process (streaming)...")
+	reader := bufio.NewReader(stdout)
+
+	for {
+		if len(*results) >= maxResults {
+			break
 		}
-		TrailarrLog(INFO, "YouTube", "Started yt-dlp process (streaming)...")
-		reader := bufio.NewReader(stdout)
-		for {
-			line, err := reader.ReadBytes('\n')
-			if len(line) == 0 && err != nil {
-				break
-			}
+		line, err := reader.ReadBytes('\n')
+		// process any non-empty line
+		if len(line) > 0 {
 			TrailarrLog(DEBUG, "YouTube", "Raw yt-dlp output line: %s", string(line))
-			var item struct {
-				ID          string `json:"id"`
-				Title       string `json:"title"`
-				Description string `json:"description"`
-				Thumbnail   string `json:"thumbnail"`
-				Channel     string `json:"channel"`
-				ChannelID   string `json:"channel_id"`
-			}
-			parseErr := json.Unmarshal(bytes.TrimSpace(line), &item)
-			if parseErr == nil {
-				TrailarrLog(DEBUG, "YouTube", "Parsed yt-dlp item: id=%s title=%s", item.ID, item.Title)
-				if item.ID != "" && !videoIdSet[item.ID] {
-					allResults = append(allResults, gin.H{
-						"id": gin.H{"videoId": item.ID},
-						"snippet": gin.H{
-							"title":       item.Title,
-							"description": item.Description,
-							"thumbnails": gin.H{
-								"default": gin.H{"url": item.Thumbnail},
-							},
-							"channelTitle": item.Channel,
-							"channelId":    item.ChannelID,
-						},
-					})
-					videoIdSet[item.ID] = true
-				}
-			} else if len(bytes.TrimSpace(line)) > 0 {
-				TrailarrLog(WARN, "YouTube", "Failed to parse yt-dlp output line: %s | error: %v", string(line), parseErr)
-			}
-			if len(allResults) >= 10 {
-				break
-			}
-			if err != nil {
-				if err != io.EOF {
-					TrailarrLog(ERROR, "YouTube", "Reader error: %v", err)
-				}
-				break
-			}
+			parseYtDlpLine(line, videoIdSet, results)
 		}
-		// Wait for process to finish or kill if we already have enough results
-		if len(allResults) >= 10 {
-			_ = cmd.Process.Kill()
-		}
-		_ = cmd.Wait()
-		cancel()
-		if ctx.Err() == context.DeadlineExceeded {
-			TrailarrLog(ERROR, "YouTube", "yt-dlp search timed out for query: %s", searchQuery)
-			continue
+		if err != nil {
+			if err != io.EOF {
+				TrailarrLog(ERROR, "YouTube", "Reader error: %v", err)
+			}
+			break
 		}
 	}
-	// Limit to 10 results
-	if len(allResults) > 10 {
-		allResults = allResults[:10]
+
+	// If we reached max results kill the process early
+	if len(*results) >= maxResults && cmd.Process != nil {
+		_ = cmd.Process.Kill()
 	}
-	TrailarrLog(INFO, "YouTube", "YouTubeTrailerSearchHandler returning %d results", len(allResults))
-	c.JSON(http.StatusOK, gin.H{"items": allResults})
+	_ = cmd.Wait()
+	if ctx.Err() == context.DeadlineExceeded {
+		TrailarrLog(ERROR, "YouTube", "yt-dlp search timed out for query: %s", searchQuery)
+	}
+	return nil
+}
+
+// parseYtDlpLine parses a single yt-dlp JSON line and appends it to results if unique.
+func parseYtDlpLine(line []byte, videoIdSet map[string]bool, results *[]gin.H) {
+	type ytItem struct {
+		ID          string `json:"id"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		Thumbnail   string `json:"thumbnail"`
+		Channel     string `json:"channel"`
+		ChannelID   string `json:"channel_id"`
+	}
+	var it ytItem
+	if err := json.Unmarshal(bytes.TrimSpace(line), &it); err != nil {
+		if len(bytes.TrimSpace(line)) > 0 {
+			TrailarrLog(WARN, "YouTube", "Failed to parse yt-dlp output line: %s | error: %v", string(line), err)
+		}
+		return
+	}
+	TrailarrLog(DEBUG, "YouTube", "Parsed yt-dlp item: id=%s title=%s", it.ID, it.Title)
+	if it.ID == "" {
+		return
+	}
+	if videoIdSet[it.ID] {
+		return
+	}
+	*results = append(*results, gin.H{
+		"id": gin.H{"videoId": it.ID},
+		"snippet": gin.H{
+			"title":       it.Title,
+			"description": it.Description,
+			"thumbnails": gin.H{
+				"default": gin.H{"url": it.Thumbnail},
+			},
+			"channelTitle": it.Channel,
+			"channelId":    it.ChannelID,
+		},
+	})
+	videoIdSet[it.ID] = true
 }
 
 // urlQueryEscape safely escapes a string for use in a URL query

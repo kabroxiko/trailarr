@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"trailarr/assets"
+	"trailarr/web"
 
 	"github.com/gin-gonic/gin"
 )
