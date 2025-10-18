@@ -7,20 +7,61 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+  packages: write
+
+
 jobs:
-  test:
+  frontend:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.21.x'
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20.x'
+      - name: Install dependencies
+        run: |
+          cd web
+          npm ci
+      - name: Lint frontend
+        run: |
+          cd web
+          npm run lint
+      - name: Build frontend
+        run: |
+          cd web
+          npm run build
+      - name: Upload dist folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist/
+
+  test:
+    runs-on: ubuntu-latest
+    needs: [frontend]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Download dist folder
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist/
+      - name: Verify dist folder
+        run: |
+          ls -la web/dist || echo "web/dist not found"
+          if [ ! -d "web/dist" ] || [ -z "$(ls -A web/dist)" ]; then
+            echo "ERROR: web/dist is missing or empty after artifact restore."
+            exit 1
+          fi
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21.x'
       - name: Run Go tests (if any)
         run: |
           if ls internal/*_test.go 1> /dev/null 2>&1; then
@@ -28,16 +69,11 @@ jobs:
           else
             echo "No Go tests found."
           fi
-      - name: Lint frontend
-        run: |
-          cd web
-          npm ci
-          npm run lint
 
   tag:
     runs-on: ubuntu-latest
     needs: [test]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main'
     outputs:
       tag: ${{ steps.bump.outputs.tag }}
     steps:
@@ -85,13 +121,10 @@ jobs:
           git push origin $new_tag
           echo "tag=$new_tag" >> $GITHUB_OUTPUT
 
-  publish:
+  docker:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     needs: tag
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -113,8 +146,8 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    needs: [tag]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [tag, frontend]
+    if: github.ref == 'refs/heads/main'
     strategy:
       matrix:
         include:
@@ -150,30 +183,24 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.21.x'
-      - name: Set up Node.js (fallback)
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20.x'
-      - name: Download frontend build
+      - name: Download dist folder
         uses: actions/download-artifact@v4
         with:
-          name: frontend-build
+          name: web-dist
           path: web/dist/
-        continue-on-error: false
+      - name: Verify dist folder
+        run: |
+          ls -la web/dist || echo "web/dist not found"
+          if [ ! -d "web/dist" ] || [ -z "$(ls -A web/dist)" ]; then
+            echo "ERROR: web/dist is missing or empty after artifact restore."
+            exit 1
+          fi
       - name: Verify frontend build
         run: |
           echo "Checking frontend build files:"
           ls -la web/dist/ || echo "web/dist/ not found"
           if [ ! -d "web/dist" ] || [ -z "$(ls -A web/dist)" ]; then
-            echo "Frontend build not found or empty, building locally..."
-            cd web
-            npm ci
-            npm run build
-          fi
-      - name: Fail if frontend build is missing
-        run: |
-          if [ ! -d "web/dist" ] || [ -z "$(ls -A web/dist)" ]; then
-            echo "ERROR: web/dist is missing or empty after artifact download and build."
+            echo "ERROR: web/dist is missing or empty. Frontend build must be completed in the 'frontend' job."
             exit 1
           fi
       - name: Build binary
@@ -182,24 +209,7 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           GOARM: ${{ matrix.goarm }}
         run: |
-          binary_name="trailarr"
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            binary_name="trailarr.exe"
-          fi
-          # Ensure frontend build is copied into assets/dist so the assets package can embed it via go:embed
-          if [ -d "web/dist" ]; then
-            echo "Copying web/dist to assets/dist for embedding..."
-            rm -rf assets/dist || true
-            mkdir -p assets
-            cp -r web/dist assets/dist
-            echo "Copied web/dist -> assets/dist"
-            ls -la assets/dist || true
-          else
-            echo "web/dist not found; proceeding without copying (embed may fail if assets are required)"
-          fi
-
-          # Build using vendor modules to match Makefile
-          go build -mod=vendor -ldflags="-s -w" -o $binary_name ./cmd/trailarr
+          make build
       - name: Create archive
         run: |
           binary_name="trailarr"
@@ -208,20 +218,9 @@ jobs:
           fi
           archive_name="trailarr-${{ needs.tag.outputs.tag }}-${{ matrix.platform }}"
           mkdir -p $archive_name
-          cp $binary_name $archive_name/
+          cp bin/$binary_name $archive_name/
           cp README.md $archive_name/ 2>/dev/null || true
           cp LICENSE $archive_name/ 2>/dev/null || true
-
-          # Include web/dist folder for frontend assets
-          if [ -d "web/dist" ]; then
-            echo "Including web/dist folder in archive..."
-            mkdir -p $archive_name/web
-            cp -r web/dist $archive_name/web/
-            echo "Web assets included:"
-            ls -la $archive_name/web/dist/
-          else
-            echo "Warning: web/dist folder not found!"
-          fi
 
           echo "Creating archive for ${{ matrix.platform }}..."
           if [ "${{ matrix.goos }}" = "windows" ]; then
@@ -244,7 +243,7 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
-    needs: [tag, publish, build-binaries]
+    needs: [tag, docker]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Checkout code

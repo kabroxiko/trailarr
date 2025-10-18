@@ -177,8 +177,14 @@ const HistoryPage = () => {
       window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', setTableColors);
     };
   }, []);
+  // Page background style for dark mode
+  const pageBgStyle = {
+    background: 'var(--history-table-bg, #fff)',
+    minHeight: '100vh',
+    transition: 'background 0.2s'
+  };
   return (
-    <Container>
+    <Container style={pageBgStyle}>
       {content}
     </Container>
   );

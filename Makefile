@@ -2,16 +2,33 @@ APP_NAME=trailarr
 BIN_DIR=bin
 SRC_DIR=cmd/trailarr
 
+GOOS ?= $(shell go env GOOS)
+GOARCH ?= $(shell go env GOARCH)
+
+ifeq ($(GOOS),windows)
+	BIN_EXT=.exe
+else
+	BIN_EXT=
+endif
+
 .PHONY: build clean run
 
 build:
 	go mod tidy
 	go mod vendor
-	if [ -d web/dist ]; then rm -rf assets/dist && mkdir -p assets && cp -r web/dist assets/dist; fi
-	go build -mod=vendor -o $(BIN_DIR)/$(APP_NAME) $(SRC_DIR)/main.go
+	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -mod=vendor -o $(BIN_DIR)/$(APP_NAME)$(BIN_EXT) $(SRC_DIR)/main.go
+	ls -l $(BIN_DIR)
 
 run: build
-	./$(BIN_DIR)/$(APP_NAME)
+ifeq ($(GOOS),windows)
+	$(BIN_DIR)\\$(APP_NAME)$(BIN_EXT)
+else
+	./$(BIN_DIR)/$(APP_NAME)$(BIN_EXT)
+endif
 
 clean:
+ifeq ($(GOOS),windows)
+	del /Q $(BIN_DIR)\\*
+else
 	rm -rf $(BIN_DIR)/*
+endif

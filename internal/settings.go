@@ -3,13 +3,36 @@ package internal
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"gopkg.in/yaml.v3"
 )
+
+// StartRedisServer starts a Redis server as a subprocess, using TrailarrRoot as the database directory.
+func StartRedisServer() error {
+	cmd := exec.Command("redis-server", "--dir", TrailarrRoot)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Start()
+	if err != nil {
+		log.Printf("Failed to start Redis: %v", err)
+		return err
+	}
+	log.Printf("Redis started with PID %d", cmd.Process.Pid)
+	return nil
+}
+
+func init() {
+	err := StartRedisServer()
+	if err != nil {
+		log.Printf("Redis server failed to start: %v", err)
+	}
+}
 
 const (
 	TrailarrRoot             = "/var/lib/trailarr"

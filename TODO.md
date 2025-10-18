@@ -16,7 +16,7 @@ Add new tasks below as needed:
 - [x] Remove hardcoded /api/settings/general
 - [x] Tasks must have dark mode
 - [x] Extra types are being grouped random in trailers
-- [ ] Button text connect must be reset between pages
+- [x] Button text connect must be reset between pages
 - [x] Logs must be numbered
 - [x] rejected file must be match using youtube id
 - [x] rename RouteMap.jsx to RouteMap.jsx
@@ -27,5 +27,5 @@ Add new tasks below as needed:
 - [x] history title must be clickable
 - [ ] show progress
 - [x] fix queue history
-- [ ] rejecte extra on over must show reason
+- [x] rejecte extra on over must show reason
 - [x] remove youtube doppler effect

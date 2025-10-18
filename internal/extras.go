@@ -16,6 +16,8 @@ import (
 )
 
 const extrasEntryKeyFmt = "%s:%s:%d"
+const perMediaKeyFmt = "trailarr:extras:%s:%d"
+const mkvJSONSuffix = ".mkv.json"
 
 // RemoveAll429Rejections removes all extras with status 'rejected' and reason containing '429' from the extras collection
 func RemoveAll429Rejections() error {
@@ -45,7 +47,7 @@ func RemoveAll429Rejections() error {
 // GetExtrasForMedia efficiently returns all extras for a given mediaType and mediaId
 func GetExtrasForMedia(ctx context.Context, mediaType MediaType, mediaId int) ([]ExtrasEntry, error) {
 	client := GetRedisClient()
-	perMediaKey := fmt.Sprintf("trailarr:extras:%s:%d", mediaType, mediaId)
+	perMediaKey := fmt.Sprintf(perMediaKeyFmt, mediaType, mediaId)
 
 	vals, err := client.HVals(ctx, perMediaKey).Result()
 	if err != nil && err != redis.Nil {
@@ -146,7 +148,7 @@ func AddOrUpdateExtra(ctx context.Context, entry ExtrasEntry) error {
 		return err
 	}
 	// Write to per-media hash for fast lookup
-	perMediaKey := fmt.Sprintf("trailarr:extras:%s:%d", entry.MediaType, entry.MediaId)
+	perMediaKey := fmt.Sprintf(perMediaKeyFmt, entry.MediaType, entry.MediaId)
 	if err := client.HSet(ctx, perMediaKey, entryKey, data).Err(); err != nil {
 		return err
 	}
@@ -235,7 +237,7 @@ func RemoveExtra(ctx context.Context, youtubeId string, mediaType MediaType, med
 	// Remove from the global extras hash
 	errGlobal := client.HDel(ctx, key, entryKey).Err()
 	// Also remove from the per-media hash for fast lookup
-	perMediaKey := fmt.Sprintf("trailarr:extras:%s:%d", mediaType, mediaId)
+	perMediaKey := fmt.Sprintf(perMediaKeyFmt, mediaType, mediaId)
 	errPerMedia := client.HDel(ctx, perMediaKey, entryKey).Err()
 
 	if errGlobal != nil {
@@ -398,7 +400,7 @@ func lookupMediaTitle(cacheFile string, mediaId int) string {
 func deleteExtraFiles(mediaPath, extraType, extraTitle string) error {
 	extraDir := mediaPath + "/" + extraType
 	extraFile := extraDir + "/" + SanitizeFilename(extraTitle) + ".mkv"
-	metaFile := extraDir + "/" + SanitizeFilename(extraTitle) + ".mkv.json"
+	metaFile := extraDir + "/" + SanitizeFilename(extraTitle) + mkvJSONSuffix
 	err1 := os.Remove(extraFile)
 	err2 := os.Remove(metaFile)
 	if err1 != nil && err2 != nil {
@@ -468,7 +470,7 @@ func collectExistingFromSubdir(subdir string, dupCount map[string]int) []map[str
 		if f.IsDir() || !strings.HasSuffix(f.Name(), ".mkv") {
 			continue
 		}
-		metaFile := filepath.Join(subdir, strings.TrimSuffix(f.Name(), ".mkv")+".mkv.json")
+		metaFile := filepath.Join(subdir, strings.TrimSuffix(f.Name(), ".mkv")+mkvJSONSuffix)
 		var meta struct {
 			ExtraType  string `json:"extraType"`
 			ExtraTitle string `json:"extraTitle"`
@@ -552,7 +554,7 @@ func downloadExtraHandler(c *gin.Context) {
 	if err == nil && mediaPath != "" {
 		extraDir := mediaPath + "/" + req.ExtraType
 		if err := os.MkdirAll(extraDir, 0775); err == nil {
-			metaFile := extraDir + "/" + SanitizeFilename(req.ExtraTitle) + ".mkv.json"
+			metaFile := extraDir + "/" + SanitizeFilename(req.ExtraTitle) + mkvJSONSuffix
 			meta := struct {
 				ExtraType  string `json:"extraType"`
 				ExtraTitle string `json:"extraTitle"`
@@ -720,10 +722,6 @@ func filterAndDownloadExtras(mediaType MediaType, mediaId int, extras []Extra, c
 	if len(extras) == 0 {
 		TrailarrLog(DEBUG, "Extras", "No extras found for mediaType=%v id=%d", mediaType, mediaId)
 	} else {
-		idsAll := make([]string, 0, len(extras))
-		for _, e := range extras {
-			idsAll = append(idsAll, e.YoutubeId)
-		}
 		idsFiltered := make([]string, 0, len(filtered))
 		for _, e := range filtered {
 			idsFiltered = append(idsFiltered, e.YoutubeId)
@@ -740,11 +738,6 @@ func filterAndDownloadExtras(mediaType MediaType, mediaId int, extras []Extra, c
 			TrailarrLog(WARN, "Extras", "Failed to download extra: %v", err)
 		}
 	}
-}
-
-// Helper: Scan extras directories and collect info for a media path
-func isMkvJSONFile(name string) bool {
-	return strings.HasSuffix(name, ".mkv.json")
 }
 
 func canonicalizeMeta(meta map[string]interface{}) map[string]interface{} {
@@ -783,7 +776,7 @@ func scanExtrasInfo(mediaPath string) map[string][]map[string]interface{} {
 				continue
 			}
 			name := f.Name()
-			if !isMkvJSONFile(name) {
+			if !strings.HasSuffix(name, mkvJSONSuffix) {
 				continue
 			}
 			filePath := filepath.Join(subdir, name)
