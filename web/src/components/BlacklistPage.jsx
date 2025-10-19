@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import './BlacklistPage.mobile.css';
 import ExtraCard from './ExtraCard.jsx';
 import YoutubePlayer from './YoutubePlayer.jsx';
 import Container from './Container.jsx';
@@ -176,7 +177,7 @@ function BlacklistPage({ darkMode }) {
 
   const gridStyle = {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, 220px)', // fixed card width
+    gridTemplateColumns: 'repeat(auto-fill, 220px)', // desktop: fixed card width
     gap: 24,
     padding: 32,
     margin: 0,
@@ -208,7 +209,7 @@ function BlacklistPage({ darkMode }) {
             padding: 12
           }}>
             <SectionHeader darkMode={darkMode} style={{ fontWeight: 600, fontSize: '1.1em', margin: '0 0 16px 8px', color: '#ef4444', textAlign: 'left', wordBreak: 'break-word' }}>{displayReason}</SectionHeader>
-            <div style={{ ...gridStyle, justifyContent: 'start' }}>
+            <div className="BlacklistExtrasGrid" style={{ ...gridStyle, justifyContent: 'start' }}>
               {groupItems.map((item, idx) => {
                 const extra = {
                   ExtraTitle: item.extraTitle || '',

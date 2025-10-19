@@ -34,6 +34,9 @@ async function run(){
         .png()
         .toBuffer()
       pngBuffers.push({size, buf})
+      // Also write PNG for each size
+      const pngOutPath = path.join(distDir, `favicon-${size}x${size}.png`)
+      fs.writeFileSync(pngOutPath, buf)
     }
 
     // Build ICO: header + dir entries + image data

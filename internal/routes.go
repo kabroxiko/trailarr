@@ -10,12 +10,47 @@ import (
 	"path/filepath"
 	"time"
 
-	"trailarr/web"
+	assets "trailarr/web"
 
 	"github.com/gin-gonic/gin"
 )
 
 const indexHTMLFilename = "index.html"
+
+// registerFaviconPNGRoutes serves /favicon-*.png from embedded distFS or filesystem fallback
+func registerFaviconPNGRoutes(r *gin.Engine, distFS iofs.FS) {
+	pngSizes := []string{"16x16", "32x32", "48x48", "64x64", "128x128", "256x256"}
+	for _, size := range pngSizes {
+		route := "/favicon-" + size + ".png"
+		fileName := "favicon-" + size + ".png"
+		r.GET(route, func(fileName string) gin.HandlerFunc {
+			return func(c *gin.Context) {
+				if distFS != nil {
+					if data, err := iofs.ReadFile(distFS, fileName); err == nil {
+						reader := bytes.NewReader(data)
+						http.ServeContent(c.Writer, c.Request, fileName, time.Now(), reader)
+						return
+					}
+				}
+				c.File("./web/dist/" + fileName)
+			}
+		}(fileName))
+	}
+}
+
+// registerFaviconRoute serves /favicon.ico from embedded distFS or falls back to filesystem
+func registerFaviconRoute(r *gin.Engine, distFS iofs.FS) {
+	r.GET("/favicon.ico", func(c *gin.Context) {
+		if distFS != nil {
+			if data, err := iofs.ReadFile(distFS, "favicon.ico"); err == nil {
+				reader := bytes.NewReader(data)
+				http.ServeContent(c.Writer, c.Request, "favicon.ico", time.Now(), reader)
+				return
+			}
+		}
+		c.File("./web/dist/favicon.ico")
+	})
+}
 
 func RegisterRoutes(r *gin.Engine) {
 	// Register grouped routes to keep this function small
@@ -36,10 +71,15 @@ func RegisterRoutes(r *gin.Engine) {
 	if s, err := iofs.Sub(assets.EmbeddedDist, "dist"); err == nil {
 		distFS = s
 		registerEmbeddedStaticRoutes(r, distFS)
+		registerFaviconRoute(r, distFS)
+		registerFaviconPNGRoutes(r, distFS)
 	} else {
 		// fallback to filesystem if embed not available
 		r.Static("/assets", "./web/dist/assets")
 		r.StaticFile("/", "./web/dist/index.html")
+		r.GET("/favicon.ico", func(c *gin.Context) {
+			c.File("./web/dist/favicon.ico")
+		})
 	}
 
 	registerLogFileRoute(r)

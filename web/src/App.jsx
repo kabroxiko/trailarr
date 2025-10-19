@@ -210,10 +210,31 @@ function App() {
   const ExtrasSettings = loadComponent(() => import('./components/ExtrasSettings'), ExtrasSettingsRef);
   const LogsPage = loadComponent(() => import('./components/LogsPage'), LogsPageRef);
 
+  // Mobile detection
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 900);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 900);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Sidebar open state for mobile
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const handleSidebarToggle = () => setSidebarOpen((v) => !v);
+  const handleSidebarClose = () => setSidebarOpen(false);
+
   return (
     <div className="app-container">
-      <Header darkMode={darkMode} search={search} setSearch={setSearch} pageTitle={pageTitle} />
-      <div style={{ display: 'flex', width: '100%', height: 'calc(100vh - 64px)' }}>
+      <Header
+        darkMode={darkMode}
+        search={search}
+        setSearch={setSearch}
+        pageTitle={pageTitle}
+        mobile={isMobile}
+        sidebarOpen={sidebarOpen}
+        onSidebarToggle={handleSidebarToggle}
+      />
+      <div style={{ display: 'flex', width: '100%', height: 'calc(100vh - 64px)', position: 'relative' }}>
         <Sidebar
           selectedSection={selectedSection}
           setSelectedSection={setSelectedSection}
@@ -222,8 +243,12 @@ function App() {
           darkMode={darkMode}
           selectedSystemSub={selectedSystemSub}
           setSelectedSystemSub={setSelectedSystemSub}
+          mobile={isMobile}
+          open={sidebarOpen}
+          onClose={handleSidebarClose}
+          onToggle={handleSidebarToggle}
         />
-        <main style={{ flex: 1, padding: '0em', height: '100%', boxSizing: 'border-box', overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'stretch', maxWidth: 'calc(100vw - 220px)', background: darkMode ? '#18181b' : '#fff', color: darkMode ? '#e5e7eb' : '#222' }}>
+        <main style={{ flex: 1, padding: '0em', height: '100%', boxSizing: 'border-box', overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'stretch', maxWidth: isMobile ? '100vw' : 'calc(100vw - 220px)', background: darkMode ? '#18181b' : '#fff', color: darkMode ? '#e5e7eb' : '#222' }}>
           <div style={{ background: darkMode ? '#23232a' : '#fff', boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb', padding: '0em', width: '100%', maxWidth: '100%', flex: 1, overflowY: 'auto', overflowX: 'hidden', color: darkMode ? '#e5e7eb' : '#222' }}>
             <React.Suspense fallback={null}>
               <Routes>

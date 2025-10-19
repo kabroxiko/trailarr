@@ -1,0 +1,25 @@
+/* BlacklistPage: 2 extras per row on mobile, maintain aspect ratio */
+@media (max-width: 700px) {
+  .BlacklistExtrasGrid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 16px !important;
+    padding: 16px !important;
+  }
+  .BlacklistExtrasGrid > div {
+    width: 100%;
+    min-height: 240px;
+    aspect-ratio: 220/320;
+    margin: 0;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .BlacklistExtrasGrid > div > div {
+    width: 100% !important;
+    min-width: 0;
+    max-width: 100%;
+  }
+}

@@ -3,8 +3,11 @@ import PropTypes from 'prop-types';
 import Select from 'react-select';
 import axios from 'axios';
 import Container from './Container.jsx';
-import SaveLane from './SaveLane.jsx';
+import ActionLane from './ActionLane.jsx';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faSave, faSpinner } from '@fortawesome/free-solid-svg-icons';
 import SectionHeader from './SectionHeader.jsx';
+import Toast from './Toast.jsx';
 
 const ExtrasTypeMappingConfig = React.lazy(() => import('./ExtrasTypeMappingConfig.jsx'));
 
@@ -62,6 +65,8 @@ export default function ExtrasSettings({ darkMode }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [ytError, setYtError] = useState('');
+  const [toast, setToast] = useState('');
+  const [toastSuccess, setToastSuccess] = useState(true);
   const [tmdbTypes, setTmdbTypes] = useState([]);
   const [plexTypes, setPlexTypes] = useState([]);
   const [mapping, setMapping] = useState({});
@@ -114,12 +119,20 @@ export default function ExtrasSettings({ darkMode }) {
 
   const handleSave = async () => {
     setSaving(true);
+    setToast('');
+    setError('');
+    setYtError('');
     try {
       await axios.post('/api/settings/extratypes', settings);
       await axios.post('/api/settings/canonicalizeextratype', { mapping });
+      await axios.post('/api/settings/ytdlpflags', ytFlags);
+      setToast('All settings saved successfully!');
+      setToastSuccess(true);
       setSaving(false);
     } catch {
-      setError('Failed to save settings or mapping');
+      setError('Failed to save one or more settings');
+      setToast('Failed to save one or more settings');
+      setToastSuccess(false);
       setSaving(false);
     }
   };
@@ -148,7 +161,21 @@ export default function ExtrasSettings({ darkMode }) {
   return (
     <Container>
       {/* Save lane */}
-      <SaveLane onSave={handleSave} saving={saving} isChanged={isChanged} error={error} />
+      <ActionLane
+        buttons={[{
+          icon: saving
+            ? <FontAwesomeIcon icon={faSpinner} spin />
+            : <FontAwesomeIcon icon={faSave} />,
+          label: 'Save',
+          onClick: handleSave,
+          disabled: saving || !isChanged,
+          loading: saving,
+          showLabel: typeof window !== 'undefined' ? window.innerWidth > 900 : true,
+        }]}
+        error={error}
+        darkMode={darkMode}
+      />
+  <Toast message={toast} onClose={() => setToast('')} darkMode={darkMode} success={toastSuccess} />
       <div style={{ marginTop: '4.5rem', background: 'var(--settings-bg, #fff)', color: 'var(--settings-text, #222)', borderRadius: 12, boxShadow: '0 1px 4px #0001', padding: '2rem' }}>
         <SectionHeader>Extra Types</SectionHeader>
         <div style={{ marginBottom: '2em' }}>

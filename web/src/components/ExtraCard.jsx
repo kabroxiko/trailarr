@@ -172,7 +172,7 @@ export default function ExtraCard({
             onError={onError}
             style={{
               display: 'block',
-              margin: '0 auto',
+              margin: '0 0',
               maxHeight: 135,
               maxWidth: '100%',
               objectFit: 'contain',

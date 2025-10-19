@@ -1,10 +1,11 @@
 import IconButton from './IconButton.jsx';
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import './Sidebar.mobile.css';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCog, faFilm, faHistory, faStar, faBan, faServer } from '@fortawesome/free-solid-svg-icons';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
-export default function Sidebar({ darkMode }) {
+export default function Sidebar({ darkMode, mobile, open, onClose, onToggle }) {
   const location = useLocation();
   const navigate = useNavigate();
   const path = location.pathname;
@@ -40,9 +41,7 @@ export default function Sidebar({ darkMode }) {
 
   // Local state for submenu expansion
   const [openMenus, setOpenMenus] = React.useState({});
-  // Submenus stay open if path matches a submenu section
   React.useEffect(() => {
-    // Determine which menu should be open based on path
     let menuToOpen = null;
     if (selectedSection === 'Wanted') menuToOpen = 'Wanted';
     else if (selectedSection === 'Settings') menuToOpen = 'Settings';
@@ -61,21 +60,111 @@ export default function Sidebar({ darkMode }) {
       const newState = {};
       if (isOpening) {
         newState[menu] = true;
-        // Navigate to first submenu item if opening
-        if (menu === 'Wanted') navigate('/wanted/movies');
-        if (menu === 'Settings') navigate('/settings/general');
-        if (menu === 'System') navigate('/system/tasks');
       }
       return newState;
     });
   };
 
+  // Responsive: show mobile sidebar if mobile prop is true
+  if (mobile) {
+    return (
+      <>
+        <div className={`sidebar-mobile${open ? ' open' : ''}`} style={{ '--sidebar-bg': darkMode ? '#23232a' : '#fff' }}>
+          <nav>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {[{ name: 'Movies', icon: faFilm, route: '/' },
+                { name: 'Series', icon: faCog, route: '/series' },
+                { name: 'History', icon: faHistory, route: '/history' },
+                { name: 'Wanted', icon: faStar },
+                { name: 'Blacklist', icon: faBan, route: '/blacklist' },
+                { name: 'Settings', icon: faCog },
+                { name: 'System', icon: faServer }
+              ].map(({ name, icon, route }) => (
+                <li key={name} style={{ marginBottom: 16 }}>
+                  {route ? (
+                    <Link
+                      to={route}
+                      style={{ textDecoration: 'none', background: selectedSection === name ? (darkMode ? '#333' : '#f3f4f6') : 'none', border: 'none', color: selectedSection === name ? (darkMode ? '#a855f7' : '#6d28d9') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSection === name ? 'bold' : 'normal', width: '100%', textAlign: 'left', padding: '0.5em 1em', borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75em' }}
+                      onClick={mobile ? onClose : undefined}
+                    >
+                      <IconButton icon={<FontAwesomeIcon icon={icon} color={darkMode ? '#e5e7eb' : '#333'} />} style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} />
+                      {name}
+                    </Link>
+                  ) : (
+                    <div
+                      style={{
+                        textDecoration: 'none',
+                        background: selectedSection === name ? (darkMode ? '#333' : '#f3f4f6') : 'none',
+                        border: 'none',
+                        color: selectedSection === name ? (darkMode ? '#a855f7' : '#6d28d9') : (darkMode ? '#e5e7eb' : '#333'),
+                        fontWeight: selectedSection === name ? 'bold' : 'normal',
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '0.5em 1em',
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.75em',
+                      }}
+                      onClick={() => handleToggle(name)}
+                    >
+                      <IconButton icon={<FontAwesomeIcon icon={icon} color={darkMode ? '#e5e7eb' : '#333'} />} style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} />
+                      {name}
+                    </div>
+                  )}
+                  {/* Submenus same as desktop */}
+                  {name === 'Wanted' && isOpen('Wanted') && (
+                    <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0 0', background: darkMode ? '#23232a' : '#f3f4f6', borderRadius: 6, color: darkMode ? '#e5e7eb' : '#222', textAlign: 'left' }}>
+                      {['Movies', 'Series'].map((submenu) => (
+                        <li key={submenu} style={{ padding: '0.5em 1em', borderLeft: selectedSettingsSub === submenu ? '3px solid #a855f7' : '3px solid transparent', background: 'none', color: selectedSettingsSub === submenu ? (darkMode ? '#a855f7' : '#6d28d9') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSettingsSub === submenu ? 'bold' : 'normal', cursor: 'pointer', textAlign: 'left' }}>
+                          <span
+                            style={{ color: 'inherit', textDecoration: 'none', display: 'block', width: '100%', textAlign: 'left' }}
+                            onClick={() => { navigate(`/wanted/${submenu.toLowerCase()}`); setOpenMenus({}); if (mobile) onClose(); }}
+                          >{submenu}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {name === 'Settings' && isOpen('Settings') && (
+                    <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0 0', background: darkMode ? '#23232a' : '#f3f4f6', borderRadius: 6, color: darkMode ? '#e5e7eb' : '#222', textAlign: 'left' }}>
+                      {['General', 'Radarr', 'Sonarr', 'Extras'].map((submenu) => (
+                        <li key={submenu} style={{ padding: '0.5em 1em', borderLeft: selectedSettingsSub === submenu ? '3px solid #a855f7' : '3px solid transparent', background: 'none', color: selectedSettingsSub === submenu ? (darkMode ? '#a855f7' : '#6d28d9') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSettingsSub === submenu ? 'bold' : 'normal', cursor: 'pointer', textAlign: 'left' }}>
+                          <span
+                            style={{ color: 'inherit', textDecoration: 'none', display: 'block', width: '100%', textAlign: 'left' }}
+                            onClick={() => { navigate(`/settings/${submenu.toLowerCase()}`); setOpenMenus({}); if (mobile) onClose(); }}
+                          >{submenu}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {name === 'System' && isOpen('System') && (
+                    <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0 0', background: darkMode ? '#23232a' : '#f3f4f6', borderRadius: 6, color: darkMode ? '#e5e7eb' : '#222', textAlign: 'left' }}>
+                      {['Tasks', 'Logs'].map((submenu) => (
+                        <li key={submenu} style={{ padding: '0.5em 1em', borderLeft: selectedSystemSub === submenu ? '3px solid #a855f7' : '3px solid transparent', background: 'none', color: selectedSystemSub === submenu ? (darkMode ? '#a855f7' : '#6d28d9') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSystemSub === submenu ? 'bold' : 'normal', cursor: 'pointer', textAlign: 'left' }}>
+                          <span
+                            style={{ color: 'inherit', textDecoration: 'none', display: 'block', width: '100%', textAlign: 'left' }}
+                            onClick={() => { navigate(submenu === 'Tasks' ? "/system/tasks" : "/system/logs"); setOpenMenus({}); if (mobile) onClose(); }}
+                          >{submenu}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </nav>
+        </div>
+        {open && <div className="sidebar-mobile__backdrop" onClick={onClose}></div>}
+      </>
+    );
+  }
+  // Desktop sidebar
   return (
-    <aside style={{ width: 220, background: darkMode ? '#23232a' : '#fff', borderRight: darkMode ? '1px solid #333' : '1px solid #e5e7eb', padding: '0em 0', height: '100%', boxSizing: 'border-box' }}>
+    <aside className="sidebar-desktop" style={{ width: 220, background: darkMode ? '#23232a' : '#fff', borderRight: darkMode ? '1px solid #333' : '1px solid #e5e7eb', padding: '0em 0', height: '100%', boxSizing: 'border-box' }}>
       <nav>
         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-          {[
-            { name: 'Movies', icon: faFilm, route: '/' },
+          {[{ name: 'Movies', icon: faFilm, route: '/' },
             { name: 'Series', icon: faCog, route: '/series' },
             { name: 'History', icon: faHistory, route: '/history' },
             { name: 'Wanted', icon: faStar },
@@ -115,10 +204,12 @@ export default function Sidebar({ darkMode }) {
                   {name}
                 </div>
               )}
+              {/* Submenus same as before */}
               {name === 'Wanted' && isOpen('Wanted') && (
                 <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0 0', background: darkMode ? '#23232a' : '#f3f4f6', borderRadius: 6, color: darkMode ? '#e5e7eb' : '#222', textAlign: 'left' }}>
                   {['Movies', 'Series'].map((submenu) => (
                     <li key={submenu} style={{ padding: '0.5em 1em', borderLeft: selectedSettingsSub === submenu ? '3px solid #a855f7' : '3px solid transparent', background: 'none', color: selectedSettingsSub === submenu ? (darkMode ? '#a855f7' : '#6d28d9') : (darkMode ? '#e5e7eb' : '#333'), fontWeight: selectedSettingsSub === submenu ? 'bold' : 'normal', cursor: 'pointer', textAlign: 'left' }}>
+// ...existing code...
                       <Link
                         to={`/wanted/${submenu.toLowerCase()}`}
                         style={{ color: 'inherit', textDecoration: 'none', display: 'block', width: '100%', textAlign: 'left' }}

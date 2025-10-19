@@ -1,0 +1,19 @@
+@media (max-width: 900px) {
+  .extras-list-group {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 12px !important;
+    padding-left: 0px !important;
+    padding-right: 0px !important;
+    box-sizing: border-box !important;
+    width: calc(100vw - 24px) !important;
+    max-width: calc(100vw - 24px) !important;
+  }
+  .extras-list-group > div {
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+  }
+}

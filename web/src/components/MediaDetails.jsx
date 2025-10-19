@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import MediaInfoLane from './MediaInfoLane.jsx';
-import MediaActionLane from './MediaActionLane.jsx';
+import ActionLane from './ActionLane.jsx';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faSearch, faSpinner } from '@fortawesome/free-solid-svg-icons';
 import ExtrasList from './ExtrasList';
 import YoutubePlayer from './YoutubePlayer.jsx';
 import Container from './Container.jsx';
@@ -8,8 +10,27 @@ import Toast from './Toast.jsx';
 import { useParams } from 'react-router-dom';
 
 
+// Helper to convert YouTube search results to extras format for Trailers
+function ytResultsToExtras(ytResults) {
+  return ytResults.map(item => ({
+    YoutubeId: item.id?.videoId || '',
+    ExtraType: 'Trailers',
+    ExtraTitle: item.snippet?.title || 'YouTube Trailer',
+    Status: '', // Not downloaded yet
+    Thumb: item.snippet?.thumbnails?.medium?.url || '',
+    ChannelTitle: item.snippet?.channelTitle || '',
+    PublishedAt: item.snippet?.publishedAt || '',
+    Description: item.snippet?.description || '',
+    reason: '',
+    Reason: '',
+    Source: 'YouTubeSearch',
+    // Add all fields that ExtraCard expects, with safe defaults
+    Downloaded: false,
+    Exists: false,
+    // ...add more if needed
+  })).filter(e => e.YoutubeId);
+}
 
-// Spinner and YouTubeEmbed component
 function Spinner() {
   return (
     <div style={{
@@ -70,6 +91,47 @@ function YoutubeEmbed({ videoId }) {
 export default function MediaDetails({ mediaItems, loading, mediaType }) {
   const { id } = useParams();
   const media = mediaItems.find(m => String(m.id) === id);
+
+  // --- Cast state and fetch logic moved from MediaInfoLane ---
+  const [cast, setCast] = useState([]);
+  const [castLoading, setCastLoading] = useState(false);
+  const [castError, setCastError] = useState('');
+
+  // Fetch cast when media or mediaType changes
+  useEffect(() => {
+    if (!media || !media.id || !mediaType) {
+      setCast([]);
+      setCastError('');
+      return;
+    }
+    setCastLoading(true);
+    setCastError('');
+    let url = '';
+    if (mediaType === 'movie') {
+      url = `/api/movies/${media.id}/cast`;
+    } else if (mediaType === 'series' || mediaType === 'tv') {
+      url = `/api/series/${media.id}/cast`;
+    } else {
+      setCast([]);
+      setCastError('Unknown media type');
+      setCastLoading(false);
+      return;
+    }
+    fetch(url)
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to fetch cast');
+        return res.json();
+      })
+      .then(data => {
+        setCast(Array.isArray(data.cast) ? data.cast : []);
+        setCastLoading(false);
+      })
+      .catch(() => {
+        setCast([]);
+        setCastError('Failed to load cast');
+        setCastLoading(false);
+      });
+  }, [media, mediaType]);
   // Scroll to top when id (route) changes
   useEffect(() => {
     setTimeout(() => {
@@ -210,43 +272,6 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
     );
   }
 
-  const _handleSearchExtras = async () => {
-    setSearchLoading(true);
-    setError('');
-    try {
-      const api = await import('../api');
-      const res = await api.getExtras({ mediaType, id: media.id });
-      setExtras(res.extras || []);
-    } catch {
-      setError('Failed to fetch extras');
-    } finally {
-      setSearchLoading(false);
-    }
-  };
-
-  // (removed duplicate declaration; merged version below)
-
-  // Helper to convert YouTube search results to extras format for Trailers
-  function ytResultsToExtras(ytResults) {
-    return ytResults.map(item => ({
-      YoutubeId: item.id?.videoId || '',
-      ExtraType: 'Trailers',
-      ExtraTitle: item.snippet?.title || 'YouTube Trailer',
-      Status: '', // Not downloaded yet
-      Thumb: item.snippet?.thumbnails?.medium?.url || '',
-      ChannelTitle: item.snippet?.channelTitle || '',
-      PublishedAt: item.snippet?.publishedAt || '',
-      Description: item.snippet?.description || '',
-      reason: '',
-      Reason: '',
-      Source: 'YouTubeSearch',
-      // Add all fields that ExtraCard expects, with safe defaults
-      Downloaded: false,
-      Exists: false,
-      // ...add more if needed
-    })).filter(e => e.YoutubeId);
-  }
-
   // Group extras by type
   const extrasByType = extras.reduce((acc, extra) => {
     const type = extra.ExtraType || 'Other';
@@ -297,19 +322,61 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
           {modalMsg}
         </div>
       )}
-  <MediaActionLane
-    media={{ ...media, mediaType }}
-    setError={setError}
-    setYtResults={setYtResults}
-    darkMode={darkMode}
-  />
-      <div style={{ marginTop: '4.5rem' }}>
-        <MediaInfoLane media={{ ...media, mediaType }} mediaType={mediaType} darkMode={darkMode} error={error} />
-      </div>
+      <ActionLane
+        buttons={[{
+          icon: _searchLoading
+            ? <FontAwesomeIcon icon={faSpinner} spin />
+            : <FontAwesomeIcon icon={faSearch} />,
+          label: 'Search',
+          onClick: () => {
+            if (!media) return;
+            if (!mediaType || !media.id) {
+              setError && setError('Missing media info for YouTube search');
+              return;
+            }
+            setSearchLoading(true);
+            setError && setError('');
+            setYtResults([]);
+            let results = [];
+            import('../api.youtube.sse').then(({ searchYoutubeStream }) => {
+              searchYoutubeStream({
+                mediaType,
+                mediaId: media.id,
+                onResult: (item) => {
+                  results.push(item);
+                  setYtResults([...results]);
+                },
+                onDone: () => setSearchLoading(false),
+                onError: () => {
+                  setError && setError('YouTube search failed');
+                  setSearchLoading(false);
+                }
+              });
+            });
+          },
+          disabled: _searchLoading,
+          loading: _searchLoading,
+          showLabel: typeof window !== 'undefined' ? window.innerWidth > 900 : true,
+        }]}
+        darkMode={darkMode}
+      />
+      <MediaInfoLane
+        media={{ ...media, mediaType }}
+        mediaType={mediaType}
+        darkMode={darkMode}
+        error={error}
+        cast={cast}
+        castLoading={castLoading}
+        castError={castError}
+      />
       <Toast message={error} onClose={() => setError('')} darkMode={darkMode} />
       {/* Grouped extras by type, with 'Trailers' first */}
       {Object.keys(extrasByType).length > 0 && (
-        <div style={{ width: '100%', background: darkMode ? '#23232a' : '#f3e8ff', overflow: 'hidden', padding: '24px 10px', margin: 0 }}>
+        <div style={{ width: '100%',
+          background: darkMode ? '#23232a' : '#f3e8ff',
+          overflow: 'hidden',
+          padding: '10px 10px', // Increased left/right padding
+          margin: 0 }}>
           <ExtrasList
             extrasByType={extrasByType}
             darkMode={darkMode}

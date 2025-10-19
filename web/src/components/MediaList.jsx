@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import './MediaList.mobile.css';
 import { Link } from 'react-router-dom';
 import MediaCard from './MediaCard.jsx';
 import PropTypes from 'prop-types';
@@ -20,7 +21,7 @@ export default function MediaList({ items, darkMode, type, basePath }) {
     let t;
     if (!items || items.length === 0) {
       // wait briefly before showing empty state to avoid flash while loading
-      t = setTimeout(() => setShowEmpty(true), 500);
+      t = setTimeout(() => setShowEmpty(true), 700);
     } else {
       setShowEmpty(false);
     }
@@ -61,6 +62,7 @@ export default function MediaList({ items, darkMode, type, basePath }) {
         </div>
       ) : (
         <div
+          className="media-list-grid"
           style={{
             display: 'grid',
             gridTemplateColumns: (items && items.length > 0)
@@ -99,7 +101,6 @@ export default function MediaList({ items, darkMode, type, basePath }) {
               transition: 'box-shadow 0.2s',
               border: darkMode ? '1px solid #333' : '1px solid #eee',
               overflow: 'hidden',
-              width: 220,
               boxSizing: 'border-box',
             }}
           >

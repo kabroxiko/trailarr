@@ -6,21 +6,51 @@ export default function MediaCard({ media, mediaType, darkMode = false }) {
   const poster = mediaType === 'series' ? `/mediacover/Series/${media.id}/poster-500.jpg` : `/mediacover/Movies/${media.id}/poster-500.jpg`;
   return (
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <div style={{ width: 200, height: 300, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: darkMode ? '#222' : '#fff', borderRadius: 8, overflow: 'hidden', border: darkMode ? '1px solid #333' : '1px solid #eee' }}>
-        <img
-          src={poster}
-          width={200}
-          height={300}
-          loading="lazy"
-          style={{ width: 200, height: 300, objectFit: 'cover', borderRadius: 8, display: 'block' }}
-          onError={e => { e.target.onerror = null; e.target.src = '/logo.svg'; }}
-          alt={media.title}
-        />
-      </div>
-      <div style={{ marginTop: 8, textAlign: 'center', width: '100%', maxWidth: 180 }} title={media.title}>
+      {/* Mobile: just poster, rounded borders, no frame/box/title/year */}
+      <style>{`
+        @media (max-width: 900px) {
+          .media-card-poster {
+            border-radius: 12px !important;
+            box-shadow: none !important;
+            border: none !important;
+            width: 100vw !important;
+            width: calc(100vw / 3 - 1rem) !important;
+            height: calc((100vw / 3 - 1rem) * 1.5) !important;
+            aspect-ratio: 2/3 !important;
+            margin: 0 !important;
+            background: none !important;
+            display: block !important;
+          }
+        }
+      `}</style>
+      <img
+        className="media-card-poster"
+        src={poster}
+        loading="lazy"
+        style={{
+          width: '100%',
+          height: 'auto',
+          objectFit: 'cover',
+          borderRadius: 8,
+          display: 'block',
+          aspectRatio: '2/3',
+          maxWidth: '220px',
+        }}
+        onError={e => { e.target.onerror = null; e.target.src = '/logo.svg'; }}
+        alt={media.title}
+      />
+      {/* Desktop: show title/year/frame/box as before */}
+      <div className="media-card-details" style={{ marginTop: 8, textAlign: 'center', width: '100%', maxWidth: '220px', display: 'none' }} title={media.title}>
         <div style={{ color: darkMode ? '#fff' : '#222', fontWeight: 600, fontSize: 14 }}>{media.title}</div>
         <div style={{ color: darkMode ? '#ddd' : '#666', fontSize: 12 }}>{media.year || media.airDate || ''}</div>
       </div>
+      <style>{`
+        @media (min-width: 901px) {
+          .media-card-details {
+            display: block !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }

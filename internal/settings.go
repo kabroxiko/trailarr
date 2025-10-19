@@ -161,7 +161,7 @@ func DefaultGeneralConfig() map[string]interface{} {
 	return map[string]interface{}{
 		"tmdbKey":            "",
 		"autoDownloadExtras": true,
-		"logLevel":           "Debug",
+		"logLevel":           "Info",
 	}
 }
 
@@ -1039,7 +1039,7 @@ func SaveSettingsHandler(section string) gin.HandlerFunc {
 			config = map[string]interface{}{}
 		}
 		sectionData := map[string]interface{}{
-			"providerURL":  req.ProviderURL,
+			"url":          req.ProviderURL,
 			"apiKey":       req.APIKey,
 			"pathMappings": req.PathMappings,
 		}
@@ -1069,7 +1069,7 @@ func getGeneralSettingsHandler(c *gin.Context) {
 	_ = yaml.Unmarshal(data, &config)
 	var tmdbKey string
 	var autoDownloadExtras bool = true
-	var logLevel string = "Debug"
+	var logLevel string = "Info"
 	if general, ok := config["general"].(map[string]interface{}); ok {
 		if v, ok := general["tmdbKey"].(string); ok {
 			tmdbKey = v

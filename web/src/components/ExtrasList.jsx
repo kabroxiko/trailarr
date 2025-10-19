@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import ExtraCard from './ExtraCard.jsx';
 import SectionHeader from './SectionHeader.jsx';
 import Toast from './Toast';
+import './ExtrasList.mobile.css';
 
 function ExtrasList({
   extrasByType,
@@ -15,6 +16,7 @@ function ExtrasList({
   YoutubeEmbed,
 }) {
   const [toastMsg, setToastMsg] = useState('');
+  const [toastSuccess, setToastSuccess] = useState(false);
   const wsRef = useRef(null);
 
   // WebSocket: Listen for download queue updates
@@ -39,6 +41,7 @@ function ExtrasList({
                   if ((queueItem.status === 'failed' || queueItem.status === 'rejected') &&
                       ex.Status !== 'failed' && ex.Status !== 'rejected' && (queueItem.reason || queueItem.Reason)) {
                     setToastMsg(queueItem.reason || queueItem.Reason);
+                    setToastSuccess(false);
                   }
                   // Always update Status and Reason fields
                   return {
@@ -72,7 +75,7 @@ function ExtrasList({
   const renderExtrasGroup = (type, typeExtras) => (
     <div key={type} style={{ marginBottom: 32 }}>
       <SectionHeader>{type}</SectionHeader>
-      <div style={{
+      <div className="extras-list-group" style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 0px))',
         gap: '32px',
@@ -106,7 +109,7 @@ function ExtrasList({
   // Render 'Trailers' first, then others except 'Other', then 'Other' last
   return (
     <>
-      <Toast message={toastMsg} onClose={() => setToastMsg('')} darkMode={darkMode} />
+  <Toast message={toastMsg} onClose={() => setToastMsg('')} darkMode={darkMode} success={toastSuccess} />
       {extrasByType['Trailers'] && renderExtrasGroup('Trailers', extrasByType['Trailers'])}
       {Object.entries(extrasByType)
         .filter(([type]) => type !== 'Trailers' && type !== 'Other')

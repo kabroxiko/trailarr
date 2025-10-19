@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 
-function Toast({ message, onClose, darkMode, autoClose = true, duration = 4000 }) {
+function Toast({ message, onClose, darkMode, autoClose = true, duration = 4000, success = false }) {
   useEffect(() => {
     if (message && autoClose) {
       const timer = setTimeout(() => {
@@ -34,7 +34,7 @@ function Toast({ message, onClose, darkMode, autoClose = true, duration = 4000 }
         zIndex: 99999,
         background: darkMode ? '#1f1f23' : '#ffffff',
         color: darkMode ? '#e5e7eb' : '#1f2937',
-        border: `2px solid ${darkMode ? '#ef4444' : '#dc2626'}`,
+        border: `2px solid ${success ? (darkMode ? '#22c55e' : '#16a34a') : (darkMode ? '#ef4444' : '#dc2626')}`,
         borderRadius: 12,
         padding: '20px 24px',
         minWidth: 300,
@@ -56,7 +56,7 @@ function Toast({ message, onClose, darkMode, autoClose = true, duration = 4000 }
           width: 20,
           height: 20,
           borderRadius: '50%',
-          backgroundColor: '#ef4444',
+          backgroundColor: success ? (darkMode ? '#22c55e' : '#16a34a') : '#ef4444',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -66,7 +66,7 @@ function Toast({ message, onClose, darkMode, autoClose = true, duration = 4000 }
           flexShrink: 0,
           marginTop: 2
         }}>
-          !
+          {success ? '✓' : '!'}
         </div>
 
         {/* Message */}

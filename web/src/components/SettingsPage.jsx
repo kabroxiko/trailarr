@@ -1,23 +1,25 @@
 import React, { useEffect, useState } from 'react';
+import Toast from './Toast.jsx';
 import PropTypes from 'prop-types';
 import IconButton from './IconButton.jsx';
 import SectionHeader from './SectionHeader.jsx';
 import DirectoryPicker from './DirectoryPicker';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faFolderOpen, faPlug, faCheckCircle, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
+import { faFolderOpen, faPlug, faCheckCircle, faTimesCircle, faSave, faSpinner } from '@fortawesome/free-solid-svg-icons';
 import { faTrashAlt } from '@fortawesome/free-regular-svg-icons';
-import SaveLane from './SaveLane.jsx';
+import ActionLane from './ActionLane.jsx';
 import Container from './Container.jsx';
 
 export default function SettingsPage({ type }) {
   const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState('');
+  // Remove testResult state, use toast instead
   // type: 'radarr' or 'sonarr'
   const [originalSettings, setOriginalSettings] = useState(null);
   const [settings, setSettings] = useState({ url: '', apiKey: '', pathMappings: [] });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState('');
+  const [toast, setToast] = useState('');
+  const [toastSuccess, setToastSuccess] = useState(true);
 
   useEffect(() => {
     const setColors = () => {
@@ -77,25 +79,20 @@ export default function SettingsPage({ type }) {
 
       // Clear test status when switching between Radarr/Sonarr pages
       useEffect(() => {
-        setTestResult('');
         setTesting(false);
       }, [type]);
 
-      // Clear test status when provider URL or API key change (so the badge isn't stale)
-      useEffect(() => {
-        // Only clear when user edits these fields after a test
-        setTestResult('');
-      }, [settings.providerURL, settings.apiKey]);
-
   function isSettingsChanged() {
     if (!originalSettings) return false;
-    if (settings.url !== originalSettings.url) return true;
-    if (settings.apiKey !== originalSettings.apiKey) return true;
-    const a = settings.pathMappings || [];
-    const b = originalSettings.pathMappings || [];
+    // Compare providerURL and apiKey (not url)
+    if ((settings.providerURL || '') !== (originalSettings.providerURL || '')) return true;
+    if ((settings.apiKey || '') !== (originalSettings.apiKey || '')) return true;
+    // Compare pathMappings deeply
+    const a = Array.isArray(settings.pathMappings) ? settings.pathMappings : [];
+    const b = Array.isArray(originalSettings.pathMappings) ? originalSettings.pathMappings : [];
     if (a.length !== b.length) return true;
     for (let i = 0; i < a.length; i++) {
-      if (a[i].from !== b[i].from || a[i].to !== b[i].to) return true;
+      if ((a[i].from || '') !== (b[i].from || '') || (a[i].to || '') !== (b[i].to || '')) return true;
     }
     return false;
   }
@@ -115,7 +112,7 @@ export default function SettingsPage({ type }) {
 
   const saveSettings = async () => {
     setSaving(true);
-    setMessage('');
+    setToast('');
     try {
       const res = await fetch(`/api/settings/${type}`, {
         method: 'POST',
@@ -123,13 +120,16 @@ export default function SettingsPage({ type }) {
         body: JSON.stringify(settings)
       });
       if (res.ok) {
-        setMessage('Settings saved successfully!');
+        setToast('Settings saved successfully!');
+        setToastSuccess(true);
         setOriginalSettings(settings);
       } else {
-        setMessage('Error saving settings.');
+        setToast('Error saving settings.');
+        setToastSuccess(false);
       }
     } catch {
-      setMessage('Error saving settings.');
+      setToast('Error saving settings.');
+      setToastSuccess(false);
     }
     setSaving(false);
   };
@@ -155,22 +155,26 @@ export default function SettingsPage({ type }) {
 
   const testConnection = async () => {
     setTesting(true);
-    setTestResult('');
+    setToast('');
     try {
-  const res = await fetch(`/api/test/${type}?url=${encodeURIComponent(settings.providerURL)}&apiKey=${encodeURIComponent(settings.apiKey)}`);
+      const res = await fetch(`/api/test/${type}?url=${encodeURIComponent(settings.providerURL)}&apiKey=${encodeURIComponent(settings.apiKey)}`);
       if (!res.ok) {
-        setTestResult('Connection failed.');
+        setToast('Connection failed.');
+        setToastSuccess(false);
         return;
       }
       const data = await res.json();
       if (!data.success) {
-        setTestResult(data.error || 'Connection failed.');
+        setToast(data.error || 'Connection failed.');
+        setToastSuccess(false);
         return;
       }
-      setTestResult('Connection successful!');
+      setToast('Connection successful!');
+      setToastSuccess(true);
       await fetchAndUpdateRootFolders();
     } catch {
-      setTestResult('Connection failed.');
+      setToast('Connection failed.');
+      setToastSuccess(false);
     } finally {
       setTesting(false);
     }
@@ -179,7 +183,21 @@ export default function SettingsPage({ type }) {
   return (
     <Container>
       {/* Save lane */}
-      <SaveLane onSave={saveSettings} saving={saving} isChanged={isSettingsChanged()} error={message} />
+      <ActionLane
+        buttons={[{
+          icon: saving
+            ? <FontAwesomeIcon icon={faSpinner} spin />
+            : <FontAwesomeIcon icon={faSave} />,
+          label: 'Save',
+          onClick: saveSettings,
+          disabled: saving || !isSettingsChanged(),
+          loading: saving,
+          showLabel: typeof window !== 'undefined' ? window.innerWidth > 900 : true,
+        }]}
+        error={''}
+        darkMode={false}
+      />
+  <Toast message={toast} onClose={() => setToast('')} darkMode={false} success={toastSuccess} />
       <div style={{ marginTop: '4.5rem', background: 'var(--settings-bg, #fff)', color: 'var(--settings-text, #222)', borderRadius: 12, boxShadow: '0 1px 4px #0001', padding: '2rem' }}>
         {loading ? (
           <div style={{ textAlign: 'center', margin: '2rem' }}>Loading...</div>
@@ -226,42 +244,11 @@ export default function SettingsPage({ type }) {
                             top: 0
                           }}
                         />
-                        {testResult && testResult.includes('success') && (
-                          <FontAwesomeIcon
-                            icon={faCheckCircle}
-                            style={{
-                              fontSize: 13,
-                              color: '#0a0',
-                              position: 'absolute',
-                              right: -8,
-                              bottom: -8,
-                              pointerEvents: 'none',
-                              background: 'var(--settings-bg, #fff)',
-                              borderRadius: '50%'
-                            }}
-                          />
-                        )}
-                        {testResult && !testResult.includes('success') && (
-                          <FontAwesomeIcon
-                            icon={faTimesCircle}
-                            style={{
-                              fontSize: 13,
-                              color: '#c00',
-                              position: 'absolute',
-                              right: -8,
-                              bottom: -8,
-                              pointerEvents: 'none',
-                              background: 'var(--settings-bg, #fff)',
-                              borderRadius: '50%'
-                            }}
-                          />
-                        )}
+                        {/* No icon overlay, feedback is now via toast */}
                       </span>
                     }
                   />
-                  {testResult && (
-                    <span style={{ marginLeft: 12, color: testResult.includes('success') ? '#0a0' : '#c00', fontWeight: 500 }}>{testResult}</span>
-                  )}
+                  {/* No inline feedback, feedback is now via toast */}
                 </div>
               </div>
             </div>
@@ -277,10 +264,10 @@ export default function SettingsPage({ type }) {
               <tbody>
                 {(Array.isArray(settings.pathMappings) ? settings.pathMappings : []).map((m, i) => (
                   <tr key={m.from + '-' + i}>
-                    <td style={{ textAlign: 'left' }}>
-                      <input value={m.from} onChange={e => handleMappingChange(i, 'from', e.target.value)} placeholder={type === 'radarr' ? 'Radarr path' : 'Sonarr path'} style={{ width: '90%', minWidth: 210, maxWidth: 500, padding: '0.4rem', borderRadius: 4, border: '1px solid #bbb', background: 'var(--settings-input-bg, #f5f5f5)', color: 'var(--settings-input-text, #222)' }} />
+                    <td style={{ textAlign: 'left', width: '45%' }}>
+                      <input value={m.from} onChange={e => handleMappingChange(i, 'from', e.target.value)} placeholder={type === 'radarr' ? 'Radarr path' : 'Sonarr path'} style={{ width: '90%', maxWidth: 500, padding: '0.4rem', borderRadius: 4, border: '1px solid #bbb', background: 'var(--settings-input-bg, #f5f5f5)', color: 'var(--settings-input-text, #222)' }} />
                     </td>
-                    <td style={{ textAlign: 'left' }}>
+                    <td style={{ textAlign: 'left', width: '45%' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', height: '100%' }}>
                         <DirectoryPicker
                           value={m.to}

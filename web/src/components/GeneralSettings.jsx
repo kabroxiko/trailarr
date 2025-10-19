@@ -1,14 +1,15 @@
+import React, { useState, useEffect } from 'react';
 import IconButton from './IconButton.jsx';
 import SectionHeader from './SectionHeader.jsx';
-import React, { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlug, faCheckCircle, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
-import SaveLane from './SaveLane.jsx';
+import { faPlug, faCheckCircle, faTimesCircle, faSave, faSpinner } from '@fortawesome/free-solid-svg-icons';
+import ActionLane from './ActionLane.jsx';
 import Container from './Container.jsx';
+import Toast from './Toast.jsx';
 
 export default function GeneralSettings() {
   const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState('');
+  // Remove testResult state, use toast instead
   const [tmdbKey, setTmdbKey] = useState('');
   const [autoDownloadExtras, setAutoDownloadExtras] = useState(true);
   const [logLevel, setLogLevel] = useState('Debug');
@@ -16,7 +17,8 @@ export default function GeneralSettings() {
   const [originalAutoDownload, setOriginalAutoDownload] = useState(true);
   const [originalLogLevel, setOriginalLogLevel] = useState('Debug');
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState('');
+  const [toast, setToast] = useState('');
+  const [toastSuccess, setToastSuccess] = useState(true);
   useEffect(() => {
     const setColors = () => {
       const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -49,28 +51,32 @@ export default function GeneralSettings() {
 
   const testTmdbKey = async () => {
     setTesting(true);
-    setTestResult('');
+    setToast('');
     try {
       const res = await fetch(`/api/test/tmdb?apiKey=${encodeURIComponent(tmdbKey)}`);
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
-          setTestResult('Connection successful!');
+          setToast('Connection successful!');
+          setToastSuccess(true);
         } else {
-          setTestResult(data.error || 'Connection failed.');
+          setToast(data.error || 'Connection failed.');
+          setToastSuccess(false);
         }
       } else {
-        setTestResult('Connection failed.');
+        setToast('Connection failed.');
+        setToastSuccess(false);
       }
     } catch {
-      setTestResult('Connection failed.');
+      setToast('Connection failed.');
+      setToastSuccess(false);
     }
     setTesting(false);
   };
 
   const handleSave = async () => {
     setSaving(true);
-    setMessage('');
+    setToast('');
     try {
       const res = await fetch('/api/settings/general', {
         method: 'POST',
@@ -78,22 +84,39 @@ export default function GeneralSettings() {
         body: JSON.stringify({ tmdbKey, autoDownloadExtras, logLevel })
       });
       if (res.ok) {
-        setMessage('Settings saved successfully!');
-  setOriginalKey(tmdbKey);
-  setOriginalAutoDownload(autoDownloadExtras);
-  setOriginalLogLevel(logLevel);
+        setToast('Settings saved successfully!');
+        setToastSuccess(true);
+        setOriginalKey(tmdbKey);
+        setOriginalAutoDownload(autoDownloadExtras);
+        setOriginalLogLevel(logLevel);
       } else {
-        setMessage('Error saving settings.');
+        setToast('Error saving settings.');
+        setToastSuccess(false);
       }
     } catch {
-      setMessage('Error saving settings.');
+      setToast('Error saving settings.');
+      setToastSuccess(false);
     }
     setSaving(false);
   };
   return (
     <Container>
       {/* Save lane */}
-      <SaveLane onSave={handleSave} saving={saving} isChanged={isChanged} error={message} />
+      <ActionLane
+        buttons={[{
+          icon: saving
+            ? <FontAwesomeIcon icon={faSpinner} spin />
+            : <FontAwesomeIcon icon={faSave} />,
+          label: 'Save',
+          onClick: handleSave,
+          disabled: saving || !isChanged,
+          loading: saving,
+          showLabel: typeof window !== 'undefined' ? window.innerWidth > 900 : true,
+        }]}
+        error={''}
+        darkMode={false}
+      />
+  <Toast message={toast} onClose={() => setToast('')} darkMode={false} success={toastSuccess} />
       <div style={{ marginTop: '4.5rem', background: 'var(--settings-bg, #fff)', color: 'var(--settings-text, #222)', borderRadius: 12, boxShadow: '0 1px 4px #0001', padding: '2rem' }}>
         <SectionHeader>TMDB API Key</SectionHeader>
         <div style={{ width: '100%' }}>
@@ -126,42 +149,11 @@ export default function GeneralSettings() {
                             top: 0
                           }}
                         />
-                        {testResult && testResult.includes('success') && (
-                          <FontAwesomeIcon
-                            icon={faCheckCircle}
-                            style={{
-                              fontSize: 13,
-                              color: '#0a0',
-                              position: 'absolute',
-                              right: -8,
-                              bottom: -8,
-                              pointerEvents: 'none',
-                              background: 'var(--settings-bg, #fff)',
-                              borderRadius: '50%'
-                            }}
-                          />
-                        )}
-                        {testResult && !testResult.includes('success') && (
-                          <FontAwesomeIcon
-                            icon={faTimesCircle}
-                            style={{
-                              fontSize: 13,
-                              color: '#c00',
-                              position: 'absolute',
-                              right: -8,
-                              bottom: -8,
-                              pointerEvents: 'none',
-                              background: 'var(--settings-bg, #fff)',
-                              borderRadius: '50%'
-                            }}
-                          />
-                        )}
+                        {/* No icon overlay, feedback is now via toast */}
                       </span>
                     }
                   />
-                  {testResult && (
-                    <span style={{ color: testResult.includes('success') ? '#0a0' : '#c00', fontWeight: 500 }}>{testResult}</span>
-                  )}
+                  {/* No inline feedback, feedback is now via toast */}
                 </div>
               </div>
             </div>
