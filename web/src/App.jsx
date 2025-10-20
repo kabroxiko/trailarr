@@ -6,8 +6,7 @@ function filterAndSortMedia(items) {
     .sort((a, b) => a.title.localeCompare(b.title));
 }
 import BlacklistPage from './components/BlacklistPage';
-import SeriesRouteComponent from './SeriesRouteComponent';
-import MoviesRouteComponent from './MoviesRouteComponent';
+import MediaRouteComponent from './MediaRouteComponent';
 import Toast from './components/Toast';
 import { Routes, Route, useLocation } from 'react-router-dom';
 
@@ -246,19 +245,21 @@ function App() {
           <div style={{ background: darkMode ? '#23232a' : '#fff', boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb', padding: '0em', width: '100%', maxWidth: '100%', flex: 1, overflowY: 'auto', overflowX: 'hidden', color: darkMode ? '#e5e7eb' : '#222' }}>
             <React.Suspense fallback={null}>
               <Routes>
-                <Route path="/series" element={<SeriesRouteComponent
-                  series={series}
+                <Route path="/series" element={<MediaRouteComponent
+                  items={series}
                   search={search}
                   darkMode={darkMode}
-                  seriesError={seriesError}
+                  error={seriesError}
                   getSearchSections={getSearchSections}
+                  type="series"
                 />} />
-                <Route path="/" element={<MoviesRouteComponent
-                  movies={movies}
+                <Route path="/" element={<MediaRouteComponent
+                  items={movies}
                   search={search}
                   darkMode={darkMode}
-                  moviesError={moviesError}
+                  error={moviesError}
                   getSearchSections={getSearchSections}
+                  type="movie"
                 />} />
                 <Route path="/movies/:id" element={<MediaDetails mediaItems={movies} loading={moviesLoading} mediaType="movie" />} />
                 <Route path="/series/:id" element={<MediaDetails mediaItems={series} loading={seriesLoading} mediaType="tv" />} />
