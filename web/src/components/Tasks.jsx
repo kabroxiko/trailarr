@@ -1,3 +1,61 @@
+function formatTimeDiff({from, to, suffix = '', roundType = 'ceil'}) {
+  if (!from || !to) return '-';
+  let diff = Math.max(0, to - from);
+  return durationToText(diff, suffix, roundType);
+}
+
+function formatInterval(interval) {
+  if (interval == null || interval === '') return '-';
+  if (typeof interval === 'number') {
+    return durationToText(interval * 60 * 1000);
+  }
+  if (typeof interval !== 'string') interval = String(interval);
+  // Parse patterns like '2h30m', '1d2h', '90m', '1h', '1d', etc.
+  const regex = /(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?/;
+  const match = interval.match(regex);
+  if (!match) return interval;
+  const days = Number.parseInt(match[1] || '0', 10);
+  const hours = Number.parseInt(match[2] || '0', 10);
+  const minutes = Number.parseInt(match[3] || '0', 10);
+  if (days > 0 || hours > 0 || minutes > 0) {
+    return durationToText((days * 86400 + hours * 3600 + minutes * 60) * 1000);
+  }
+  // fallback: try to parse as a number of minutes
+  const min = Number.parseInt(interval, 10);
+  if (!Number.isNaN(min)) {
+    return durationToText(min * 60 * 1000);
+  }
+  return interval;
+}
+
+function formatDuration(duration) {
+  if (!duration || duration === '-') return '-';
+  // Accepts either seconds (number) or string like '1m23.456s' or '267.00858ms'
+  if (typeof duration === 'number') {
+    if (duration < 1) {
+      return `${(duration * 1000).toFixed(2)} ms`;
+    }
+    return durationToText(duration * 1000);
+  }
+  // Handle ms string like '267.00858ms'
+  if (typeof duration === 'string' && duration.endsWith('ms')) {
+    const ms = Number.parseFloat(duration.replace('ms', ''));
+    if (ms < 1000) {
+      return `${ms.toFixed(2)} ms`;
+    }
+    return durationToText(ms);
+  }
+  // Parse string like '1h2m3.456s', '2m3.456s', or '3.456s'
+  const match = duration.match(/(?:(\d+)h)?(?:(\d+)m)?([\d.]+)s/);
+  if (!match) return duration;
+  const hours = Number.parseInt(match[1] || '0', 10);
+  const minutes = Number.parseInt(match[2] || '0', 10);
+  const secondsFloat = Number.parseFloat(match[3] || '0');
+  if (secondsFloat < 1 && hours === 0 && minutes === 0) {
+    return `${(secondsFloat * 1000).toFixed(2)} ms`;
+  }
+  return durationToText((hours * 3600 + minutes * 60 + Math.floor(secondsFloat)) * 1000);
+}
 import React, { useEffect, useState, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { FaArrowsRotate, FaClock } from 'react-icons/fa6';
@@ -47,12 +105,53 @@ const getStyles = (darkMode) => ({
   },
 });
 
+function durationToText(ms, suffix = '', roundType = 'round') {
+  if (typeof ms !== 'number' || Number.isNaN(ms) || ms < 0) return `0 seconds${suffix}`;
+  const units = [
+    { name: 'day', value: 86400 },
+    { name: 'hour', value: 3600 },
+    { name: 'minute', value: 60 },
+    { name: 'second', value: 1 },
+  ];
+  let totalSeconds;
+  switch (roundType) {
+    case 'cut':
+      totalSeconds = Math.floor(ms / 1000);
+      break;
+    case 'round':
+      totalSeconds = Math.round(ms / 1000);
+      break;
+    default:
+      totalSeconds = Math.ceil(ms / 1000);
+  }
+  for (const unit of units) {
+    if (totalSeconds >= unit.value) {
+      let amount;
+      switch (roundType) {
+        case 'cut':
+          amount = Math.floor(totalSeconds / unit.value);
+          break;
+        case 'round':
+          amount = Math.round(totalSeconds / unit.value);
+          break;
+        default:
+          amount = Math.ceil(totalSeconds / unit.value);
+      }
+      return `${amount} ${unit.name}${amount > 1 ? 's' : ''}${suffix}`;
+    }
+  }
+  return `0 seconds${suffix}`;
+}
+
+function getQueueKey(item) {
+  return `${item.taskId || ''}-${item.queued || ''}-${item.started || ''}-${item.ended || ''}`;
+}
+
 export default function Tasks() {
   const location = useLocation();
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(null);
   const [queues, setQueues] = useState([]);
-  const [queueLoading, setQueueLoading] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
   const activeRef = useRef(false);
 
@@ -76,7 +175,6 @@ export default function Tasks() {
     // Skip fetching if effect isn't active or the page is hidden
     if (!activeRef.current) return;
     if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
-    setQueueLoading(true);
     try {
       const res = await fetch('/api/tasks/queue');
       const data = await res.json();
@@ -88,42 +186,10 @@ export default function Tasks() {
     } catch {
       setQueues([]);
     }
-    setQueueLoading(false);
   }
-
 // Converts a time value in milliseconds to human-readable text, showing only the largest non-zero unit
 // durationToText: ms to human text, with rounding option
 // roundType: 'round' (default), 'cut', 'ceil'
-function durationToText(ms, suffix = '', roundType = 'round') {
-  if (typeof ms !== 'number' || Number.isNaN(ms) || ms < 0) return `0 seconds${suffix}`;
-  let totalSeconds =
-    roundType === 'cut' ? Math.floor(ms / 1000)
-    : roundType === 'round' ? Math.round(ms / 1000)
-    : Math.ceil(ms / 1000);
-  if (totalSeconds >= 86400) {
-    const days =
-      roundType === 'cut' ? Math.floor(totalSeconds / 86400)
-      : roundType === 'round' ? Math.round(totalSeconds / 86400)
-      : Math.ceil(totalSeconds / 86400);
-    return `${days} day${days > 1 ? 's' : ''}${suffix}`;
-  }
-  if (totalSeconds >= 3600) {
-    const hours =
-      roundType === 'cut' ? Math.floor(totalSeconds / 3600)
-      : roundType === 'round' ? Math.round(totalSeconds / 3600)
-      : Math.ceil(totalSeconds / 3600);
-    return `${hours} hour${hours > 1 ? 's' : ''}${suffix}`;
-  }
-  if (totalSeconds >= 60) {
-    const minutes =
-      roundType === 'cut' ? Math.floor(totalSeconds / 60)
-      : roundType === 'round' ? Math.round(totalSeconds / 60)
-      : Math.ceil(totalSeconds / 60);
-    return `${minutes} minute${minutes > 1 ? 's' : ''}${suffix}`;
-  }
-  return `${totalSeconds} second${totalSeconds === 1 ? '' : 's'}${suffix}`;
-}
-
   useEffect(() => {
     // Don't start websocket/polling unless we're on the Tasks route
     if (!location.pathname?.startsWith('/system/tasks')) {
@@ -163,11 +229,8 @@ function durationToText(ms, suffix = '', roundType = 'round') {
       queueInterval = setInterval(fetchQueue, 1000);
       // expose stop function globally so leftover pollers can be cleaned up
       try {
-        if (typeof globalThis.window !== 'undefined') {
-          if (globalThis.__trailarr_tasks_polling && typeof globalThis.__trailarr_tasks_polling.stop === 'function') {
-            // stop previous poller if any
-            globalThis.__trailarr_tasks_polling.stop();
-          }
+        if (globalThis.window !== undefined) {
+          globalThis.__trailarr_tasks_polling?.stop?.();
           globalThis.__trailarr_tasks_polling = {
             stop: () => {
               try {
@@ -239,7 +302,7 @@ function durationToText(ms, suffix = '', roundType = 'round') {
       if (ws) ws.close();
       // clear any global poller record
       try {
-        if (typeof globalThis.window !== 'undefined' && globalThis.__trailarr_tasks_polling && typeof globalThis.__trailarr_tasks_polling.stop === 'function') {
+        if (globalThis.window !== undefined && globalThis.__trailarr_tasks_polling?.stop) {
           globalThis.__trailarr_tasks_polling.stop();
           delete globalThis.__trailarr_tasks_polling;
         }
@@ -269,65 +332,7 @@ function durationToText(ms, suffix = '', roundType = 'round') {
 
   // Helper to format interval values for scheduled tasks
   // Unified formatter for intervals and time differences
-  function formatTimeDiff({from, to, suffix = '', roundType = 'ceil'}) {
-    if (!from || !to) return '-';
-    let diff = Math.max(0, to - from);
-    return durationToText(diff, suffix, roundType);
-  }
 
-  // For interval values (minutes, hours, days)
-  function formatInterval(interval) {
-    if (interval == null || interval === '') return '-';
-    if (typeof interval === 'number') {
-      return durationToText(interval * 60 * 1000);
-    }
-    if (typeof interval !== 'string') interval = String(interval);
-    // Parse patterns like '2h30m', '1d2h', '90m', '1h', '1d', etc.
-    const regex = /(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?/;
-    const match = interval.match(regex);
-    if (!match) return interval;
-    const days = Number.parseInt(match[1] || '0', 10);
-    const hours = Number.parseInt(match[2] || '0', 10);
-    const minutes = Number.parseInt(match[3] || '0', 10);
-    if (days > 0 || hours > 0 || minutes > 0) {
-      return durationToText((days * 86400 + hours * 3600 + minutes * 60) * 1000);
-    }
-    // fallback: try to parse as a number of minutes
-    const min = Number.parseInt(interval, 10);
-    if (!Number.isNaN(min)) {
-      return durationToText(min * 60 * 1000);
-    }
-    return interval;
-  }
-
-  function formatDuration(duration) {
-    if (!duration || duration === '-') return '-';
-    // Accepts either seconds (number) or string like '1m23.456s' or '267.00858ms'
-    if (typeof duration === 'number') {
-      if (duration < 1) {
-        return `${(duration * 1000).toFixed(2)} ms`;
-      }
-      return durationToText(duration * 1000);
-    }
-    // Handle ms string like '267.00858ms'
-    if (typeof duration === 'string' && duration.endsWith('ms')) {
-  const ms = Number.parseFloat(duration.replace('ms', ''));
-      if (ms < 1000) {
-        return `${ms.toFixed(2)} ms`;
-      }
-      return durationToText(ms);
-    }
-    // Parse string like '1h2m3.456s', '2m3.456s', or '3.456s'
-    const match = duration.match(/(?:(\d+)h)?(?:(\d+)m)?([\d.]+)s/);
-    if (!match) return duration;
-    const hours = Number.parseInt(match[1] || '0', 10);
-    const minutes = Number.parseInt(match[2] || '0', 10);
-    const secondsFloat = Number.parseFloat(match[3] || '0');
-    if (secondsFloat < 1 && hours === 0 && minutes === 0) {
-      return `${(secondsFloat * 1000).toFixed(2)} ms`;
-    }
-    return durationToText((hours * 3600 + minutes * 60 + Math.floor(secondsFloat)) * 1000);
-  }
 
   const styles = getStyles(darkMode);
 
@@ -394,9 +399,7 @@ function durationToText(ms, suffix = '', roundType = 'round') {
   }
 
   // Helper to get unique key for queue items
-  function getQueueKey(item) {
-    return `${item.taskId || ''}-${item.queued || ''}-${item.started || ''}-${item.ended || ''}`;
-  }
+
 
   return (
     <div style={styles.container}>
@@ -460,9 +463,9 @@ function durationToText(ms, suffix = '', roundType = 'round') {
           </tr>
         </thead>
         <tbody>
-          {(!queueLoading && (!queues || queues.length === 0)) ? (
-            <tr><td colSpan={6} style={{...styles.td, textAlign: 'center'}}>No queue items</td></tr>
-          ) : (Array.isArray(queues) ? queues : []).map((item) => {
+          {(Array.isArray(queues) && queues.length > 0) ? (() => {
+            const arr = queues;
+            return arr.map((item) => {
             // Try to get the task name from schedules (by taskId)
             let taskName = item.taskId;
             if (schedules && item.taskId) {
@@ -477,14 +480,6 @@ function durationToText(ms, suffix = '', roundType = 'round') {
               if (item.status === 'failed') return <span title="Failed" style={{color: darkMode ? '#ff6b6b' : '#dc3545'}}>&#x2716;</span>;
               if (item.status === 'queued') return <FaClock title="Queued" style={{color: darkMode ? '#ffb300' : '#e6b800', verticalAlign: 'middle'}} />;
               return <span title={item.status}>{item.status}</span>;
-            }
-            // Helper to render ended date
-            function renderEndedDate() {
-              if (!item.ended) return '—';
-              const endedDate = new Date(item.ended);
-              // Check for invalid or zero date (year 1 or 1970)
-              if (Number.isNaN(endedDate.getTime()) || endedDate.getFullYear() <= 1971) return '—';
-              return endedDate.toLocaleString();
             }
             // Helper to render duration
             function renderDuration() {
@@ -511,13 +506,16 @@ function durationToText(ms, suffix = '', roundType = 'round') {
               <tr key={getQueueKey(item)}>
                 <td style={{...styles.td, textAlign: 'center'}}>{renderQueueStatus()}</td>
                 <td style={styles.td}>{taskName || '-'}</td>
-                <td style={{...styles.td, textAlign: 'center'}}>{item.queued ? new Date(item.queued).toLocaleString() : '—'}</td>
-                <td style={{...styles.td, textAlign: 'center'}}>{item.started ? new Date(item.started).toLocaleString() : '—'}</td>
-                <td style={{...styles.td, textAlign: 'center'}}>{renderEndedDate()}</td>
-                <td style={styles.td}>{renderDuration()}</td>
+                <td style={{...styles.td, textAlign: 'center'}}>{item.queued ? formatTimeDiff({from: new Date(item.queued), to: new Date(), suffix: ' ago', roundType: 'cut'}) : '—'}</td>
+                <td style={{...styles.td, textAlign: 'center'}}>{item.started ? formatTimeDiff({from: new Date(item.started), to: new Date(), suffix: ' ago', roundType: 'cut'}) : '—'}</td>
+                <td style={{...styles.td, textAlign: 'center'}}>{item.ended ? formatTimeDiff({from: new Date(item.ended), to: new Date(), suffix: ' ago', roundType: 'cut'}) : '—'}</td>
+                <td style={{...styles.td, textAlign: 'right', paddingRight: '3em'}}>{renderDuration()}</td>
               </tr>
             );
-          })}
+          });
+        })() : (
+          <tr><td colSpan={6} style={{...styles.td, textAlign: 'center'}}>No queue items</td></tr>
+        )}
         </tbody>
       </table>
     </div>
