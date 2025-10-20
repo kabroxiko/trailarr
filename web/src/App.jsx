@@ -1,8 +1,15 @@
 import React, { useState, useEffect } from 'react';
+// Helper functions to avoid deep nesting
+function filterAndSortMedia(items) {
+  return (items || [])
+    .filter(item => item?.title)
+    .sort((a, b) => a.title.localeCompare(b.title));
+}
 import BlacklistPage from './components/BlacklistPage';
+import SeriesRouteComponent from './SeriesRouteComponent';
+import MoviesRouteComponent from './MoviesRouteComponent';
 import Toast from './components/Toast';
 import { Routes, Route, useLocation } from 'react-router-dom';
-import './App.css';
 
 // Helper to load a component dynamically, but only once
 function loadComponent(importFn, ref) {
@@ -23,19 +30,16 @@ const WantedRef = { current: null };
 const SettingsPageRef = { current: null };
 const ExtrasSettingsRef = { current: null };
 const LogsPageRef = { current: null };
-import './App.css';
-// Removed static import of api.js
-// Refactored to use dynamic imports
 
 function App() {
   const location = useLocation();
   const [search, setSearch] = useState('');
-  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const prefersDark = globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches;
   const [darkMode, setDarkMode] = useState(prefersDark);
   useEffect(() => {
     const listener = e => setDarkMode(e.matches);
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', listener);
-    return () => window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', listener);
+    globalThis.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', listener);
+    return () => globalThis.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', listener);
   }, []);
   const [selectedSection, setSelectedSection] = useState('Movies');
   const [selectedSystemSub, setSelectedSystemSub] = useState('Tasks');
@@ -74,7 +78,7 @@ function App() {
       setSelectedSettingsSub('Series');
     } else if (path.startsWith('/blacklist')) {
       setSelectedSection('Blacklist');
-    } else if (path === '/' || path.match(/^\/[0-9a-zA-Z_-]+$/)) {
+    } else if (path === '/' || /^\/[0-9a-zA-Z_-]+$/.exec(path)) {
       setSelectedSection('Movies');
     } else if (path.startsWith('/series')) {
       setSelectedSection('Series');
@@ -95,12 +99,7 @@ function App() {
     import('./api').then(({ getSeries }) => {
       getSeries()
         .then(data => {
-          const sorted = (data.series || []).slice().sort((a, b) => {
-            if (!a.title) return 1;
-            if (!b.title) return -1;
-            return a.title.localeCompare(b.title);
-          });
-          setSeries(sorted);
+          setSeries(filterAndSortMedia(data.series));
           setSeriesLoading(false);
           setSeriesError('');
         })
@@ -154,12 +153,7 @@ function App() {
     import('./api').then(({ getMovies }) => {
       getMovies()
         .then(res => {
-          const sorted = (res.movies || []).slice().sort((a, b) => {
-            if (!a.title) return 1;
-            if (!b.title) return -1;
-            return a.title.localeCompare(b.title);
-          });
-          setMovies(sorted);
+          setMovies(filterAndSortMedia(res.movies));
           setMoviesLoading(false);
         })
         .catch(e => {
@@ -183,7 +177,7 @@ function App() {
   // Compute dynamic page title
   let pageTitle = selectedSection;
   if (selectedSection === 'Settings') {
-    pageTitle = `${selectedSettingsSub ? selectedSettingsSub : ''} Settings`;
+    pageTitle = `${selectedSettingsSub || ''} Settings`;
   } else if (selectedSection === 'Wanted') {
     pageTitle = `Wanted${selectedSettingsSub ? ' ' + selectedSettingsSub : ''}`;
   } else if (selectedSection === 'System') {
@@ -192,13 +186,13 @@ function App() {
 
   // Update document title dynamically
   useEffect(() => {
-    if (window.setTrailarrTitle) {
-      window.setTrailarrTitle(pageTitle);
+    if (globalThis.setTrailarrTitle) {
+      globalThis.setTrailarrTitle(pageTitle);
     }
   }, [pageTitle]);
 
   // Dynamically load components
-  const MediaList = loadComponent(() => import('./components/MediaList'), MediaListRef);
+  // Removed unused MediaList variable assignment per SonarLint
   const MediaDetails = loadComponent(() => import('./components/MediaDetails'), MediaDetailsRef);
   const Header = loadComponent(() => import('./components/Header'), HeaderRef);
   const Sidebar = loadComponent(() => import('./components/Sidebar'), SidebarRef);
@@ -223,8 +217,10 @@ function App() {
   const handleSidebarToggle = () => setSidebarOpen((v) => !v);
   const handleSidebarClose = () => setSidebarOpen(false);
 
+  // Move inline route components out
+  // ...existing code...
   return (
-    <div className="app-container">
+  <div className="app-container" style={{ width: '100vw', minHeight: '100vh', overflowX: 'hidden' }}>
       <Header
         darkMode={darkMode}
         search={search}
@@ -234,7 +230,7 @@ function App() {
         sidebarOpen={sidebarOpen}
         onSidebarToggle={handleSidebarToggle}
       />
-      <div style={{ display: 'flex', width: '100%', height: 'calc(100vh - 64px)', position: 'relative' }}>
+  <div style={{ display: 'flex', width: '100vw', height: 'calc(100vh - 64px)', position: 'relative' }}>
         <Sidebar
           selectedSection={selectedSection}
           setSelectedSection={setSelectedSection}
@@ -248,48 +244,24 @@ function App() {
           onClose={handleSidebarClose}
           onToggle={handleSidebarToggle}
         />
-        <main style={{ flex: 1, padding: '0em', height: '100%', boxSizing: 'border-box', overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'stretch', maxWidth: isMobile ? '100vw' : 'calc(100vw - 220px)', background: darkMode ? '#18181b' : '#fff', color: darkMode ? '#e5e7eb' : '#222' }}>
-          <div style={{ background: darkMode ? '#23232a' : '#fff', boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb', padding: '0em', width: '100%', maxWidth: '100%', flex: 1, overflowY: 'auto', overflowX: 'hidden', color: darkMode ? '#e5e7eb' : '#222' }}>
+  <main style={{ flex: 1, padding: '0em', height: '100%', boxSizing: 'border-box', overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'stretch', maxWidth: '100vw', background: darkMode ? '#18181b' : '#fff', color: darkMode ? '#e5e7eb' : '#222' }}>
+          <div style={{ background: darkMode ? '#23232a' : '#fff', boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb', padding: '0em', width: '100vw', maxWidth: '100vw', flex: 1, overflowY: 'auto', overflowX: 'hidden', color: darkMode ? '#e5e7eb' : '#222' }}>
             <React.Suspense fallback={null}>
               <Routes>
-                <Route path="/series" element={
-                  (() => {
-                    const { titleMatches, overviewMatches } = getSearchSections(series);
-                    return (
-                      <>
-                        {search.trim() ? (
-                          <>
-                            <MediaList items={titleMatches} darkMode={darkMode} type="series" />
-                            <div style={{ margin: '1.5em 0 0.5em 1em', fontWeight: 700, fontSize: 26, textAlign: 'left', width: '100%', letterSpacing: 0.5 }}>Other Results</div>
-                            <MediaList items={overviewMatches} darkMode={darkMode} type="series" />
-                          </>
-                        ) : (
-                          <MediaList items={series} darkMode={darkMode} type="series" />
-                        )}
-                        {seriesError && <div style={{ color: 'red', marginTop: '1em' }}>{seriesError}</div>}
-                      </>
-                    );
-                  })()
-                } />
-                <Route path="/" element={
-                  (() => {
-                    const { titleMatches, overviewMatches } = getSearchSections(movies);
-                    return (
-                      <>
-                        {search.trim() ? (
-                          <>
-                            <MediaList items={titleMatches} darkMode={darkMode} type="movie" />
-                            <div style={{ margin: '1.5em 0 0.5em 1em', fontWeight: 700, fontSize: 26, textAlign: 'left', width: '100%', letterSpacing: 0.5 }}>Other Results</div>
-                            <MediaList items={overviewMatches} darkMode={darkMode} type="movie" />
-                          </>
-                        ) : (
-                          <MediaList items={movies} darkMode={darkMode} type="movie" />
-                        )}
-                        {moviesError && <div style={{ color: 'red', marginTop: '1em' }}>{moviesError}</div>}
-                      </>
-                    );
-                  })()
-                } />
+                <Route path="/series" element={<SeriesRouteComponent
+                  series={series}
+                  search={search}
+                  darkMode={darkMode}
+                  seriesError={seriesError}
+                  getSearchSections={getSearchSections}
+                />} />
+                <Route path="/" element={<MoviesRouteComponent
+                  movies={movies}
+                  search={search}
+                  darkMode={darkMode}
+                  moviesError={moviesError}
+                  getSearchSections={getSearchSections}
+                />} />
                 <Route path="/movies/:id" element={<MediaDetails mediaItems={movies} loading={moviesLoading} mediaType="movie" />} />
                 <Route path="/series/:id" element={<MediaDetails mediaItems={series} loading={seriesLoading} mediaType="tv" />} />
                 <Route path="/wanted/movies/:id" element={<MediaDetails mediaItems={movies} loading={moviesLoading} mediaType="movie" />} />

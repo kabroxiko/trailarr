@@ -155,6 +155,18 @@ export default function SidebarDesktop({
     { name: 'Settings', icon: faCog },
     { name: 'System', icon: faServer }
   ];
+  const firstSubmenuRoute = {
+    Wanted: '/wanted/movies',
+    Settings: '/settings/general',
+    System: '/system/tasks',
+  };
+  const handleMenuClick = (name) => {
+    if (firstSubmenuRoute[name]) {
+      window.location.href = firstSubmenuRoute[name];
+    } else {
+      handleToggle(name);
+    }
+  };
   return (
     <aside className="sidebar-desktop" style={{ width: 220, background: darkMode ? '#23232a' : '#fff', borderRight: darkMode ? '1px solid #333' : '1px solid #e5e7eb', padding: '0em 0', height: '100%', boxSizing: 'border-box' }}>
       <nav>
@@ -210,7 +222,7 @@ export default function SidebarDesktop({
                   type="button"
                   style={styleCommon}
                   className="sidebar-menu-btn"
-                  onClick={() => handleToggle(name)}
+                  onClick={() => handleMenuClick(name)}
                 >
                   <IconButton icon={<FontAwesomeIcon icon={icon} color={darkMode ? '#e5e7eb' : '#333'} />} style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} />
                   {name}
