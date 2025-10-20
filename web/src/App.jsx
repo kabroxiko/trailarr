@@ -252,6 +252,7 @@ function App() {
                   error={seriesError}
                   getSearchSections={getSearchSections}
                   type="series"
+                  loading={seriesLoading}
                 />} />
                 <Route path="/" element={<MediaRouteComponent
                   items={movies}
@@ -260,6 +261,7 @@ function App() {
                   error={moviesError}
                   getSearchSections={getSearchSections}
                   type="movie"
+                  loading={moviesLoading}
                 />} />
                 <Route path="/movies/:id" element={<MediaDetails mediaItems={movies} loading={moviesLoading} mediaType="movie" />} />
                 <Route path="/series/:id" element={<MediaDetails mediaItems={series} loading={seriesLoading} mediaType="tv" />} />

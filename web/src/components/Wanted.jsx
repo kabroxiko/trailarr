@@ -32,14 +32,13 @@ export default function Wanted({ darkMode, type }) {
     <div style={{ padding: '0em 0em', width: '100%' }}>
       {loading && <div>Loading...</div>}
       {error && <div style={{ color: 'red' }}>{error}</div>}
-      {!loading && (
-        <MediaList
-          items={items}
-          darkMode={darkMode}
-          type={type}
-          basePath={type === 'series' ? '/wanted/series' : '/wanted/movies'}
-        />
-      )}
+      <MediaList
+        items={items}
+        darkMode={darkMode}
+        type={type}
+        basePath={type === 'series' ? '/wanted/series' : '/wanted/movies'}
+        loading={loading}
+      />
     </div>
   );
 }

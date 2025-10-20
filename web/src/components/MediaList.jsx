@@ -1,12 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import './MediaList.mobile.css';
 import { Link } from 'react-router-dom';
 import MediaCard from './MediaCard.jsx';
 import PropTypes from 'prop-types';
 
 // basePath: e.g. '/wanted/movies' or '/movies'
-export default function MediaList({ items, darkMode, type, basePath }) {
-  const [showEmpty, setShowEmpty] = useState(false);
+export default function MediaList({ items, darkMode, type, basePath, loading }) {
+  // Debug: log items and loading state
+  // eslint-disable-next-line no-console
+  console.debug('[MediaList] items:', items, 'loading:', loading);
 
   // Prepare a sorted copy of items by sortTitle (case-insensitive). Fall back to title when sortTitle is missing.
   const sortedItems = (items || []).slice().sort((a, b) => {
@@ -17,76 +19,35 @@ export default function MediaList({ items, darkMode, type, basePath }) {
     return 0;
   });
 
-  useEffect(() => {
-    let t;
-    if (!items || items.length === 0) {
-      // wait briefly before showing empty state to avoid flash while loading
-      t = setTimeout(() => setShowEmpty(true), 1000);
-    } else {
-      setShowEmpty(false);
-    }
-    return () => clearTimeout(t);
-  }, [items]);
+  // Only show the empty banner if items is an array and is empty, and not loading
+  const showEmptyBanner = Array.isArray(items) && items.length === 0 && !loading;
 
-  return (
-    <div style={{ width: '100%' }}>
-  {(items.length === 0 && showEmpty) ? (
-        <div
-          style={{
-            minHeight: 'calc(100vh - 120px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '1.5rem',
-            boxSizing: 'border-box',
-          }}
-        >
-          <div
-            style={{
-              textAlign: 'center',
-              color: darkMode ? '#ddd' : '#333',
-              background: darkMode ? '#121214' : '#fbfbfb',
-              border: darkMode ? '1px solid #222' : '1px solid #eee',
-              padding: '1.25rem 1.5rem',
-              borderRadius: 10,
-              maxWidth: 800,
-              width: 'auto',
-              margin: '0 auto',
-            }}
-          >
-            <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>No media found</div>
-            <div style={{ fontSize: 14, opacity: 0.85 }}>
-              There are no items to show here. Try scanning your libraries, check your path mappings, or adjust filters.
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div
-          className="media-list-grid"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: (items && items.length > 0)
-              ? 'repeat(auto-fill, 220px)'
-              : 'repeat(auto-fit, minmax(200px, 1fr))',
-            gridAutoRows: '1fr',
-            justifyContent: (items && items.length > 0) ? 'start' : 'center',
-            gap: '2rem 1.5rem',
-            padding: '1.5rem 1rem',
-            width: '100%',
-            boxSizing: 'border-box',
-            alignItems: 'start',
-          }}
-        >
-          {sortedItems.map((item) => {
-            let linkTo;
-            if (basePath) {
-              linkTo = `${basePath}/${item.id}`;
-            } else if (type === 'series') {
-              linkTo = `/series/${item.id}`;
-            } else {
-              linkTo = `/movies/${item.id}`;
-            }
-            return (
+  // Extract the nested ternary into an independent statement
+  const gridContent = (!loading && items && items.length > 0) ? (
+    <div
+      className="media-list-grid"
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, 220px)',
+        gridAutoRows: '1fr',
+        justifyContent: 'start',
+        gap: '2rem 1.5rem',
+        padding: '1.5rem 1rem',
+        width: '100%',
+        boxSizing: 'border-box',
+        alignItems: 'start',
+      }}
+    >
+      {sortedItems.map((item) => {
+        let linkTo;
+        if (basePath) {
+          linkTo = `${basePath}/${item.id}`;
+        } else if (type === 'series') {
+          linkTo = `/series/${item.id}`;
+        } else {
+          linkTo = `/movies/${item.id}`;
+        }
+        return (
           <div
             key={item.id + '-' + type}
             style={{
@@ -121,19 +82,55 @@ export default function MediaList({ items, darkMode, type, basePath }) {
               </div>
             </Link>
           </div>
-            );
-          })}
+        );
+      })}
+    </div>
+  ) : null;
+
+  return (
+    <div style={{ width: '100%' }}>
+      {showEmptyBanner ? (
+        <div
+          style={{
+            minHeight: 'calc(100vh - 120px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1.5rem',
+            boxSizing: 'border-box',
+          }}
+        >
+          <div
+            style={{
+              textAlign: 'center',
+              color: darkMode ? '#ddd' : '#333',
+              background: darkMode ? '#121214' : '#fbfbfb',
+              border: darkMode ? '1px solid #222' : '1px solid #eee',
+              padding: '1.25rem 1.5rem',
+              borderRadius: 10,
+              maxWidth: 800,
+              width: 'auto',
+              margin: '0 auto',
+            }}
+          >
+            <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>No media found</div>
+            <div style={{ fontSize: 14, opacity: 0.85 }}>
+              There are no items to show here. Try scanning your libraries, check your path mappings, or adjust filters.
+            </div>
+          </div>
         </div>
-      )}
+      ) : gridContent}
     </div>
   );
 }
+
 
 MediaList.propTypes = {
   items: PropTypes.arrayOf(PropTypes.object),
   darkMode: PropTypes.bool,
   type: PropTypes.string,
   basePath: PropTypes.string,
+  loading: PropTypes.bool,
 };
 
 MediaList.defaultProps = {
@@ -141,4 +138,5 @@ MediaList.defaultProps = {
   darkMode: false,
   type: 'movies',
   basePath: '',
+  loading: false,
 };
