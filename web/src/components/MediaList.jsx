@@ -21,7 +21,7 @@ export default function MediaList({ items, darkMode, type, basePath }) {
     let t;
     if (!items || items.length === 0) {
       // wait briefly before showing empty state to avoid flash while loading
-      t = setTimeout(() => setShowEmpty(true), 700);
+      t = setTimeout(() => setShowEmpty(true), 1000);
     } else {
       setShowEmpty(false);
     }

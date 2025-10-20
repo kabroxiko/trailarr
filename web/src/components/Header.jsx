@@ -2,6 +2,7 @@ import React from 'react';
 import IconButton from './IconButton.jsx';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faBars } from '@fortawesome/free-solid-svg-icons';
+import PropTypes from 'prop-types';
 
 export default function Header({ darkMode, search, setSearch, mobile, sidebarOpen, onSidebarToggle }) {
   return (
@@ -59,3 +60,11 @@ export default function Header({ darkMode, search, setSearch, mobile, sidebarOpe
     </header>
   );
 }
+Header.propTypes = {
+  darkMode: PropTypes.bool.isRequired,
+  search: PropTypes.string.isRequired,
+  setSearch: PropTypes.func.isRequired,
+  mobile: PropTypes.bool.isRequired,
+  sidebarOpen: PropTypes.bool.isRequired,
+  onSidebarToggle: PropTypes.func.isRequired,
+};

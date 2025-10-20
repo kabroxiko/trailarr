@@ -1,7 +1,8 @@
+/* General mobile: 2 columns */
 @media (max-width: 900px) {
   .extras-list-group {
     display: grid !important;
-    grid-template-columns: 1fr 1fr !important;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)) !important;
     gap: 12px !important;
     padding-left: 0px !important;
     padding-right: 0px !important;

@@ -5,10 +5,17 @@ import IconButton from './IconButton.jsx';
 import SectionHeader from './SectionHeader.jsx';
 import DirectoryPicker from './DirectoryPicker';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faFolderOpen, faPlug, faCheckCircle, faTimesCircle, faSave, faSpinner } from '@fortawesome/free-solid-svg-icons';
+import { faFolderOpen, faPlug, faSave, faSpinner } from '@fortawesome/free-solid-svg-icons';
 import { faTrashAlt } from '@fortawesome/free-regular-svg-icons';
 import ActionLane from './ActionLane.jsx';
 import Container from './Container.jsx';
+
+function mapFoldersToPathMappings(folderPaths, pathMappings) {
+  return folderPaths.map((path) => {
+    const existing = pathMappings.find(m => m.from === path);
+    return existing || { from: path, to: '' };
+  });
+}
 
 export default function SettingsPage({ type }) {
   const [testing, setTesting] = useState(false);
@@ -62,10 +69,7 @@ export default function SettingsPage({ type }) {
         let pathMappings = Array.isArray(data.pathMappings) ? data.pathMappings : [];
         if (folders.length > 0) {
           const folderPaths = folders.map(f => f.path || f);
-          pathMappings = folderPaths.map((path) => {
-            const existing = pathMappings.find(m => m.from === path);
-            return existing || { from: path, to: '' };
-          });
+          pathMappings = mapFoldersToPathMappings(folderPaths, pathMappings);
         }
         const normalized = {
           ...data,
@@ -192,7 +196,7 @@ export default function SettingsPage({ type }) {
           onClick: saveSettings,
           disabled: saving || !isSettingsChanged(),
           loading: saving,
-          showLabel: typeof window !== 'undefined' ? window.innerWidth > 900 : true,
+          showLabel: globalThis.window === undefined ? true : globalThis.window.innerWidth > 900,
         }]}
         error={''}
         darkMode={false}

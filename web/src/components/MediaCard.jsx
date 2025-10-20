@@ -1,7 +1,8 @@
 import React from 'react';
+import PropTypes from 'prop-types';
 
 // Compact MediaCard for use in MediaList (tiles)
-export default function MediaCard({ media, mediaType, darkMode = false }) {
+function MediaCard({ media, mediaType, darkMode = false }) {
   if (!media) return null;
   const poster = mediaType === 'series' ? `/mediacover/Series/${media.id}/poster-500.jpg` : `/mediacover/Movies/${media.id}/poster-500.jpg`;
   return (
@@ -54,3 +55,16 @@ export default function MediaCard({ media, mediaType, darkMode = false }) {
     </div>
   );
 }
+
+MediaCard.propTypes = {
+  media: PropTypes.shape({
+    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+    title: PropTypes.string,
+    year: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    airDate: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  }).isRequired,
+  mediaType: PropTypes.string.isRequired,
+  darkMode: PropTypes.bool,
+};
+
+export default MediaCard;

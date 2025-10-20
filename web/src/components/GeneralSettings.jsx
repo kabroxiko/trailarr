@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import IconButton from './IconButton.jsx';
 import SectionHeader from './SectionHeader.jsx';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlug, faCheckCircle, faTimesCircle, faSave, faSpinner } from '@fortawesome/free-solid-svg-icons';
+import { faPlug, faSave, faSpinner } from '@fortawesome/free-solid-svg-icons';
 import ActionLane from './ActionLane.jsx';
 import Container from './Container.jsx';
 import Toast from './Toast.jsx';
@@ -21,7 +21,7 @@ export default function GeneralSettings() {
   const [toastSuccess, setToastSuccess] = useState(true);
   useEffect(() => {
     const setColors = () => {
-      const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const isDark = globalThis.matchMedia('(prefers-color-scheme: dark)').matches;
       document.documentElement.style.setProperty('--settings-bg', isDark ? '#222' : '#fff');
       document.documentElement.style.setProperty('--settings-text', isDark ? '#eee' : '#222');
       document.documentElement.style.setProperty('--save-lane-bg', isDark ? '#333' : '#e5e7eb');
@@ -30,9 +30,9 @@ export default function GeneralSettings() {
       document.documentElement.style.setProperty('--settings-input-text', isDark ? '#eee' : '#222');
     };
     setColors();
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', setColors);
+    globalThis.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', setColors);
     return () => {
-      window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', setColors);
+      globalThis.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', setColors);
     };
   }, []);
   useEffect(() => {
@@ -111,22 +111,23 @@ export default function GeneralSettings() {
           onClick: handleSave,
           disabled: saving || !isChanged,
           loading: saving,
-          showLabel: typeof window !== 'undefined' ? window.innerWidth > 900 : true,
+          showLabel: globalThis.window && globalThis.window.innerWidth > 900,
         }]}
         error={''}
         darkMode={false}
       />
-  <Toast message={toast} onClose={() => setToast('')} darkMode={false} success={toastSuccess} />
+      <Toast message={toast} onClose={() => setToast('')} darkMode={false} success={toastSuccess} />
       <div style={{ marginTop: '4.5rem', background: 'var(--settings-bg, #fff)', color: 'var(--settings-text, #222)', borderRadius: 12, boxShadow: '0 1px 4px #0001', padding: '2rem' }}>
         <SectionHeader>TMDB API Key</SectionHeader>
         <div style={{ width: '100%' }}>
-          <label style={{ fontWeight: 600, fontSize: '1.15em', marginBottom: 6, display: 'block', textAlign: 'left' }}>
-            <div style={{ width: '100%' }}>
+            <fieldset style={{ border: 0, padding: 0, margin: 0, width: '100%', alignItems: 'flex-start', display: 'flex', flexDirection: 'column' }}>
+              <legend style={{ fontWeight: 600, fontSize: '1.15em', marginBottom: 6, textAlign: 'left' }}>TMDB API Key</legend>
               <input
+                id="tmdbKey"
                 type="text"
                 value={tmdbKey}
                 onChange={e => setTmdbKey(e.target.value)}
-                style={{ width: '60%', minWidth: 220, maxWidth: 600, padding: '0.5rem', borderRadius: 6, border: '1px solid #bbb', background: 'var(--settings-input-bg, #f5f5f5)', color: 'var(--settings-input-text, #222)' }}
+                style={{ width: '100%', minWidth: 220, maxWidth: 600, padding: '0.5rem', borderRadius: 6, border: '1px solid #bbb', background: 'var(--settings-input-bg, #f5f5f5)', color: 'var(--settings-input-text, #222)', marginBottom: '0.7rem' }}
               />
               <div style={{ marginTop: '0.7rem', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem', width: '60%' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', width: '100%' }}>
@@ -156,33 +157,35 @@ export default function GeneralSettings() {
                   {/* No inline feedback, feedback is now via toast */}
                 </div>
               </div>
-            </div>
-          </label>
+            </fieldset>
         </div>
         <SectionHeader>Log Level</SectionHeader>
-        <div style={{ width: '100%' }}>
-          <label style={{ fontWeight: 600, fontSize: '1.15em', marginBottom: 6, display: 'block', textAlign: 'left' }}>
-            <select
-              value={logLevel}
-              onChange={e => setLogLevel(e.target.value)}
-              style={{ width: '60%', minWidth: 120, maxWidth: 300, padding: '0.5rem', borderRadius: 6, border: '1px solid #bbb', background: 'var(--settings-input-bg, #f5f5f5)', color: 'var(--settings-input-text, #222)' }}
-            >
-              <option value="Debug">Debug</option>
-              <option value="Info">Info</option>
-              <option value="Warn">Warn</option>
-              <option value="Error">Error</option>
-            </select>
+        <div style={{ width: '100%', alignItems: 'flex-start', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <label htmlFor="logLevel" style={{ fontWeight: 600, fontSize: '1.15em', marginBottom: 6, display: 'block', textAlign: 'left' }}>
+            Log Level
           </label>
+          <select
+            id="logLevel"
+            value={logLevel}
+            onChange={e => setLogLevel(e.target.value)}
+            style={{ width: '60%', minWidth: 120, maxWidth: 300, padding: '0.5rem', borderRadius: 6, border: '1px solid #bbb', background: 'var(--settings-input-bg, #f5f5f5)', color: 'var(--settings-input-text, #222)' }}
+          >
+            <option value="Debug">Debug</option>
+            <option value="Info">Info</option>
+            <option value="Warn">Warn</option>
+            <option value="Error">Error</option>
+          </select>
         </div>
         <SectionHeader>Extras Download</SectionHeader>
         <div style={{ width: '100%' }}>
-          <label style={{ fontWeight: 600, fontSize: '1.15em', marginBottom: 6, display: 'block', textAlign: 'left' }}>
-            <input
-              type="checkbox"
-              checked={autoDownloadExtras}
-              onChange={e => setAutoDownloadExtras(e.target.checked)}
-              style={{ marginRight: 8 }}
-            />
+          <input
+            id="autoDownloadExtras"
+            type="checkbox"
+            checked={autoDownloadExtras}
+            onChange={e => setAutoDownloadExtras(e.target.checked)}
+            style={{ marginRight: 8, display: 'block' }}
+          />
+          <label htmlFor="autoDownloadExtras" style={{ fontWeight: 600, fontSize: '1.15em', textAlign: 'left', display: 'block', margin: 0 }}>
             Enable automatic download of extras
           </label>
         </div>

@@ -58,10 +58,9 @@ export default function Tasks() {
 
   // Fetch status from API for polling fallback and force execute
   async function fetchStatus() {
-  // Skip fetching if effect isn't active or the page is hidden
-  if (!activeRef.current) return;
-  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
-
+    // Skip fetching if effect isn't active or the page is hidden
+    if (!activeRef.current) return;
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
     setLoading(true);
     try {
       const res = await fetch('/api/tasks/status');
@@ -74,10 +73,9 @@ export default function Tasks() {
   }
   // Fetch queue from new endpoint
   async function fetchQueue() {
-  // Skip fetching if effect isn't active or the page is hidden
-  if (!activeRef.current) return;
-  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
-
+    // Skip fetching if effect isn't active or the page is hidden
+    if (!activeRef.current) return;
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
     setQueueLoading(true);
     try {
       const res = await fetch('/api/tasks/queue');
@@ -93,56 +91,52 @@ export default function Tasks() {
     setQueueLoading(false);
   }
 
-  // Converts a time value in milliseconds to human-readable text, showing only the largest non-zero unit
-  // durationToText: ms to human text, with rounding option
-  // roundType: 'round' (default), 'cut', 'ceil'
-  function durationToText(ms, suffix = '', roundType = 'round') {
-    if (typeof ms !== 'number' || isNaN(ms) || ms < 0) return `0 seconds${suffix}`;
-    let totalSeconds;
-    if (roundType === 'cut') {
-      totalSeconds = Math.floor(ms / 1000);
-    } else if (roundType === 'round') {
-      totalSeconds = Math.round(ms / 1000);
-    } else {
-      totalSeconds = Math.ceil(ms / 1000);
-    }
-    if (totalSeconds >= 86400) {
-      let days;
-      if (roundType === 'cut') days = Math.floor(totalSeconds / 86400);
-      else if (roundType === 'round') days = Math.round(totalSeconds / 86400);
-      else days = Math.ceil(totalSeconds / 86400);
-      return `${days} day${days > 1 ? 's' : ''}${suffix}`;
-    }
-    if (totalSeconds >= 3600) {
-      let hours;
-      if (roundType === 'cut') hours = Math.floor(totalSeconds / 3600);
-      else if (roundType === 'round') hours = Math.round(totalSeconds / 3600);
-      else hours = Math.ceil(totalSeconds / 3600);
-      return `${hours} hour${hours > 1 ? 's' : ''}${suffix}`;
-    }
-    if (totalSeconds >= 60) {
-      let minutes;
-      if (roundType === 'cut') minutes = Math.floor(totalSeconds / 60);
-      else if (roundType === 'round') minutes = Math.round(totalSeconds / 60);
-      else minutes = Math.ceil(totalSeconds / 60);
-      return `${minutes} minute${minutes > 1 ? 's' : ''}${suffix}`;
-    }
-    return `${totalSeconds} second${totalSeconds !== 1 ? 's' : ''}${suffix}`;
+// Converts a time value in milliseconds to human-readable text, showing only the largest non-zero unit
+// durationToText: ms to human text, with rounding option
+// roundType: 'round' (default), 'cut', 'ceil'
+function durationToText(ms, suffix = '', roundType = 'round') {
+  if (typeof ms !== 'number' || Number.isNaN(ms) || ms < 0) return `0 seconds${suffix}`;
+  let totalSeconds =
+    roundType === 'cut' ? Math.floor(ms / 1000)
+    : roundType === 'round' ? Math.round(ms / 1000)
+    : Math.ceil(ms / 1000);
+  if (totalSeconds >= 86400) {
+    const days =
+      roundType === 'cut' ? Math.floor(totalSeconds / 86400)
+      : roundType === 'round' ? Math.round(totalSeconds / 86400)
+      : Math.ceil(totalSeconds / 86400);
+    return `${days} day${days > 1 ? 's' : ''}${suffix}`;
   }
+  if (totalSeconds >= 3600) {
+    const hours =
+      roundType === 'cut' ? Math.floor(totalSeconds / 3600)
+      : roundType === 'round' ? Math.round(totalSeconds / 3600)
+      : Math.ceil(totalSeconds / 3600);
+    return `${hours} hour${hours > 1 ? 's' : ''}${suffix}`;
+  }
+  if (totalSeconds >= 60) {
+    const minutes =
+      roundType === 'cut' ? Math.floor(totalSeconds / 60)
+      : roundType === 'round' ? Math.round(totalSeconds / 60)
+      : Math.ceil(totalSeconds / 60);
+    return `${minutes} minute${minutes > 1 ? 's' : ''}${suffix}`;
+  }
+  return `${totalSeconds} second${totalSeconds === 1 ? '' : 's'}${suffix}`;
+}
 
   useEffect(() => {
     // Don't start websocket/polling unless we're on the Tasks route
-    if (!location.pathname || !location.pathname.startsWith('/system/tasks')) {
+    if (!location.pathname?.startsWith('/system/tasks')) {
       activeRef.current = false;
       return;
     }
     activeRef.current = true;
     // Only activate polling/websocket when the user is on the Tasks route
-    if (!location.pathname || !location.pathname.startsWith('/system/tasks')) {
+    if (!location.pathname?.startsWith('/system/tasks')) {
       return;
     }
     // Detect dark mode
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const mq = globalThis.matchMedia('(prefers-color-scheme: dark)');
     setDarkMode(mq.matches);
     const handler = (e) => setDarkMode(e.matches);
     mq.addEventListener('change', handler);
@@ -151,7 +145,7 @@ export default function Tasks() {
 
   useEffect(() => {
     // Don't start websocket/polling unless we're on the Tasks route
-    if (!location.pathname || !location.pathname.startsWith('/system/tasks')) {
+    if (!location.pathname?.startsWith('/system/tasks')) {
       return;
     }
     let ws;
@@ -169,12 +163,12 @@ export default function Tasks() {
       queueInterval = setInterval(fetchQueue, 1000);
       // expose stop function globally so leftover pollers can be cleaned up
       try {
-        if (typeof window !== 'undefined') {
-          if (window.__trailarr_tasks_polling && typeof window.__trailarr_tasks_polling.stop === 'function') {
+        if (typeof globalThis.window !== 'undefined') {
+          if (globalThis.__trailarr_tasks_polling && typeof globalThis.__trailarr_tasks_polling.stop === 'function') {
             // stop previous poller if any
-            window.__trailarr_tasks_polling.stop();
+            globalThis.__trailarr_tasks_polling.stop();
           }
-          window.__trailarr_tasks_polling = {
+          globalThis.__trailarr_tasks_polling = {
             stop: () => {
               try {
                 if (pollingInterval) clearInterval(pollingInterval);
@@ -207,7 +201,7 @@ export default function Tasks() {
 
     // Try to connect to WebSocket
     try {
-      ws = new window.WebSocket((window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws/tasks');
+  ws = new globalThis.WebSocket((globalThis.location.protocol === 'https:' ? 'wss://' : 'ws://') + globalThis.location.host + '/ws/tasks');
       ws.onopen = () => {
         wsConnected = true;
         stopPolling();
@@ -245,9 +239,9 @@ export default function Tasks() {
       if (ws) ws.close();
       // clear any global poller record
       try {
-        if (typeof window !== 'undefined' && window.__trailarr_tasks_polling && typeof window.__trailarr_tasks_polling.stop === 'function') {
-          window.__trailarr_tasks_polling.stop();
-          delete window.__trailarr_tasks_polling;
+        if (typeof globalThis.window !== 'undefined' && globalThis.__trailarr_tasks_polling && typeof globalThis.__trailarr_tasks_polling.stop === 'function') {
+          globalThis.__trailarr_tasks_polling.stop();
+          delete globalThis.__trailarr_tasks_polling;
         }
       } catch {
         // ignore
@@ -292,15 +286,15 @@ export default function Tasks() {
     const regex = /(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?/;
     const match = interval.match(regex);
     if (!match) return interval;
-    const days = parseInt(match[1] || '0', 10);
-    const hours = parseInt(match[2] || '0', 10);
-    const minutes = parseInt(match[3] || '0', 10);
+    const days = Number.parseInt(match[1] || '0', 10);
+    const hours = Number.parseInt(match[2] || '0', 10);
+    const minutes = Number.parseInt(match[3] || '0', 10);
     if (days > 0 || hours > 0 || minutes > 0) {
       return durationToText((days * 86400 + hours * 3600 + minutes * 60) * 1000);
     }
     // fallback: try to parse as a number of minutes
-    const min = parseInt(interval, 10);
-    if (!isNaN(min)) {
+    const min = Number.parseInt(interval, 10);
+    if (!Number.isNaN(min)) {
       return durationToText(min * 60 * 1000);
     }
     return interval;
@@ -317,7 +311,7 @@ export default function Tasks() {
     }
     // Handle ms string like '267.00858ms'
     if (typeof duration === 'string' && duration.endsWith('ms')) {
-      const ms = parseFloat(duration.replace('ms', ''));
+  const ms = Number.parseFloat(duration.replace('ms', ''));
       if (ms < 1000) {
         return `${ms.toFixed(2)} ms`;
       }
@@ -326,9 +320,9 @@ export default function Tasks() {
     // Parse string like '1h2m3.456s', '2m3.456s', or '3.456s'
     const match = duration.match(/(?:(\d+)h)?(?:(\d+)m)?([\d.]+)s/);
     if (!match) return duration;
-    const hours = parseInt(match[1] || '0', 10);
-    const minutes = parseInt(match[2] || '0', 10);
-    const secondsFloat = parseFloat(match[3] || '0');
+    const hours = Number.parseInt(match[1] || '0', 10);
+    const minutes = Number.parseInt(match[2] || '0', 10);
+    const secondsFloat = Number.parseFloat(match[3] || '0');
     if (secondsFloat < 1 && hours === 0 && minutes === 0) {
       return `${(secondsFloat * 1000).toFixed(2)} ms`;
     }
@@ -354,6 +348,56 @@ export default function Tasks() {
 
   const schedules = status.schedules || [];
 
+  // Helper to render status cell for scheduled tasks
+  function renderScheduleStatus(scheduled) {
+    if (scheduled.interval === 0) {
+      return <span style={{color: darkMode ? '#888' : '#bbb', fontStyle: 'italic'}}>Disabled</span>;
+    }
+    const status = scheduled.status;
+    if (!status) return <span>-</span>;
+    if (status === 'running') return <span style={{color: darkMode ? '#66aaff' : '#007bff'}}>Running</span>;
+    if (status === 'success') return <span style={{color: darkMode ? '#4fdc7b' : '#28a745'}}>Success</span>;
+    if (status === 'failed') return <span style={{color: darkMode ? '#ff6b6b' : '#dc3545'}}>Failed</span>;
+    return <span>{status}</span>;
+  }
+
+  // Helper to render interval cell
+  function renderScheduleInterval(scheduled) {
+    if (scheduled.interval === 0) {
+      return <span style={{color: darkMode ? '#888' : '#bbb', fontStyle: 'italic'}}>Disabled</span>;
+    }
+    return formatInterval(scheduled.interval);
+  }
+
+  // Helper to render next execution cell
+  function renderScheduleNextExecution(scheduled) {
+    if (scheduled.interval === 0) {
+      return <span style={{color: darkMode ? '#888' : '#bbb', fontStyle: 'italic'}}>Disabled</span>;
+    }
+    return scheduled.nextExecution ? formatTimeDiff({from: new Date(), to: new Date(scheduled.nextExecution)}) : '-';
+  }
+
+  // Helper to render force execute icon style
+  function getForceIconStyle(scheduled) {
+    let color;
+    if (scheduled.status === 'running') {
+      color = darkMode ? '#66aaff' : '#007bff';
+    } else {
+      color = darkMode ? '#aaa' : '#888';
+    }
+    return {
+      cursor: scheduled.status === 'running' ? 'not-allowed' : 'pointer',
+      opacity: scheduled.status === 'running' ? 0.5 : 1,
+      color,
+      ...iconNoOutline,
+    };
+  }
+
+  // Helper to get unique key for queue items
+  function getQueueKey(item) {
+    return `${item.taskId || ''}-${item.queued || ''}-${item.started || ''}-${item.ended || ''}`;
+  }
+
   return (
     <div style={styles.container}>
       <div style={styles.header}>Scheduled</div>
@@ -372,30 +416,14 @@ export default function Tasks() {
         <tbody>
           {schedules.length === 0 ? (
             <tr><td colSpan={7} style={styles.td}>No scheduled tasks</td></tr>
-          ) : schedules.map((scheduled, idx) => (
-            <tr key={idx}>
+          ) : schedules.map((scheduled) => (
+            <tr key={scheduled.taskId || scheduled.name}>
               <td style={styles.td}>{scheduled.name}</td>
-              <td style={{...styles.td, textAlign: 'center'}}>{(() => {
-                if (scheduled.interval === 0) {
-                  return <span style={{color: darkMode ? '#888' : '#bbb', fontStyle: 'italic'}}>Disabled</span>;
-                }
-                const status = scheduled.status;
-                if (!status) return <span>-</span>;
-                if (status === 'running') return <span style={{color: darkMode ? '#66aaff' : '#007bff'}}>Running</span>;
-                if (status === 'success') return <span style={{color: darkMode ? '#4fdc7b' : '#28a745'}}>Success</span>;
-                if (status === 'failed') return <span style={{color: darkMode ? '#ff6b6b' : '#dc3545'}}>Failed</span>;
-                return <span>{status}</span>;
-              })()}</td>
-              <td style={{...styles.td, textAlign: 'center'}}>{scheduled.interval === 0
-                ? <span style={{color: darkMode ? '#888' : '#bbb', fontStyle: 'italic'}}>Disabled</span>
-                : formatInterval(scheduled.interval)
-              }</td>
+              <td style={{...styles.td, textAlign: 'center'}}>{renderScheduleStatus(scheduled)}</td>
+              <td style={{...styles.td, textAlign: 'center'}}>{renderScheduleInterval(scheduled)}</td>
               <td style={{...styles.td, textAlign: 'center'}}>{scheduled.lastExecution ? formatTimeDiff({from: new Date(scheduled.lastExecution), to: new Date(), suffix: ' ago', roundType: 'cut'}) : '-'}</td>
               <td style={{...styles.td, textAlign: 'center'}}>{scheduled.lastDuration ? formatDuration(scheduled.lastDuration) : '-'}</td>
-              <td style={{...styles.td, textAlign: 'center'}}>{scheduled.interval === 0
-                ? <span style={{color: darkMode ? '#888' : '#bbb', fontStyle: 'italic'}}>Disabled</span>
-                : (scheduled.nextExecution ? formatTimeDiff({from: new Date(), to: new Date(scheduled.nextExecution)}) : '-')
-              }</td>
+              <td style={{...styles.td, textAlign: 'center'}}>{renderScheduleNextExecution(scheduled)}</td>
               <td style={{...styles.td, textAlign: 'center'}}>
                 <span
                   style={{
@@ -407,14 +435,7 @@ export default function Tasks() {
                   <FaArrowsRotate
                     onClick={scheduled.status === 'running' ? undefined : () => forceExecute(scheduled.taskId)}
                     className={scheduled.status === 'running' ? 'spin-icon' : ''}
-                    style={{
-                      cursor: scheduled.status === 'running' ? 'not-allowed' : 'pointer',
-                      opacity: scheduled.status === 'running' ? 0.5 : 1,
-                      color: (scheduled.status === 'running')
-                        ? (darkMode ? '#66aaff' : '#007bff')
-                        : (darkMode ? '#aaa' : '#888'),
-                      ...iconNoOutline,
-                    }}
+                    style={getForceIconStyle(scheduled)}
                     size={20}
                     title={scheduled.status === 'running' ? 'Task is running' : 'Force Execute'}
                     tabIndex={scheduled.status === 'running' ? -1 : 0}
@@ -441,58 +462,59 @@ export default function Tasks() {
         <tbody>
           {(!queueLoading && (!queues || queues.length === 0)) ? (
             <tr><td colSpan={6} style={{...styles.td, textAlign: 'center'}}>No queue items</td></tr>
-          ) : (Array.isArray(queues) ? queues : []).map((item, idx) => {
+          ) : (Array.isArray(queues) ? queues : []).map((item) => {
             // Try to get the task name from schedules (by taskId)
             let taskName = item.taskId;
             if (schedules && item.taskId) {
               const sch = schedules.find(s => s.taskId === item.taskId);
-              if (sch && sch.name) taskName = sch.name;
+              if (sch?.name) taskName = sch.name;
+            }
+            // Helper to render status icon
+            function renderQueueStatus() {
+              if (!item.status) return <span title="Unknown">-</span>;
+              if (item.status === 'success') return <span title="Success" style={{color: darkMode ? '#4fdc7b' : '#28a745'}}>&#x2714;</span>;
+              if (item.status === 'running') return <span title="Running" style={{color: darkMode ? '#66aaff' : '#007bff'}}>&#x25D4;</span>;
+              if (item.status === 'failed') return <span title="Failed" style={{color: darkMode ? '#ff6b6b' : '#dc3545'}}>&#x2716;</span>;
+              if (item.status === 'queued') return <FaClock title="Queued" style={{color: darkMode ? '#ffb300' : '#e6b800', verticalAlign: 'middle'}} />;
+              return <span title={item.status}>{item.status}</span>;
+            }
+            // Helper to render ended date
+            function renderEndedDate() {
+              if (!item.ended) return '—';
+              const endedDate = new Date(item.ended);
+              // Check for invalid or zero date (year 1 or 1970)
+              if (Number.isNaN(endedDate.getTime()) || endedDate.getFullYear() <= 1971) return '—';
+              return endedDate.toLocaleString();
+            }
+            // Helper to render duration
+            function renderDuration() {
+              if (item.duration === null || item.duration === undefined || item.duration === '') return '—';
+              let dur = item.duration;
+              // If duration is a numeric string, convert to number
+              if (typeof dur === 'string') {
+                const n = Number(dur);
+                if (!Number.isNaN(n)) dur = n;
+              }
+              if (typeof dur === 'number' && !Number.isNaN(dur)) {
+                // Heuristic: if the number looks like nanoseconds (very large), convert to seconds
+                let seconds = dur;
+                if (Math.abs(dur) >= 1e6) {
+                  // treat as nanoseconds -> seconds
+                  seconds = dur / 1e9;
+                }
+                return formatDuration(seconds);
+              }
+              // Fallback: let formatDuration handle strings like '1m2.3s' or '123ms'
+              return formatDuration(item.duration);
             }
             return (
-              <tr key={idx}>
-                <td style={{...styles.td, textAlign: 'center'}}>
-                  {(() => {
-                    if (!item.status) return <span title="Unknown">-</span>;
-                    if (item.status === 'success') return <span title="Success" style={{color: darkMode ? '#4fdc7b' : '#28a745'}}>&#x2714;</span>;
-                    if (item.status === 'running') return <span title="Running" style={{color: darkMode ? '#66aaff' : '#007bff'}}>&#x25D4;</span>;
-                    if (item.status === 'failed') return <span title="Failed" style={{color: darkMode ? '#ff6b6b' : '#dc3545'}}>&#x2716;</span>;
-                    if (item.status === 'queued') return <FaClock title="Queued" style={{color: darkMode ? '#ffb300' : '#e6b800', verticalAlign: 'middle'}} />;
-                    return <span title={item.status}>{item.status}</span>;
-                  })()}
-                </td>
+              <tr key={getQueueKey(item)}>
+                <td style={{...styles.td, textAlign: 'center'}}>{renderQueueStatus()}</td>
                 <td style={styles.td}>{taskName || '-'}</td>
                 <td style={{...styles.td, textAlign: 'center'}}>{item.queued ? new Date(item.queued).toLocaleString() : '—'}</td>
                 <td style={{...styles.td, textAlign: 'center'}}>{item.started ? new Date(item.started).toLocaleString() : '—'}</td>
-                <td style={{...styles.td, textAlign: 'center'}}>{(() => {
-                  if (!item.ended) return '—';
-                  const endedDate = new Date(item.ended);
-                  // Check for invalid or zero date (year 1 or 1970)
-                  if (isNaN(endedDate.getTime()) || endedDate.getFullYear() <= 1971) return '—';
-                  return endedDate.toLocaleString();
-                })()}</td>
-                <td style={styles.td}>{(() => {
-                  // Normalize duration and display using formatDuration.
-                  // Backend returns seconds (number) via qi.Duration.Seconds().
-                  // Older code stored nanoseconds; detect large numeric values and convert.
-                  if (item.duration === null || item.duration === undefined || item.duration === '') return '—';
-                  let dur = item.duration;
-                  // If duration is a numeric string, convert to number
-                  if (typeof dur === 'string') {
-                    const n = Number(dur);
-                    if (!isNaN(n)) dur = n;
-                  }
-                  if (typeof dur === 'number' && !isNaN(dur)) {
-                    // Heuristic: if the number looks like nanoseconds (very large), convert to seconds
-                    let seconds = dur;
-                    if (Math.abs(dur) >= 1e6) {
-                      // treat as nanoseconds -> seconds
-                      seconds = dur / 1e9;
-                    }
-                    return formatDuration(seconds);
-                  }
-                  // Fallback: let formatDuration handle strings like '1m2.3s' or '123ms'
-                  return formatDuration(item.duration);
-                })()}</td>
+                <td style={{...styles.td, textAlign: 'center'}}>{renderEndedDate()}</td>
+                <td style={styles.td}>{renderDuration()}</td>
               </tr>
             );
           })}

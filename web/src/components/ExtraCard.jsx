@@ -1,3 +1,39 @@
+// Top-level error modal
+function ErrorModal({ message, onClose }) {
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 24,
+      left: '50%',
+      transform: 'translateX(-50%)',
+      background: '#ef4444',
+      color: '#fff',
+      padding: '12px 32px',
+      borderRadius: 8,
+      boxShadow: '0 2px 12px rgba(0,0,0,0.18)',
+      zIndex: 9999,
+      fontWeight: 500,
+      fontSize: 16,
+      minWidth: 260,
+      textAlign: 'center',
+    }}>
+      {message}
+      <button onClick={onClose} style={{ marginLeft: 16, background: 'transparent', color: '#fff', border: 'none', fontSize: 18, cursor: 'pointer' }}>×</button>
+    </div>
+  );
+}
+// Top-level spinner icon for download
+function SpinnerIcon() {
+  return (
+    <span className="download-spinner" style={{ display: 'inline-block', width: 22, height: 22, background: 'transparent' }}>
+      <svg viewBox="0 0 50 50" style={{ width: 22, height: 22, background: 'transparent' }}>
+        <circle cx="25" cy="25" r="20" fill="none" stroke="#fff" strokeWidth="5" strokeDasharray="31.4 31.4" strokeLinecap="round">
+          <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="0.8s" repeatCount="indefinite" />
+        </circle>
+      </svg>
+    </span>
+  );
+}
 import React, { useState } from 'react';
 import IconButton from './IconButton.jsx';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -5,27 +41,6 @@ import { faTrashCan, faCheckSquare } from '@fortawesome/free-regular-svg-icons';
 import { faPlay, faDownload, faBan, faCircleXmark, faClock } from '@fortawesome/free-solid-svg-icons';
 
 import PropTypes from 'prop-types';
-
-ExtraCard.propTypes = {
-  extra: PropTypes.shape({
-    Reason: PropTypes.string,
-    ExtraTitle: PropTypes.string,
-    ExtraType: PropTypes.string,
-    YoutubeId: PropTypes.string,
-    Status: PropTypes.string,
-  }).isRequired,
-  idx: PropTypes.number,
-  typeExtras: PropTypes.array,
-  darkMode: PropTypes.bool,
-  media: PropTypes.object,
-  mediaType: PropTypes.string,
-  setExtras: PropTypes.func,
-  setModalMsg: PropTypes.func,
-  setShowModal: PropTypes.func,
-  rejected: PropTypes.bool,
-  onPlay: PropTypes.func,
-  showToast: PropTypes.func,
-};
 
 export default function ExtraCard({
   extra,
@@ -35,8 +50,6 @@ export default function ExtraCard({
   media,
   mediaType,
   setExtras,
-  setModalMsg,
-  setShowModal,
   rejected: rejectedProp,
   onPlay,
   showToast, // new prop for toast/modal
@@ -45,12 +58,16 @@ export default function ExtraCard({
   const [isFallback, setIsFallback] = useState(false);
   const baseTitle = extra.ExtraTitle || '';
   const baseType = extra.ExtraType || '';
-  const totalCount = typeExtras.filter(e => e.ExtraTitle === baseTitle).length;
-  let displayTitle = totalCount > 1 ? `${baseTitle} (${typeExtras.slice(0, idx + 1).filter(e => e.ExtraTitle === baseTitle).length})` : baseTitle;
-  const maxLen = 40;
-  if (displayTitle.length > maxLen) {
-    displayTitle = displayTitle.slice(0, maxLen - 3) + '...';
+  function getDisplayTitle() {
+    const totalCount = typeExtras.filter(e => e.ExtraTitle === baseTitle).length;
+    let title = totalCount > 1 ? `${baseTitle} (${typeExtras.slice(0, idx + 1).filter(e => e.ExtraTitle === baseTitle).length})` : baseTitle;
+    const maxLen = 40;
+    if (title.length > maxLen) {
+      title = title.slice(0, maxLen - 3) + '...';
+    }
+    return title;
   }
+  const displayTitle = getDisplayTitle();
   let posterUrl = extra.YoutubeId ? `/api/proxy/youtube-image/${extra.YoutubeId}` : null;
   React.useEffect(() => {
     // Reset states when posterUrl changes
@@ -70,21 +87,26 @@ export default function ExtraCard({
   const [unbanned] = useState(false);
   // Treat 'failed' as 'rejected' for UI
   const rejected = !unbanned && (typeof rejectedProp === 'boolean' ? rejectedProp : extra.Status === 'rejected' || extra.Status === 'failed');
-  const [errorCard, setErrorCard] = useState(null);
-  const isError = errorCard === idx;
-  // Helper to show error as toast/modal
-  const showErrorModal = (msg) => {
-    if (msg.includes('UNPLAYABLE') || msg.includes('no se encuentra disponible')) {
-      msg = 'This YouTube video is unavailable and cannot be downloaded.';
+  // Removed errorCard/modal state; error display is now handled at the page level
+
+  // showErrorModal removed; use showToast for error display
+
+  function revertStatus() {
+    if (typeof setExtras === 'function') {
+      setExtras(prev => prev.map((ex) =>
+        ex.YoutubeId === extra.YoutubeId && ex.ExtraType === baseType && ex.ExtraTitle === baseTitle
+          ? { ...ex, Status: '' }
+          : ex
+      ));
     }
+  }
+
+  function handleError(msg) {
     if (typeof showToast === 'function') {
       showToast(msg);
-    } else {
-      setModalMsg(msg);
-      setShowModal(true);
     }
-    setErrorCard(idx);
-  };
+    revertStatus();
+  }
 
   const handleDownloadClick = async () => {
     if (downloaded || downloading) return;
@@ -127,95 +149,87 @@ export default function ExtraCard({
         }
       } else {
         const data = await res.json();
-        if (typeof showToast === 'function') {
-          showToast(data?.error || 'Download failed');
-        } else {
-          showErrorModal(data?.error || 'Download failed');
-        }
-        // If failed, revert status
-        if (typeof setExtras === 'function') {
-          setExtras(prev => prev.map((ex) =>
-            ex.YoutubeId === extra.YoutubeId && ex.ExtraType === baseType && ex.ExtraTitle === baseTitle
-              ? { ...ex, Status: '' }
-              : ex
-          ));
-        }
+        handleError(data?.error || 'Download failed');
       }
     } catch (error) {
-      if (typeof showToast === 'function') {
-        showToast(error.message || error);
-      } else {
-        showErrorModal(error.message || error);
-      }
-      // If failed, revert status
-      if (typeof setExtras === 'function') {
-        setExtras(prev => prev.map((ex) =>
-          ex.YoutubeId === extra.YoutubeId && ex.ExtraType === baseType && ex.ExtraTitle === baseTitle
-            ? { ...ex, Status: '' }
-            : ex
-        ));
-      }
+      handleError(error.message || error);
     } finally {
       setDownloading(false);
     }
   };
 
-  // Poster image or fallback factory
-  function PosterImage({ src, alt, onError, onLoad, fallbackIcon }) {
-    return (
-      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {src ? (
-          <img
-            src={src}
-            alt={alt}
-            onLoad={onLoad}
-            onError={onError}
-            style={{
-              display: 'block',
-              margin: '0 0',
-              maxHeight: 135,
-              maxWidth: '100%',
-              objectFit: 'contain',
-              background: '#222222'
-            }}
-          />
-        ) : !src || imgError ? (
-          <span style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '100%',
-            height: 135,
-            background: '#222222'
-          }}>
-            <FontAwesomeIcon icon={fallbackIcon} color="#888" size="4x" />
-          </span>
-        ) : (
-          // Skeleton placeholder while loading
-          <span style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '100%',
-            height: 135,
-            background: '#333',
-            animation: 'pulse 1.2s infinite',
-            color: '#444'
-          }}>Loading...</span>
-        )}
-      </div>
+
+// Poster image or fallback factory (top-level)
+function PosterImage({ src, alt, onError, onLoad, fallbackIcon, imgError }) {
+  let content;
+  if (src) {
+    content = (
+      <img
+        src={src}
+        alt={alt}
+        onLoad={onLoad}
+        onError={onError}
+        style={{
+          display: 'block',
+          margin: '0 0',
+          maxHeight: 135,
+          maxWidth: '100%',
+          objectFit: 'contain',
+          background: '#222222'
+        }}
+      />
+    );
+  } else if (!src || imgError) {
+    content = (
+      <span style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '100%',
+        height: 135,
+        background: '#222222'
+      }}>
+        <FontAwesomeIcon icon={fallbackIcon} color="#888" size="4x" />
+      </span>
+    );
+  } else {
+    content = (
+      <span style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '100%',
+        height: 135,
+        background: '#333',
+        animation: 'pulse 1.2s infinite',
+        color: '#444'
+      }}>Loading...</span>
     );
   }
+  return (
+    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {content}
+    </div>
+  );
+}
 
-  // Determine border color based on status
-  let borderColor = '2px solid transparent';
-  if (rejected || isError || failed) {
-    borderColor = '2.5px solid #ef4444';
-  } else if (downloaded) {
-    borderColor = '2px solid #22c55e';
-  } else if (exists) {
-    borderColor = '2px solid #8888';
+PosterImage.propTypes = {
+  src: PropTypes.string,
+  alt: PropTypes.string.isRequired,
+  onError: PropTypes.func,
+  onLoad: PropTypes.func,
+  fallbackIcon: PropTypes.object.isRequired,
+  imgError: PropTypes.bool,
+};
+
+  // Helper to determine border color based on status
+  function getBorderColor() {
+    if (rejected || failed) return '2.5px solid #ef4444';
+    if (downloaded) return '2px solid #22c55e';
+    if (exists) return '2px solid #8888';
+    return '2px solid transparent';
   }
+  const borderColor = getBorderColor();
   return (
     <div
       title={rejected ? extra.Reason : undefined}
@@ -234,7 +248,6 @@ export default function ExtraCard({
         border: borderColor,
       }}
     >
-      {/* Image or poster rendering restored */}
       <div style={{ width: '100%', height: 135, background: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
         {/* Play button overlay (with image) */}
         {extra.YoutubeId && !imgError && !isFallback && (
@@ -272,9 +285,10 @@ export default function ExtraCard({
               setIsFallback(true);
               setImgError(true);
             }}
+            imgError={imgError}
           />
         ) : (
-          <PosterImage src={null} alt="Denied" fallbackIcon={faBan} />
+          <PosterImage src={null} alt="Denied" fallbackIcon={faBan} imgError={imgError} />
         )}
         {/* Failed/Rejected Icon (always show for failed/rejected) */}
         {(extra.Status === 'failed' || extra.Status === 'rejected' || extra.Status === 'unknown' || extra.Status === 'error') && (
@@ -306,7 +320,7 @@ export default function ExtraCard({
                     ));
                   }
                   // Then refresh from backend
-                  if (typeof setExtras === 'function' && typeof media !== 'undefined' && media.id) {
+                  if (typeof setExtras === 'function' && media !== undefined && media.id) {
                     try {
                       const res = await fetch(`/api/${mediaType === 'movie' ? 'movies' : 'series'}/${media.id}/extras`);
                       if (res.ok) {
@@ -320,8 +334,9 @@ export default function ExtraCard({
                     } catch { /* ignore */ }
                   }
                 } catch {
-                  setModalMsg('Failed to remove ban.');
-                  setShowModal(true);
+                  if (typeof showToast === 'function') {
+                    showToast('Failed to remove ban.');
+                  }
                 }
               }}
               aria-label={extra.Status === 'failed' ? 'Remove failed status' : 'Remove ban'}
@@ -332,22 +347,18 @@ export default function ExtraCard({
         {extra.YoutubeId && !downloaded && !imgError && !isFallback && (
           <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 2 }}>
             <IconButton
-              icon={
-                isDownloading ? (
-                  <span className="download-spinner" style={{ display: 'inline-block', width: 22, height: 22, background: 'transparent' }}>
-                    <svg viewBox="0 0 50 50" style={{ width: 22, height: 22, background: 'transparent' }}>
-                      <circle cx="25" cy="25" r="20" fill="none" stroke="#fff" strokeWidth="5" strokeDasharray="31.4 31.4" strokeLinecap="round">
-                        <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="0.8s" repeatCount="indefinite" />
-                      </circle>
-                    </svg>
-                  </span>
-                ) : isQueued ? (
-                  <FontAwesomeIcon icon={faClock} color="#fff" size="lg" />
-                ) : (
-                  <FontAwesomeIcon icon={faDownload} color="#fff" size="lg" />
-                )
+              icon={isDownloading
+                ? <SpinnerIcon />
+                : isQueued
+                  ? <FontAwesomeIcon icon={faClock} color="#fff" size="lg" />
+                  : <FontAwesomeIcon icon={faDownload} color="#fff" size="lg" />
               }
-              title={rejected ? extra.Reason : isDownloading ? 'Downloading...' : isQueued ? 'Queued' : 'Download'}
+              title={(() => {
+                if (rejected) return extra.Reason;
+                if (isDownloading) return 'Downloading...';
+                if (isQueued) return 'Queued';
+                return 'Download';
+              })()}
               onClick={rejected || isDownloading || isQueued
                 ? undefined
                 : (e => {
@@ -356,7 +367,21 @@ export default function ExtraCard({
                   })}
               disabled={rejected || isDownloading || isQueued}
               aria-label="Download"
-              style={{ opacity: rejected ? 0.5 : (isDownloading || isQueued ? 0.7 : 1), background: 'transparent', borderRadius: (isDownloading || isQueued) ? 8 : 0, transition: 'background 0.2s, opacity 0.2s' }}
+              style={(() => {
+                let opacity = 1;
+                let borderRadius = 0;
+                if (rejected) opacity = 0.5;
+                else if (isDownloading || isQueued) {
+                  opacity = 0.7;
+                  borderRadius = 8;
+                }
+                return {
+                  opacity,
+                  background: 'transparent',
+                  borderRadius,
+                  transition: 'background 0.2s, opacity 0.2s'
+                };
+              })()}
             />
           </div>
         )}
@@ -372,7 +397,7 @@ export default function ExtraCard({
                 title="Delete"
                 onClick={async (event) => {
                   event.stopPropagation();
-                  if (!window.confirm('Delete this extra?')) return;
+                  if (!globalThis.confirm('Delete this extra?')) return;
                   try {
                     const { deleteExtra } = await import('../api');
                     const payload = {
@@ -403,3 +428,24 @@ export default function ExtraCard({
     </div>
   );
 }
+
+ExtraCard.propTypes = {
+  extra: PropTypes.shape({
+    Reason: PropTypes.string,
+    ExtraTitle: PropTypes.string,
+    ExtraType: PropTypes.string,
+    YoutubeId: PropTypes.string,
+    Status: PropTypes.string,
+  }).isRequired,
+  idx: PropTypes.number,
+  typeExtras: PropTypes.array,
+  darkMode: PropTypes.bool,
+  media: PropTypes.object,
+  mediaType: PropTypes.string,
+  setExtras: PropTypes.func,
+  setModalMsg: PropTypes.func,
+  setShowModal: PropTypes.func,
+  rejected: PropTypes.bool,
+  onPlay: PropTypes.func,
+  showToast: PropTypes.func,
+};

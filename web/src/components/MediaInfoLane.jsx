@@ -7,8 +7,8 @@ import { faLanguage } from '@fortawesome/free-solid-svg-icons';
 import ActorRow from './ActorRow.jsx';
 
 export default function MediaInfoLane({ media, mediaType, darkMode = false, error: _error = '', cast = [], castLoading = false, castError = '' }) {
-	// Reference unused prop to satisfy ESLint's no-unused-vars rule without changing behavior
-	void _error;
+  // Reference unused prop to satisfy ESLint's no-unused-vars rule without changing behavior
+  // _error is unused
 	const [showAlt, setShowAlt] = React.useState(false);
 
 	if (!media) return null;
@@ -39,13 +39,14 @@ export default function MediaInfoLane({ media, mediaType, darkMode = false, erro
 						 marginTop: 64, // Add top margin to prevent overlap with action lane
 					 }}>
 				<div className="media-info-poster" style={{ minWidth: 150, zIndex: 2, display: 'flex', justifyContent: 'flex-start', alignItems: 'flex-start', height: '100%', padding: 0, marginTop: 32 }}>
-					<img
-						src={mediaType === 'tv'
-							? `/mediacover/Series/${media.id}/poster-500.jpg`
-							: `/mediacover/Movies/${media.id}/poster-500.jpg`}
-						style={{ height: 370, objectFit: 'cover', borderRadius: 4, background: '#222', boxShadow: '0 2px 8px rgba(0,0,0,0.22)' }}
-						onError={e => { e.target.onerror = null; e.target.src = '/logo.svg'; }}
-					/>
+								<img
+									src={mediaType === 'tv'
+										? `/mediacover/Series/${media.id}/poster-500.jpg`
+										: `/mediacover/Movies/${media.id}/poster-500.jpg`}
+									   alt={`${media?.title ?? 'Media'} poster`}
+									style={{ height: 370, objectFit: 'cover', borderRadius: 4, background: '#222', boxShadow: '0 2px 8px rgba(0,0,0,0.22)' }}
+									onError={e => { e.target.onerror = null; e.target.src = '/logo.svg'; }}
+								/>
 				</div>
 				<div className="media-info-content" style={{ paddingTop: 0, flex: 1, minWidth: 0 }}>
 				<h2 style={{ color: '#fff', margin: 0, fontSize: 32, fontWeight: 600, textShadow: '0 1px 2px #000', letterSpacing: 0.2, textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -116,8 +117,8 @@ export default function MediaInfoLane({ media, mediaType, darkMode = false, erro
 												<div>
 													<div style={{ fontWeight: 600, marginBottom: 6 }}>Alternate titles</div>
 													<ul style={{ margin: 0, paddingLeft: 16 }}>
-														{filteredAlt.map((t, i) => (
-															<li key={i} style={{ marginBottom: 6, lineHeight: 1.2 }}>{t}</li>
+														{filteredAlt.map((t) => (
+															<li key={t} style={{ marginBottom: 6, lineHeight: 1.2 }}>{t}</li>
 														))}
 													</ul>
 												</div>

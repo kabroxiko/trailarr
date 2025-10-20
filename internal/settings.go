@@ -35,6 +35,7 @@ func init() {
 }
 
 const (
+	ApiReturnedStatusFmt     = "API returned status %d"
 	TrailarrRoot             = "/var/lib/trailarr"
 	ConfigPath               = TrailarrRoot + "/config/config.yml"
 	MediaCoverPath           = TrailarrRoot + "/MediaCover"
@@ -1151,8 +1152,8 @@ func FetchRootFolders(apiURL, apiKey string) ([]map[string]interface{}, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		TrailarrLog(WARN, "Settings", "API returned status %d", resp.StatusCode)
-		return nil, fmt.Errorf("API returned status %d", resp.StatusCode)
+		TrailarrLog(WARN, "Settings", ApiReturnedStatusFmt, resp.StatusCode)
+		return nil, fmt.Errorf(ApiReturnedStatusFmt, resp.StatusCode)
 	}
 	var folders []map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&folders); err != nil {
@@ -1183,8 +1184,8 @@ func testMediaConnection(providerURL, apiKey, _ string) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		TrailarrLog(WARN, "Settings", "API returned status %d", resp.StatusCode)
-		return fmt.Errorf("API returned status %d", resp.StatusCode)
+		TrailarrLog(WARN, "Settings", ApiReturnedStatusFmt, resp.StatusCode)
+		return fmt.Errorf(ApiReturnedStatusFmt, resp.StatusCode)
 	}
 	return nil
 }

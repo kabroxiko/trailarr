@@ -21,6 +21,12 @@ const (
 	MediaTypeTV    MediaType = "tv"
 )
 
+const (
+	cacheControlHeader = "Cache-Control"
+	cacheControlValue  = "public, max-age=86400"
+	totalTimeLogFormat = "Total time: %v"
+)
+
 // SearchExtras merges extras from the main cache and the persistent extras collection for a media item
 func SearchExtras(mediaType MediaType, mediaId int) ([]Extra, error) {
 	ctx := context.Background()
@@ -119,7 +125,7 @@ func cachedYouTubeImage(cacheDir, id string) (string, string) {
 
 func serveCachedFile(c *gin.Context, path, contentType string) {
 	c.Header(HeaderContentType, contentType)
-	c.Header("Cache-Control", "public, max-age=86400")
+	c.Header(cacheControlHeader, cacheControlValue)
 	if c.Request.Method == http.MethodHead {
 		c.Status(http.StatusOK)
 		return
@@ -154,7 +160,7 @@ func serveFallbackSVG(c *gin.Context) {
 </svg>`
 	c.Header(HeaderContentType, "image/svg+xml")
 	c.Header("X-Proxy-Fallback", "1")
-	c.Header("Cache-Control", "public, max-age=86400")
+	c.Header(cacheControlHeader, cacheControlValue)
 	c.Status(http.StatusOK)
 	if c.Request.Method == http.MethodHead {
 		return
@@ -191,7 +197,7 @@ func saveToTmp(r io.Reader, path string) error {
 
 func streamResponse(c *gin.Context, ct string, r io.Reader) {
 	c.Header(HeaderContentType, ct)
-	c.Header("Cache-Control", "public, max-age=86400")
+	c.Header(cacheControlHeader, cacheControlValue)
 	c.Status(http.StatusOK)
 	if c.Request.Method == http.MethodHead {
 		return
@@ -881,7 +887,7 @@ func GetMediaByIdHandler(cacheFile, key string) gin.HandlerFunc {
 		if err != nil {
 			TrailarrLog(DEBUG, "GetMediaByIdHandler", "Failed to load cache: %v", err)
 			respondError(c, http.StatusInternalServerError, "cache not found")
-			TrailarrLog(INFO, "GetMediaByIdHandler", "Total time: %v", time.Since(start))
+			TrailarrLog(INFO, "GetMediaByIdHandler", totalTimeLogFormat, time.Since(start))
 			return
 		}
 		filtered := Filter(items, func(m map[string]interface{}) bool {
@@ -891,12 +897,12 @@ func GetMediaByIdHandler(cacheFile, key string) gin.HandlerFunc {
 		TrailarrLog(DEBUG, "GetMediaByIdHandler", "Filtered by id=%s, %d items remain", idParam, len(filtered))
 		if len(filtered) == 0 {
 			respondError(c, http.StatusNotFound, "item not found")
-			TrailarrLog(INFO, "GetMediaByIdHandler", "Total time: %v", time.Since(start))
+			TrailarrLog(INFO, "GetMediaByIdHandler", totalTimeLogFormat, time.Since(start))
 			return
 		}
 		TrailarrLog(DEBUG, "GetMediaByIdHandler", "Item: %+v", filtered[0])
 		respondJSON(c, http.StatusOK, gin.H{"item": filtered[0]})
-		TrailarrLog(INFO, "GetMediaByIdHandler", "Total time: %v", time.Since(start))
+		TrailarrLog(INFO, "GetMediaByIdHandler", totalTimeLogFormat, time.Since(start))
 	}
 }
 

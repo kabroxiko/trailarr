@@ -174,3 +174,15 @@ export default function ExtrasTypeMappingConfig({ mapping, onMappingChange, tmdb
     </DndProvider>
   );
 }
+
+TmdbChip.propTypes = {
+  tmdbType: PropTypes.string.isRequired,
+  plexType: PropTypes.string,
+  onMove: PropTypes.func.isRequired,
+  isDark: PropTypes.bool,
+};
+
+TmdbChip.defaultProps = {
+  plexType: '',
+  isDark: false,
+};

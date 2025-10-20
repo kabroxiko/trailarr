@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import ExtraCard from './ExtraCard.jsx';
 import SectionHeader from './SectionHeader.jsx';
 import Toast from './Toast';
+import PropTypes from 'prop-types';
 import './ExtrasList.mobile.css';
 
 function ExtrasList({
@@ -21,39 +22,43 @@ function ExtrasList({
 
   // WebSocket: Listen for download queue updates
   useEffect(() => {
-    const wsUrl = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws/download-queue';
-    const ws = new window.WebSocket(wsUrl);
+  const wsUrl = (globalThis.location.protocol === 'https:' ? 'wss://' : 'ws://') + globalThis.location.host + '/ws/download-queue';
+  const ws = new globalThis.WebSocket(wsUrl);
     wsRef.current = ws;
     ws.onopen = () => {
       console.debug('[WebSocket] Connected to download queue');
     };
+    // Extracted to reduce nesting
+    function updateExtraWithQueue(ex, queue) {
+      const queueItem = queue.find(q => q.youtubeId === ex.YoutubeId);
+      if (queueItem) {
+        // Only show toast if status transitions to 'failed' or 'rejected'
+        if ((queueItem.status === 'failed' || queueItem.status === 'rejected') &&
+            ex.Status !== 'failed' && ex.Status !== 'rejected' && (queueItem.reason || queueItem.Reason)) {
+          setToastMsg(queueItem.reason || queueItem.Reason);
+          setToastSuccess(false);
+        }
+        // Always update Status and Reason fields
+        return {
+          ...ex,
+          Status: queueItem.status,
+          reason: queueItem.reason || queueItem.Reason,
+          Reason: queueItem.reason || queueItem.Reason,
+        };
+      }
+      return ex;
+    }
+
+    function updateExtrasWithQueue(prev, queue) {
+      return prev.map(ex => updateExtraWithQueue(ex, queue));
+    }
+
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === 'download_queue_update' && Array.isArray(msg.queue)) {
           if (typeof setExtras === 'function') {
-            setExtras(prev => {
-              // Map over all extras and update their Status and Reason if found in queue
-              return prev.map(ex => {
-                const queueItem = msg.queue.find(q => q.youtubeId === ex.YoutubeId);
-                if (queueItem) {
-                  // Only show toast if status transitions to 'failed' or 'rejected'
-                  if ((queueItem.status === 'failed' || queueItem.status === 'rejected') &&
-                      ex.Status !== 'failed' && ex.Status !== 'rejected' && (queueItem.reason || queueItem.Reason)) {
-                    setToastMsg(queueItem.reason || queueItem.Reason);
-                    setToastSuccess(false);
-                  }
-                  // Always update Status and Reason fields
-                  return {
-                    ...ex,
-                    Status: queueItem.status,
-                    reason: queueItem.reason || queueItem.Reason,
-                    Reason: queueItem.reason || queueItem.Reason,
-                  };
-                }
-                return ex;
-              });
-            });
+            setExtras(prev => updateExtrasWithQueue(prev, msg.queue));
           }
         }
       } catch (err) {
@@ -95,6 +100,7 @@ function ExtrasList({
             media={media}
             mediaType={mediaType}
             setExtras={setExtras}
+            // setModalMsg and setShowModal are still passed for legacy compatibility, but showModal/modalMsg are not used in ExtraCard
             setModalMsg={setModalMsg}
             setShowModal={setShowModal}
             YoutubeEmbed={YoutubeEmbed}
@@ -118,5 +124,17 @@ function ExtrasList({
     </>
   );
 }
+
+ExtrasList.propTypes = {
+  extrasByType: PropTypes.object.isRequired,
+  darkMode: PropTypes.bool,
+  media: PropTypes.object,
+  mediaType: PropTypes.string,
+  setExtras: PropTypes.func,
+  setModalMsg: PropTypes.func,
+  setShowModal: PropTypes.func,
+  setYoutubeModal: PropTypes.func,
+  YoutubeEmbed: PropTypes.oneOfType([PropTypes.func, PropTypes.object]),
+};
 
 export default ExtrasList;

@@ -18,6 +18,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const ytDlpSkipDownload = "--skip-download"
+const ytDlpSearchPrefix = "ytsearch10:"
+
 const YtDlpCmd = "yt-dlp"
 
 // YouTube trailer search SSE handler (progressive results)
@@ -91,7 +94,7 @@ func streamYtDlpSearchForTerm(term string, remaining int, videoIdSet map[string]
 		return 0, nil
 	}
 	searchQuery := term + " trailer"
-	ytDlpArgs := []string{"-j", "ytsearch10:" + searchQuery, "--skip-download"}
+	ytDlpArgs := []string{"-j", ytDlpSearchPrefix + searchQuery, ytDlpSkipDownload}
 	TrailarrLog(INFO, "YouTube", "yt-dlp command (SSE): yt-dlp %v", ytDlpArgs)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
@@ -1235,7 +1238,7 @@ func searchYtDlpForTerms(terms []string, maxResults int) ([]gin.H, error) {
 			break
 		}
 		searchQuery := term + " trailer"
-		TrailarrLog(INFO, "YouTube", "yt-dlp command: yt-dlp %v", []string{"-j", "ytsearch10:" + searchQuery, "--skip-download"})
+		TrailarrLog(INFO, "YouTube", "yt-dlp command: yt-dlp %v", []string{"-j", ytDlpSearchPrefix + searchQuery, ytDlpSkipDownload})
 		if err := runYtDlpSearch(searchQuery, videoIdSet, &allResults, maxResults); err != nil {
 			TrailarrLog(ERROR, "YouTube", "yt-dlp search error for query '%s': %v", searchQuery, err)
 			// continue searching other terms despite the error
@@ -1246,7 +1249,7 @@ func searchYtDlpForTerms(terms []string, maxResults int) ([]gin.H, error) {
 
 // runYtDlpSearch executes yt-dlp for a single searchQuery, appending unique results to results up to maxResults.
 func runYtDlpSearch(searchQuery string, videoIdSet map[string]bool, results *[]gin.H, maxResults int) error {
-	ytDlpArgs := []string{"-j", "ytsearch10:" + searchQuery, "--skip-download"}
+	ytDlpArgs := []string{"-j", ytDlpSearchPrefix + searchQuery, ytDlpSkipDownload}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, YtDlpCmd, ytDlpArgs...)

@@ -1,5 +1,30 @@
-
 import React, { useState, useEffect, useRef } from 'react';
+// Helper to normalize reason string for grouping (moved to outer scope)
+function normalizeReason(reason) {
+  if (!reason) return 'Other';
+  // Extract main error type for grouping
+  // 1. Private video
+  if (reason.includes('Private video. Sign in if you')) {
+    return 'Private video. Sign in if you\'ve been granted access to this video.';
+  }
+  // 2. Not available in your country
+  if (reason.includes('The uploader has not made this video available in your country')) {
+    return 'The uploader has not made this video available in your country.';
+  }
+  // 3. Age-restricted video
+  if (reason.includes('Sign in to confirm your age. This video may be inappropriate for some users.')) {
+    return 'Sign in to confirm your age. This video may be inappropriate for some users.';
+  }
+  // 4. Did not get any data blocks
+  if (reason.includes('Did not get any data blocks')) {
+    return 'Did not get any data blocks';
+  }
+  // 4. Fallback: first line of error
+  const firstLine = reason.split('\n')[0];
+  // Remove YouTube ID and video ID
+  return firstLine.replace(/\[youtube\] [\w-]+:/, '[youtube] <id>:').replace(/ERROR: \[youtube\] [\w-]+:/, 'ERROR: [youtube] <id>:').trim();
+}
+import PropTypes from 'prop-types';
 import './BlacklistPage.mobile.css';
 import ExtraCard from './ExtraCard.jsx';
 import YoutubePlayer from './YoutubePlayer.jsx';
@@ -7,35 +32,161 @@ import Container from './Container.jsx';
 import SectionHeader from './SectionHeader.jsx';
 
 
+// Subcomponent to render a single group item (reduces nesting in main render)
+function BlacklistGroupItem({ item, idx, darkMode, setYoutubeModal, setBlacklist }) {
+
+BlacklistGroupItem.propTypes = {
+  item: PropTypes.shape({
+    extraTitle: PropTypes.string,
+    extraType: PropTypes.string,
+    youtubeId: PropTypes.string,
+    reason: PropTypes.string,
+    message: PropTypes.string,
+    Status: PropTypes.string,
+    status: PropTypes.string,
+    mediaId: PropTypes.string,
+    mediaTitle: PropTypes.string,
+    mediaType: PropTypes.string,
+  }).isRequired,
+  idx: PropTypes.number.isRequired,
+  darkMode: PropTypes.bool,
+  setYoutubeModal: PropTypes.func.isRequired,
+  setBlacklist: PropTypes.func.isRequired,
+};
+  const extra = {
+    ExtraTitle: item.extraTitle || '',
+    ExtraType: item.extraType || '',
+    YoutubeId: item.youtubeId || '',
+    reason: item.reason || item.message || '',
+    Status: item.Status || item.status || '',
+  };
+  const media = {
+    mediaId: item.mediaId || '',
+    mediaTitle: item.mediaTitle || '',
+  };
+  const mediaType = item.mediaType || '';
+  // Use a more stable unique key for this card
+  const uniqueKey = `${extra.YoutubeId || ''}-${media.mediaId || ''}-${mediaType}`;
+  // Extract href logic for clarity
+  let mediaHref = '';
+  if (mediaType === 'movie') {
+    mediaHref = `/movies/${media.mediaId}`;
+  } else if (mediaType === 'tv') {
+    mediaHref = `/series/${media.mediaId}`;
+  }
+  const handleDownloaded = () => {
+    setBlacklist(prev => markBlacklistItemDownloaded(prev, extra.YoutubeId));
+  };
+  return (
+    <div key={uniqueKey} style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
+      <ExtraCard
+        extra={extra}
+        idx={idx}
+        typeExtras={[]}
+        darkMode={darkMode}
+        media={media}
+        mediaType={mediaType}
+        setExtras={null}
+        setModalMsg={() => {}}
+        setShowModal={() => {}}
+        YoutubeEmbed={null}
+        rejected={true}
+        onPlay={videoId => setYoutubeModal({ open: true, videoId })}
+        onDownloaded={handleDownloaded}
+      />
+      {media.mediaTitle && media.mediaId && (
+        mediaHref ? (
+          <a
+            href={mediaHref}
+            style={{
+              marginTop: 8,
+              fontSize: '0.97em',
+              color: darkMode ? '#f3f4f6' : '#23232a',
+              textDecoration: 'none',
+              textAlign: 'center',
+              wordBreak: 'break-word',
+              display: 'block',
+              fontWeight: 500,
+            }}
+          >
+            {media.mediaTitle}
+          </a>
+        ) : (
+          <button
+            type="button"
+            disabled
+            style={{
+              marginTop: 8,
+              fontSize: '0.97em',
+              color: darkMode ? '#f3f4f6' : '#23232a',
+              background: 'none',
+              border: 'none',
+              textDecoration: 'none',
+              textAlign: 'center',
+              wordBreak: 'break-word',
+              display: 'block',
+              fontWeight: 500,
+              cursor: 'not-allowed',
+              opacity: 0.7,
+            }}
+          >
+            {media.mediaTitle}
+          </button>
+        )
+      )}
+    </div>
+  );
+}
+// Helper to mark a blacklist item as downloaded
+function markBlacklistItemDownloaded(prev, youtubeId) {
+  if (!prev) return prev;
+  const update = (arr) => arr.map(item2 => {
+    if (item2.youtubeId === youtubeId) {
+      return { ...item2, status: 'downloaded', Status: 'downloaded' };
+    }
+    return item2;
+  });
+  if (Array.isArray(prev)) return update(prev);
+  const updated = {};
+  for (const k in prev) updated[k] = update(prev[k]);
+  return updated;
+}
+// Helper to update blacklist items with queue status
+function updateBlacklistWithQueue(prev, queue) {
+  if (!prev) return prev;
+  const update = (arr) => arr.map(item2 => {
+    const found = queue.find(q => (q.YouTubeID === (item2.youtubeId)));
+    if (found?.Status && item2.Status !== found.Status) {
+      return { ...item2, status: found.Status, Status: found.Status };
+    }
+    return item2;
+  });
+  if (Array.isArray(prev)) return update(prev);
+  const updated = {};
+  for (const k in prev) updated[k] = update(prev[k]);
+  return updated;
+}
+
+// Helper to preload images (outer scope)
+function preloadImages(urls) {
+  return Promise.all(
+    urls.map(
+      url =>
+        new Promise(resolve => {
+          if (!url) return resolve();
+          const img = new globalThis.Image();
+          img.onload = img.onerror = () => resolve();
+          img.src = url;
+        })
+    )
+  );
+}
+
 function BlacklistPage({ darkMode }) {
-  const longArgStringPhrase = "Long argument string detected";
-  const longArgStringGroupKey = "Long argument string detected (all)";
-  const postprocessingFailedPhrase = "Postprocessing: Conversion failed";
-  const postprocessingFailedGroupKey = "Postprocessing: Conversion failed (all)";
-  const noDataBlocksPhrase = "Did not get any data blocks";
-  const noDataBlocksGroupKey = "Did not get any data blocks (all)";
-  const videoUnavailablePhrase = "Video unavailable";
-  const videoUnavailableGroupKey = "Video unavailable (all)";
-  const signinBotPhrase = "Sign in to confirm you’re not a bot";
-  const signinBotGroupKey = "Sign in to confirm you’re not a bot (all)";
   const [blacklist, setBlacklist] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [youtubeModal, setYoutubeModal] = useState({ open: false, videoId: '' });
-  // Helper to preload images
-  function preloadImages(urls) {
-    return Promise.all(
-      urls.map(
-        url =>
-          new Promise(resolve => {
-            if (!url) return resolve();
-            const img = new window.Image();
-            img.onload = img.onerror = () => resolve();
-            img.src = url;
-          })
-      )
-    );
-  }
 
   useEffect(() => {
     fetch('/api/blacklist/extras')
@@ -63,8 +214,11 @@ function BlacklistPage({ darkMode }) {
   // WebSocket for real-time blacklist status
   const wsRef = useRef(null);
   useEffect(() => {
-    const wsUrl = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws/download-queue';
-    const ws = new window.WebSocket(wsUrl);
+    const wsUrl = (globalThis.location.protocol === 'https:' ? 'wss://' : 'ws://') + globalThis.location.host + '/ws/download-queue';
+    const ws = new globalThis.WebSocket(wsUrl);
+    BlacklistPage.propTypes = {
+      darkMode: PropTypes.bool,
+    };
     wsRef.current = ws;
     ws.onopen = () => {
       console.debug('[WebSocket] Connected to download queue (BlacklistPage)');
@@ -73,21 +227,7 @@ function BlacklistPage({ darkMode }) {
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === 'download_queue_update' && Array.isArray(msg.queue)) {
-          setBlacklist(prev => {
-            if (!prev) return prev;
-            // Update status for matching blacklist items
-            const update = (arr) => arr.map(item2 => {
-              const found = msg.queue.find(q => (q.YouTubeID === (item2.youtubeId)));
-              if (found && found.Status && item2.Status !== found.Status) {
-                return { ...item2, status: found.Status, Status: found.Status };
-              }
-              return item2;
-            });
-            if (Array.isArray(prev)) return update(prev);
-            const updated = {};
-            for (const k in prev) updated[k] = update(prev[k]);
-            return updated;
-          });
+          setBlacklist(prev => updateBlacklistWithQueue(prev, msg.queue));
         }
       } catch (err) {
         console.debug('[WebSocket] Error parsing message', err);
@@ -110,64 +250,27 @@ function BlacklistPage({ darkMode }) {
   if (!blacklist || (Array.isArray(blacklist) && blacklist.length === 0)) return <div style={{ padding: 32 }}>No blacklisted extras found.</div>;
 
   // If the blacklist is an object, convert to array for display
-  let items;
+  let items = null;
   if (Array.isArray(blacklist)) {
     items = blacklist;
   } else if (blacklist && typeof blacklist === 'object') {
     items = Object.values(blacklist);
-  } else {
-    return <div style={{ padding: 32, color: 'red' }}>Unexpected data format<br /><pre>{JSON.stringify(blacklist, null, 2)}</pre></div>;
   }
   if (!Array.isArray(items)) {
     return <div style={{ padding: 32, color: 'red' }}>Unexpected data format<br /><pre>{JSON.stringify(blacklist, null, 2)}</pre></div>;
   }
 
-  // Group items by normalized reason (replace YouTube ID with XXXXXXXX)
+
+
+
+  // Group items by normalized reason
   const groups = {};
-  // const youtubeIdRegex = /([A-Za-z0-9_-]{8,20})/g;
-  const countryPhrase = 'The uploader has not made this video available in your country';
-  const countryGroupKey = 'Not available in your country (all)';
-  const signinPhrase = "Sign in if you've been granted access to this video";
-  const signinAgePhrase = "Sign in to confirm your age";
-  const signinGroupKey = "Sign-in required (all)";
-  const tooManyRequestsPhrase = 'HTTP Error 429: Too Many Requests';
-  const tooManyRequestsGroupKey = 'Too Many Requests (all)';
-  items.forEach((item) => {
-    let reason = item.reason || item.message || '';
-    // Replace YouTube ID in reason with XXXXXXXX if present
-    if (item.youtubeId) {
-      const ytId = item.youtubeId;
-      // Only replace if the ID is present in the reason
-      reason = reason.replaceAll(ytId, 'XXXXXXXX');
-    }
-    // Also replace any likely YouTube ID pattern in the reason
-    reason = reason.replace(/([A-Za-z0-9_-]{8,20})/g, (match) => {
-      // If the match is the YouTube ID, replace, otherwise leave
-      if (item.youtubeId && match === item.youtubeId) return 'XXXXXXXX';
-      return match;
-    });
-    // Group all country restriction, sign-in, and 429 reasons together
-    let groupKey = reason;
-    if (reason.includes(countryPhrase)) {
-      groupKey = countryGroupKey;
-    } else if (reason.includes(signinBotPhrase)) {
-      groupKey = signinBotGroupKey;
-    } else if (reason.includes(signinPhrase) || reason.includes(signinAgePhrase)) {
-      groupKey = signinGroupKey;
-    } else if (reason.includes(tooManyRequestsPhrase)) {
-      groupKey = tooManyRequestsGroupKey;
-    } else if (reason.includes(videoUnavailablePhrase)) {
-      groupKey = videoUnavailableGroupKey;
-    } else if (reason.includes(noDataBlocksPhrase)) {
-      groupKey = noDataBlocksGroupKey;
-    } else if (reason.includes(postprocessingFailedPhrase)) {
-      groupKey = postprocessingFailedGroupKey;
-    } else if (reason.includes(longArgStringPhrase)) {
-      groupKey = longArgStringGroupKey;
-    }
-    if (!groups[groupKey]) groups[groupKey] = [];
-    groups[groupKey].push(item);
-  });
+  for (const item of items) {
+    const rawReason = item.reason || item.message || 'Other';
+    const normReason = normalizeReason(rawReason);
+    if (!groups[normReason]) groups[normReason] = [];
+    groups[normReason].push(item);
+  }
 
   // If all groups are empty, show a message
   const totalItems = Object.values(groups).reduce((acc, arr) => acc + arr.length, 0);
@@ -194,14 +297,16 @@ function BlacklistPage({ darkMode }) {
       background: darkMode ? '#18181b' : '#fff',
       color: darkMode ? '#f3f4f6' : '#18181b'
     }}>
-      {Object.entries(groups).map(([reason, groupItems], groupIdx) => {
+      {Object.entries(groups).map(([reason, groupItems]) => {
         // Only shrink if reason contains this phrase
         let displayReason = reason;
         if (reason.includes('Did not get any data blocks') && reason.length > 40) {
           displayReason = reason.slice(0, 1000) + '...';
         }
+        // Use a stable key based on the group reason
+        const groupKey = reason.replaceAll(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40);
         return (
-          <div key={groupIdx} style={{
+          <div key={groupKey} style={{
             marginBottom: 40,
             background: darkMode ? '#23232a' : '#f3f4f6',
             borderRadius: 12,
@@ -210,79 +315,16 @@ function BlacklistPage({ darkMode }) {
           }}>
             <SectionHeader darkMode={darkMode} style={{ fontWeight: 600, fontSize: '1.1em', margin: '0 0 16px 8px', color: '#ef4444', textAlign: 'left', wordBreak: 'break-word' }}>{displayReason}</SectionHeader>
             <div className="BlacklistExtrasGrid" style={{ ...gridStyle, justifyContent: 'start' }}>
-              {groupItems.map((item, idx) => {
-                const extra = {
-                  ExtraTitle: item.extraTitle || '',
-                  ExtraType: item.extraType || '',
-                  YoutubeId: item.youtubeId || '',
-                  reason: item.reason || item.message || '',
-                  Status: item.Status || item.status || '',
-                };
-                const media = {
-                  mediaId: item.mediaId || '',
-                  mediaTitle: item.mediaTitle || '',
-                };
-                const mediaType = item.mediaType || '';
-                // Unique key for this card
-                return (
-                  <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
-                    <ExtraCard
-                      extra={extra}
-                      idx={idx}
-                      typeExtras={[]}
-                      darkMode={darkMode}
-                      media={media}
-                      mediaType={mediaType}
-                      setExtras={null}
-                      setModalMsg={() => {}}
-                      setShowModal={() => {}}
-                      YoutubeEmbed={null}
-                      rejected={true}
-                      onPlay={videoId => setYoutubeModal({ open: true, videoId })}
-                      onDownloaded={() => {
-                        setBlacklist(prev => {
-                          if (!prev) return prev;
-                          // Update the correct item in the blacklist
-                          const update = (arr) => arr.map((item2) => {
-                            if (item2.youtubeId === extra.YoutubeId) {
-                              return { ...item2, status: 'downloaded', Status: 'downloaded' };
-                            }
-                            return item2;
-                          });
-                          if (Array.isArray(prev)) return update(prev);
-                          // If object, update all values
-                          const updated = {};
-                          for (const k in prev) updated[k] = update(prev[k]);
-                          return updated;
-                        });
-                      }}
-                    />
-                    {media.mediaTitle && media.mediaId && (
-                      <a
-                        href={
-                          mediaType === 'movie'
-                            ? `/movies/${media.mediaId}`
-                            : mediaType === 'tv'
-                              ? `/series/${media.mediaId}`
-                              : '#'
-                        }
-                        style={{
-                          marginTop: 8,
-                          fontSize: '0.97em',
-                          color: darkMode ? '#f3f4f6' : '#23232a',
-                          textDecoration: 'none',
-                          textAlign: 'center',
-                          wordBreak: 'break-word',
-                          display: 'block',
-                          fontWeight: 500,
-                        }}
-                      >
-                        {media.mediaTitle}
-                      </a>
-                    )}
-                  </div>
-                );
-              })}
+              {groupItems.map((item, idx) => (
+                <BlacklistGroupItem
+                  key={(item.youtubeId || '') + '-' + (item.mediaId || '') + '-' + (item.mediaType || '')}
+                  item={item}
+                  idx={idx}
+                  darkMode={darkMode}
+                  setYoutubeModal={setYoutubeModal}
+                  setBlacklist={setBlacklist}
+                />
+              ))}
             </div>
           </div>
         );

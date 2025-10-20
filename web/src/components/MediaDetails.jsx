@@ -1,3 +1,70 @@
+YoutubeModal.propTypes = {
+  open: PropTypes.bool.isRequired,
+  videoId: PropTypes.string.isRequired,
+  onClose: PropTypes.func.isRequired,
+};
+// Top-level WebSocket message handler for extras queue updates
+function handleExtrasQueueUpdate(msg, mediaId, setExtras, setError) {
+  if (msg.type === 'download_queue_update' && Array.isArray(msg.queue)) {
+    setExtras(prev => prev.map(ex => updateExtraWithQueueStatus(ex, msg.queue, mediaId, setError)));
+  }
+}
+
+// Accessible YouTube modal component
+function YoutubeModal({ open, videoId, onClose }) {
+  if (!open || !videoId) return null;
+  return (
+    <dialog
+      open
+      aria-modal="true"
+      style={{
+        position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.7)', zIndex: 99999,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', padding: 0,
+      }}
+    >
+      <div
+        style={{
+          position: 'relative',
+          background: '#18181b',
+          borderRadius: 16,
+          boxShadow: '0 2px 24px #000',
+          padding: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'visible',
+        }}
+        aria-label="YouTube modal dialog"
+      >
+        <button
+          onClick={onClose}
+          style={{ position: 'absolute', top: 8, right: 12, zIndex: 2, fontSize: 28, color: '#fff', background: 'transparent', border: 'none', cursor: 'pointer' }}
+          aria-label="Close"
+        >×</button>
+        <YoutubePlayer videoId={videoId} />
+      </div>
+    </dialog>
+  );
+}
+// Helper to update extras with queue status (moved to outer scope)
+function updateExtraWithQueueStatus(ex, queue, mediaId, setError) {
+  const found = queue.find(q => q.MediaId == mediaId && q.YouTubeID === ex.YoutubeId);
+  if (found?.Status) {
+    // Only show toast if status transitions to 'failed' or 'rejected'
+    if ((found.Status === 'failed' || found.Status === 'rejected') &&
+        (found.reason || found.Reason) &&
+        ex.Status !== found.Status) {
+      setError(found.reason || found.Reason);
+    }
+    return {
+      ...ex,
+      Status: found.Status,
+      reason: found.reason || found.Reason,
+      Reason: found.reason || found.Reason,
+    };
+  }
+  return ex;
+}
 import React, { useState, useEffect, useRef } from 'react';
 import MediaInfoLane from './MediaInfoLane.jsx';
 import ActionLane from './ActionLane.jsx';
@@ -9,6 +76,7 @@ import Container from './Container.jsx';
 import Toast from './Toast.jsx';
 import { useParams } from 'react-router-dom';
 
+import PropTypes from 'prop-types';
 
 // Helper to convert YouTube search results to extras format for Trailers
 function ytResultsToExtras(ytResults) {
@@ -87,6 +155,9 @@ function YoutubeEmbed({ videoId }) {
     </div>
   );
 }
+  YoutubeEmbed.propTypes = {
+    videoId: PropTypes.string.isRequired,
+  };
 
 export default function MediaDetails({ mediaItems, loading, mediaType }) {
   const { id } = useParams();
@@ -99,7 +170,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
 
   // Fetch cast when media or mediaType changes
   useEffect(() => {
-    if (!media || !media.id || !mediaType) {
+    if (!media?.id || !mediaType) {
       setCast([]);
       setCastError('');
       return;
@@ -136,16 +207,16 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
   useEffect(() => {
     setTimeout(() => {
       // Try window scroll
-      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      globalThis.window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
       // Try scrolling main container if present
-      const main = document.querySelector('main');
+      const main = globalThis.document.querySelector('main');
       if (main && typeof main.scrollTo === 'function') {
         main.scrollTo({ top: 0, left: 0, behavior: 'auto' });
       }
       // Try to find the first scrollable container
-      const all = document.querySelectorAll('body *');
+      const all = globalThis.document.querySelectorAll('body *');
       for (let el of all) {
-        const style = window.getComputedStyle(el);
+        const style = globalThis.window.getComputedStyle(el);
         if ((style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight) {
           el.scrollTo({ top: 0, left: 0, behavior: 'auto' });
           break;
@@ -164,25 +235,25 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
     const handleClick = (e) => {
       if (e.target.classList.contains('youtube-modal-backdrop')) setYoutubeModal({ open: false, videoId: '' });
     };
-    window.addEventListener('keydown', handleKey);
-    window.addEventListener('mousedown', handleClick);
+  globalThis.window.addEventListener('keydown', handleKey);
+  globalThis.window.addEventListener('mousedown', handleClick);
     return () => {
-      window.removeEventListener('keydown', handleKey);
-      window.removeEventListener('mousedown', handleClick);
+  globalThis.window.removeEventListener('keydown', handleKey);
+  globalThis.window.removeEventListener('mousedown', handleClick);
     };
   }, [youtubeModal.open]);
   // (removed duplicate declaration)
   const [extras, setExtras] = useState([]);
-  const [_searchLoading, setSearchLoading] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
   const [error, setError] = useState('');
   const [modalMsg, setModalMsg] = useState('');
   const [showModal, setShowModal] = useState(false);
-  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const prefersDark = globalThis.window.matchMedia && globalThis.window.matchMedia('(prefers-color-scheme: dark)').matches;
   const [darkMode, setDarkMode] = useState(prefersDark);
   useEffect(() => {
     const listener = e => setDarkMode(e.matches);
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', listener);
-    return () => window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', listener);
+  globalThis.window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', listener);
+  return () => globalThis.window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', listener);
   }, []);
 
   useEffect(() => {
@@ -203,8 +274,8 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
   const wsRef = useRef(null);
   useEffect(() => {
     if (!media) return;
-    const wsUrl = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws/download-queue';
-    const ws = new window.WebSocket(wsUrl);
+    const wsUrl = (globalThis.window.location.protocol === 'https:' ? 'wss://' : 'ws://') + globalThis.window.location.host + '/ws/download-queue';
+    const ws = new globalThis.window.WebSocket(wsUrl);
     wsRef.current = ws;
     ws.onopen = () => {
       console.debug('[WebSocket] Connected to download queue (MediaDetails)');
@@ -212,26 +283,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-        if (msg.type === 'download_queue_update' && Array.isArray(msg.queue)) {
-          setExtras(prev => prev.map(ex => {
-            const found = msg.queue.find(q => q.MediaId == media.id && q.YouTubeID === ex.YoutubeId);
-            if (found && found.Status) {
-              // Only show toast if status transitions to 'failed' or 'rejected'
-              if ((found.Status === 'failed' || found.Status === 'rejected') &&
-                  (found.reason || found.Reason) &&
-                  ex.Status !== found.Status) {
-                setError(found.reason || found.Reason);
-              }
-              return {
-                ...ex,
-                Status: found.Status,
-                reason: found.reason || found.Reason,
-                Reason: found.reason || found.Reason,
-              };
-            }
-            return ex;
-          }));
-        }
+        handleExtrasQueueUpdate(msg, media.id, setExtras, setError);
       } catch (err) {
         console.debug('[WebSocket] Error parsing message', err);
       }
@@ -293,9 +345,9 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
     });
     // Append backend-only extras (not in ytResults) after manual search cards
     const ytIds = new Set(ytExtras.map(e => e.YoutubeId));
-    backend.forEach(be => {
+    for (const be of backend) {
       if (!ytIds.has(be.YoutubeId)) merged.push(be);
-    });
+    }
     extrasByType['Trailers'] = merged;
   }
 
@@ -324,18 +376,18 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
       )}
       <ActionLane
         buttons={[{
-          icon: _searchLoading
+          icon: searchLoading
             ? <FontAwesomeIcon icon={faSpinner} spin />
             : <FontAwesomeIcon icon={faSearch} />,
           label: 'Search',
           onClick: () => {
             if (!media) return;
             if (!mediaType || !media.id) {
-              setError && setError('Missing media info for YouTube search');
+              setError?.('Missing media info for YouTube search');
               return;
             }
             setSearchLoading(true);
-            setError && setError('');
+            setError?.('');
             setYtResults([]);
             let results = [];
             import('../api.youtube.sse').then(({ searchYoutubeStream }) => {
@@ -348,15 +400,15 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
                 },
                 onDone: () => setSearchLoading(false),
                 onError: () => {
-                  setError && setError('YouTube search failed');
+                  setError?.('YouTube search failed');
                   setSearchLoading(false);
                 }
               });
             });
           },
-          disabled: _searchLoading,
-          loading: _searchLoading,
-          showLabel: typeof window !== 'undefined' ? window.innerWidth > 900 : true,
+          disabled: searchLoading,
+          loading: searchLoading,
+          showLabel: globalThis.window !== undefined && globalThis.window.innerWidth > 900,
         }]}
         darkMode={darkMode}
       />
@@ -391,36 +443,17 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
         </div>
       )}
       {/* Render YouTube modal only once at the page level */}
-      {(youtubeModal.open && youtubeModal.videoId) && (
-        <div
-          style={{
-            position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.7)', zIndex: 99999,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-          onClick={e => {
-            if (e.target === e.currentTarget) setYoutubeModal({ open: false, videoId: '' });
-          }}
-        >
-          <div style={{
-            position: 'relative',
-            background: '#18181b',
-            borderRadius: 16,
-            boxShadow: '0 2px 24px #000',
-            padding: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'visible',
-          }}>
-            <button
-              onClick={() => setYoutubeModal({ open: false, videoId: '' })}
-              style={{ position: 'absolute', top: 8, right: 12, zIndex: 2, fontSize: 28, color: '#fff', background: 'transparent', border: 'none', cursor: 'pointer' }}
-              aria-label="Close"
-            >×</button>
-            <YoutubePlayer videoId={youtubeModal.videoId} />
-          </div>
-        </div>
-      )}
+      <YoutubeModal
+        open={youtubeModal.open}
+        videoId={youtubeModal.videoId}
+        onClose={() => setYoutubeModal({ open: false, videoId: '' })}
+      />
     </Container>
   );
 }
+
+MediaDetails.propTypes = {
+  mediaItems: PropTypes.arrayOf(PropTypes.object).isRequired,
+  loading: PropTypes.bool.isRequired,
+  mediaType: PropTypes.oneOf(['movie', 'series', 'tv']).isRequired,
+};

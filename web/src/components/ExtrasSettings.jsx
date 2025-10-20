@@ -40,7 +40,7 @@ const YTDLP_FLAGS = [
 ];
 
 export default function ExtrasSettings({ darkMode }) {
-  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const isDark = typeof globalThis.matchMedia === 'function' ? globalThis.matchMedia('(prefers-color-scheme: dark)').matches : false;
   useEffect(() => {
     const setColors = () => {
       document.documentElement.style.setProperty('--settings-bg', isDark ? '#222' : '#fff');
@@ -55,10 +55,14 @@ export default function ExtrasSettings({ darkMode }) {
       document.documentElement.style.setProperty('--settings-table-header-text', isDark ? '#fff' : '#222');
     };
     setColors();
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', setColors);
-    return () => {
-      window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', setColors);
-    };
+    if (typeof globalThis.matchMedia === 'function') {
+      const mq = globalThis.matchMedia('(prefers-color-scheme: dark)');
+      mq.addEventListener('change', setColors);
+      return () => {
+        mq.removeEventListener('change', setColors);
+      };
+    }
+    return undefined;
   }, [darkMode, isDark]);
   const [settings, setSettings] = useState({});
   const [ytFlags, setYtFlags] = useState({});
@@ -89,17 +93,17 @@ export default function ExtrasSettings({ darkMode }) {
           setPlexTypes(mapp);
           // Build settings object from mapp array
           const settingsFromMapp = {};
-          mapp.forEach(entry => {
-            if (entry && entry.key) {
+          for (const entry of mapp) {
+            if (entry?.key) {
               settingsFromMapp[entry.key] = !!entry.value;
             }
-          });
+          }
           const initialMapping = { ...mapRes.data.mapping };
-          tmdbRes.data.tmdbExtraTypes.forEach(type => {
+          for (const type of tmdbRes.data.tmdbExtraTypes) {
             if (!initialMapping[type]) {
               initialMapping[type] = "Other";
             }
-          });
+          }
           setMapping(initialMapping);
           setSettings(settingsFromMapp);
         setYtFlags(ytRes.data);
@@ -170,7 +174,7 @@ export default function ExtrasSettings({ darkMode }) {
           onClick: handleSave,
           disabled: saving || !isChanged,
           loading: saving,
-          showLabel: typeof window !== 'undefined' ? window.innerWidth > 900 : true,
+          showLabel: globalThis.window === undefined ? true : globalThis.window.innerWidth > 900,
         }]}
         error={error}
         darkMode={darkMode}
@@ -185,8 +189,8 @@ export default function ExtrasSettings({ darkMode }) {
             value={EXTRA_TYPES.filter(({ key }) => settings[key]).map(({ key, label }) => ({ value: key, label }))}
             onChange={selected => {
               const newSettings = { ...settings };
-              EXTRA_TYPES.forEach(({ key }) => { newSettings[key] = false; });
-              selected.forEach(({ value }) => { newSettings[value] = true; });
+              for (const { key } of EXTRA_TYPES) { newSettings[key] = false; }
+              for (const { value } of selected) { newSettings[value] = true; }
               setSettings(newSettings);
             }}
             styles={{
@@ -244,8 +248,16 @@ export default function ExtrasSettings({ darkMode }) {
               }),
               option: (base, state) => ({
                 ...base,
-                background: state.isSelected ? (isDark ? '#a855f7' : '#6d28d9') : (state.isFocused ? (isDark ? '#333' : '#eee') : (isDark ? '#23232a' : '#fff')),
-                color: state.isSelected ? '#fff' : (isDark ? '#fff' : '#222'),
+                // SonarLint: extract nested ternaries
+                background: (() => {
+                  if (state.isSelected) return isDark ? '#a855f7' : '#6d28d9';
+                  if (state.isFocused) return isDark ? '#333' : '#eee';
+                  return isDark ? '#23232a' : '#fff';
+                })(),
+                color: (() => {
+                  if (state.isSelected) return '#fff';
+                  return isDark ? '#fff' : '#222';
+                })(),
                 fontWeight: state.isSelected ? 600 : 400,
                 fontSize: 13,
                 height: 32,
