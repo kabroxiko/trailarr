@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -15,10 +16,23 @@ import (
 
 // StartRedisServer starts a Redis server as a subprocess, using TrailarrRoot as the database directory.
 func StartRedisServer() error {
+	// If REDIS_ADDR is set and reachable, don't start an embedded redis-server.
+	addr := os.Getenv("REDIS_ADDR")
+	if addr == "" {
+		addr = "127.0.0.1:6379"
+	}
+	// Try a quick TCP dial to see if Redis is already running
+	conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
+	if err == nil {
+		conn.Close()
+		log.Printf("Redis already reachable at %s, skipping embedded start", addr)
+		return nil
+	}
+
 	cmd := exec.Command("redis-server", "--dir", TrailarrRoot)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	err := cmd.Start()
+	err = cmd.Start()
 	if err != nil {
 		log.Printf("Failed to start Redis: %v", err)
 		return err

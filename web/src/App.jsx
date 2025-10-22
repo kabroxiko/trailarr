@@ -241,8 +241,30 @@ function App() {
           onClose={handleSidebarClose}
           onToggle={handleSidebarToggle}
         />
-        <main style={{ flex: 1, padding: '0em', height: '100%', boxSizing: 'border-box', overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'stretch', maxWidth: '100vw', background: darkMode ? '#18181b' : '#fff', color: darkMode ? '#e5e7eb' : '#222' }}>
-          <div style={{ background: darkMode ? '#23232a' : '#fff', boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb', padding: '0em', width: '100%', maxWidth: '100%', flex: 1, overflowY: 'auto', overflowX: 'hidden', color: darkMode ? '#e5e7eb' : '#222' }}>
+        <main style={{
+          flex: 1,
+          padding: '0em',
+          height: '100%',
+          boxSizing: 'border-box',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          justifyContent: 'stretch',
+          maxWidth: '100vw',
+          background: darkMode ? '#18181b' : '#fff',
+          color: darkMode ? '#e5e7eb' : '#222' }}>
+          <div style={{
+            background: darkMode ? '#23232a' : '#fff',
+            boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb',
+            padding: '0em',
+            width: '100%',
+            maxWidth: '100%',
+            flex: 1,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            color: darkMode ? '#e5e7eb' : '#222' }}>
             <React.Suspense fallback={null}>
               <Routes>
                 <Route path="/series" element={<MediaRouteComponent
