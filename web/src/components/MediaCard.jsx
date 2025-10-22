@@ -1,12 +1,22 @@
-import React from 'react';
-import PropTypes from 'prop-types';
+import React from "react";
+import PropTypes from "prop-types";
 
 // Compact MediaCard for use in MediaList (tiles)
 function MediaCard({ media, mediaType, darkMode = false }) {
   if (!media) return null;
-  const poster = mediaType === 'series' ? `/mediacover/Series/${media.id}/poster-500.jpg` : `/mediacover/Movies/${media.id}/poster-500.jpg`;
+  const poster =
+    mediaType === "series"
+      ? `/mediacover/Series/${media.id}/poster-500.jpg`
+      : `/mediacover/Movies/${media.id}/poster-500.jpg`;
   return (
-    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+    <div
+      style={{
+        width: "100%",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+      }}
+    >
       {/* Mobile: just poster, rounded borders, no frame/box/title/year */}
       <style>{`
         @media (max-width: 900px) {
@@ -29,21 +39,44 @@ function MediaCard({ media, mediaType, darkMode = false }) {
         src={poster}
         loading="lazy"
         style={{
-          width: '100%',
-          height: 'auto',
-          objectFit: 'cover',
+          width: "100%",
+          height: "auto",
+          objectFit: "cover",
           borderRadius: 8,
-          display: 'block',
-          aspectRatio: '2/3',
-          maxWidth: '220px',
+          display: "block",
+          aspectRatio: "2/3",
+          maxWidth: "220px",
         }}
-        onError={e => { e.target.onerror = null; e.target.src = '/logo.svg'; }}
+        onError={(e) => {
+          e.target.onerror = null;
+          e.target.src = "/logo.svg";
+        }}
         alt={media.title}
       />
       {/* Desktop: show title/year/frame/box as before */}
-      <div className="media-card-details" style={{ marginTop: 8, textAlign: 'center', width: '100%', maxWidth: '220px', display: 'none' }} title={media.title}>
-        <div style={{ color: darkMode ? '#fff' : '#222', fontWeight: 600, fontSize: 14 }}>{media.title}</div>
-        <div style={{ color: darkMode ? '#ddd' : '#666', fontSize: 12 }}>{media.year || media.airDate || ''}</div>
+      <div
+        className="media-card-details"
+        style={{
+          marginTop: 8,
+          textAlign: "center",
+          width: "100%",
+          maxWidth: "220px",
+          display: "none",
+        }}
+        title={media.title}
+      >
+        <div
+          style={{
+            color: darkMode ? "#fff" : "#222",
+            fontWeight: 600,
+            fontSize: 14,
+          }}
+        >
+          {media.title}
+        </div>
+        <div style={{ color: darkMode ? "#ddd" : "#666", fontSize: 12 }}>
+          {media.year || media.airDate || ""}
+        </div>
       </div>
       <style>{`
         @media (min-width: 901px) {

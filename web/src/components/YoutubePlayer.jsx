@@ -1,14 +1,14 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from "react";
 
 // Loads the YouTube IFrame API if not already loaded
 let ytApiPromise = null;
 function loadYouTubeAPI() {
   if (window.YT && window.YT.Player) return Promise.resolve();
   if (ytApiPromise) return ytApiPromise;
-  ytApiPromise = new Promise(resolve => {
+  ytApiPromise = new Promise((resolve) => {
     if (window.YT && window.YT.Player) return resolve();
-    const tag = document.createElement('script');
-    tag.src = 'https://www.youtube.com/iframe_api';
+    const tag = document.createElement("script");
+    tag.src = "https://www.youtube.com/iframe_api";
     window.onYouTubeIframeAPIReady = () => resolve();
     document.body.appendChild(tag);
   });
@@ -18,18 +18,18 @@ function loadYouTubeAPI() {
 export default function YoutubePlayer({ videoId, onReady }) {
   const playerRef = useRef();
   const ytPlayer = useRef();
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   useEffect(() => {
     let destroyed = false;
     let pollId;
     let playerCreated = false;
     let timeoutId;
-  setError('');
+    setError("");
     function tryCreatePlayer() {
       if (destroyed || playerCreated) return;
       if (!videoId) {
-        setError('No videoId provided.');
+        setError("No videoId provided.");
         return;
       }
       if (window.YT && window.YT.Player && playerRef.current) {
@@ -45,12 +45,12 @@ export default function YoutubePlayer({ videoId, onReady }) {
               onError: (e) => {
                 // YouTube error 150: embedding not allowed
                 if (e.data === 150) {
-                  setError(''); // Do not show error, do not hide
+                  setError(""); // Do not show error, do not hide
                 } else {
-                  setError('YouTube Player error: ' + JSON.stringify(e.data));
+                  setError("YouTube Player error: " + JSON.stringify(e.data));
                 }
-                console.error('YouTube Player error', e);
-              }
+                console.error("YouTube Player error", e);
+              },
             },
             playerVars: {
               autoplay: 1,
@@ -58,23 +58,23 @@ export default function YoutubePlayer({ videoId, onReady }) {
               modestbranding: 1,
             },
           });
-          console.log('YouTube Player created for', videoId);
+          console.log("YouTube Player created for", videoId);
         } catch (err) {
-          setError('Failed to create YouTube Player: ' + err.message);
-          console.error('Failed to create YouTube Player', err);
+          setError("Failed to create YouTube Player: " + err.message);
+          console.error("Failed to create YouTube Player", err);
         }
       } else {
         pollId = setTimeout(tryCreatePlayer, 50);
       }
     }
     loadYouTubeAPI().then(() => {
-      console.log('YouTube IFrame API loaded');
+      console.log("YouTube IFrame API loaded");
       tryCreatePlayer();
     });
     // Fallback: if not created after 5s, show error
     timeoutId = setTimeout(() => {
       if (!playerCreated && !destroyed) {
-        setError('Failed to create YouTube Player after 5 seconds.');
+        setError("Failed to create YouTube Player after 5 seconds.");
       }
     }, 5000);
     return () => {
@@ -89,37 +89,47 @@ export default function YoutubePlayer({ videoId, onReady }) {
   }, [videoId, onReady]);
 
   return (
-    <div style={{ position: 'relative', width: '80vw', height: '45vw', maxWidth: 900, maxHeight: 506 }}>
+    <div
+      style={{
+        position: "relative",
+        width: "80vw",
+        height: "45vw",
+        maxWidth: 900,
+        maxHeight: 506,
+      }}
+    >
       <div
         ref={playerRef}
         style={{
-          width: '100%',
-          height: '100%',
-          background: '#000',
+          width: "100%",
+          height: "100%",
+          background: "#000",
           borderRadius: 12,
-          boxShadow: '0 2px 24px #000',
-          border: 'none',
-          display: 'block',
+          boxShadow: "0 2px 24px #000",
+          border: "none",
+          display: "block",
         }}
       />
       {error && (
-        <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          background: 'rgba(0,0,0,0.85)',
-          color: '#fff',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderRadius: 12,
-          zIndex: 2,
-          fontSize: 18,
-          textAlign: 'center',
-          padding: 24,
-        }}>
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            background: "rgba(0,0,0,0.85)",
+            color: "#fff",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 12,
+            zIndex: 2,
+            fontSize: 18,
+            textAlign: "center",
+            padding: 24,
+          }}
+        >
           {error}
         </div>
       )}

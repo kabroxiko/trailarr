@@ -1,22 +1,22 @@
-function formatTimeDiff({from, to, suffix = '', roundType = 'ceil'}) {
-  if (!from || !to) return '-';
+function formatTimeDiff({ from, to, suffix = "", roundType = "ceil" }) {
+  if (!from || !to) return "-";
   let diff = Math.max(0, to - from);
   return durationToText(diff, suffix, roundType);
 }
 
 function formatInterval(interval) {
-  if (interval == null || interval === '') return '-';
-  if (typeof interval === 'number') {
+  if (interval == null || interval === "") return "-";
+  if (typeof interval === "number") {
     return durationToText(interval * 60 * 1000);
   }
-  if (typeof interval !== 'string') interval = String(interval);
+  if (typeof interval !== "string") interval = String(interval);
   // Parse patterns like '2h30m', '1d2h', '90m', '1h', '1d', etc.
   const regex = /(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?/;
   const match = interval.match(regex);
   if (!match) return interval;
-  const days = Number.parseInt(match[1] || '0', 10);
-  const hours = Number.parseInt(match[2] || '0', 10);
-  const minutes = Number.parseInt(match[3] || '0', 10);
+  const days = Number.parseInt(match[1] || "0", 10);
+  const hours = Number.parseInt(match[2] || "0", 10);
+  const minutes = Number.parseInt(match[3] || "0", 10);
   if (days > 0 || hours > 0 || minutes > 0) {
     return durationToText((days * 86400 + hours * 3600 + minutes * 60) * 1000);
   }
@@ -29,17 +29,17 @@ function formatInterval(interval) {
 }
 
 function formatDuration(duration) {
-  if (!duration || duration === '-') return '-';
+  if (!duration || duration === "-") return "-";
   // Accepts either seconds (number) or string like '1m23.456s' or '267.00858ms'
-  if (typeof duration === 'number') {
+  if (typeof duration === "number") {
     if (duration < 1) {
       return `${(duration * 1000).toFixed(2)} ms`;
     }
     return durationToText(duration * 1000);
   }
   // Handle ms string like '267.00858ms'
-  if (typeof duration === 'string' && duration.endsWith('ms')) {
-    const ms = Number.parseFloat(duration.replace('ms', ''));
+  if (typeof duration === "string" && duration.endsWith("ms")) {
+    const ms = Number.parseFloat(duration.replace("ms", ""));
     if (ms < 1000) {
       return `${ms.toFixed(2)} ms`;
     }
@@ -48,77 +48,80 @@ function formatDuration(duration) {
   // Parse string like '1h2m3.456s', '2m3.456s', or '3.456s'
   const match = duration.match(/(?:(\d+)h)?(?:(\d+)m)?([\d.]+)s/);
   if (!match) return duration;
-  const hours = Number.parseInt(match[1] || '0', 10);
-  const minutes = Number.parseInt(match[2] || '0', 10);
-  const secondsFloat = Number.parseFloat(match[3] || '0');
+  const hours = Number.parseInt(match[1] || "0", 10);
+  const minutes = Number.parseInt(match[2] || "0", 10);
+  const secondsFloat = Number.parseFloat(match[3] || "0");
   if (secondsFloat < 1 && hours === 0 && minutes === 0) {
     return `${(secondsFloat * 1000).toFixed(2)} ms`;
   }
-  return durationToText((hours * 3600 + minutes * 60 + Math.floor(secondsFloat)) * 1000);
+  return durationToText(
+    (hours * 3600 + minutes * 60 + Math.floor(secondsFloat)) * 1000,
+  );
 }
-import React, { useEffect, useState, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
-import { FaArrowsRotate, FaClock } from 'react-icons/fa6';
-import './Tasks.css';
+import React, { useEffect, useState, useRef } from "react";
+import { useLocation } from "react-router-dom";
+import { FaArrowsRotate, FaClock } from "react-icons/fa6";
+import "./Tasks.css";
 
 // Inline style to remove focus outline from the force icon
 const iconNoOutline = {
-  outline: 'none',
-  boxShadow: 'none',
+  outline: "none",
+  boxShadow: "none",
 };
 
 const getStyles = (darkMode) => ({
   table: {
-    width: '100%',
-    marginBottom: '2em',
-    borderCollapse: 'collapse',
-    background: darkMode ? '#23272f' : '#f6f7f9',
-    color: darkMode ? '#eee' : '#222',
-    fontSize: '15px',
+    width: "100%",
+    marginBottom: "2em",
+    borderCollapse: "collapse",
+    background: darkMode ? "#23272f" : "#f6f7f9",
+    color: darkMode ? "#eee" : "#222",
+    fontSize: "15px",
   },
   th: {
-    textAlign: 'left',
-    padding: '0.75em 0.5em',
+    textAlign: "left",
+    padding: "0.75em 0.5em",
     fontWeight: 500,
-    background: darkMode ? '#23272f' : '#f6f7f9',
-    borderBottom: darkMode ? '1px solid #444' : '1px solid #e5e7eb',
-    color: darkMode ? '#eee' : '#222',
+    background: darkMode ? "#23272f" : "#f6f7f9",
+    borderBottom: darkMode ? "1px solid #444" : "1px solid #e5e7eb",
+    color: darkMode ? "#eee" : "#222",
   },
   td: {
-    padding: '0.75em 0.5em',
-    borderBottom: darkMode ? '1px solid #444' : '1px solid #e5e7eb',
-    background: darkMode ? '#181a20' : '#fff',
-    textAlign: 'left',
-    color: darkMode ? '#eee' : '#222',
+    padding: "0.75em 0.5em",
+    borderBottom: darkMode ? "1px solid #444" : "1px solid #e5e7eb",
+    background: darkMode ? "#181a20" : "#fff",
+    textAlign: "left",
+    color: darkMode ? "#eee" : "#222",
   },
   header: {
-    fontSize: '1.4em',
+    fontSize: "1.4em",
     fontWeight: 600,
-    margin: '0 0 1em 0',
-    color: darkMode ? '#eee' : '#222',
+    margin: "0 0 1em 0",
+    color: darkMode ? "#eee" : "#222",
   },
   container: {
-    padding: '2em',
-    background: darkMode ? '#181a20' : '#f6f7f9',
-    minHeight: '100vh',
-    color: darkMode ? '#eee' : '#222',
+    padding: "2em",
+    background: darkMode ? "#181a20" : "#f6f7f9",
+    minHeight: "100vh",
+    color: darkMode ? "#eee" : "#222",
   },
 });
 
-function durationToText(ms, suffix = '', roundType = 'round') {
-  if (typeof ms !== 'number' || Number.isNaN(ms) || ms < 0) return `0 seconds${suffix}`;
+function durationToText(ms, suffix = "", roundType = "round") {
+  if (typeof ms !== "number" || Number.isNaN(ms) || ms < 0)
+    return `0 seconds${suffix}`;
   const units = [
-    { name: 'day', value: 86400 },
-    { name: 'hour', value: 3600 },
-    { name: 'minute', value: 60 },
-    { name: 'second', value: 1 },
+    { name: "day", value: 86400 },
+    { name: "hour", value: 3600 },
+    { name: "minute", value: 60 },
+    { name: "second", value: 1 },
   ];
   let totalSeconds;
   switch (roundType) {
-    case 'cut':
+    case "cut":
       totalSeconds = Math.floor(ms / 1000);
       break;
-    case 'round':
+    case "round":
       totalSeconds = Math.round(ms / 1000);
       break;
     default:
@@ -128,23 +131,23 @@ function durationToText(ms, suffix = '', roundType = 'round') {
     if (totalSeconds >= unit.value) {
       let amount;
       switch (roundType) {
-        case 'cut':
+        case "cut":
           amount = Math.floor(totalSeconds / unit.value);
           break;
-        case 'round':
+        case "round":
           amount = Math.round(totalSeconds / unit.value);
           break;
         default:
           amount = Math.ceil(totalSeconds / unit.value);
       }
-      return `${amount} ${unit.name}${amount > 1 ? 's' : ''}${suffix}`;
+      return `${amount} ${unit.name}${amount > 1 ? "s" : ""}${suffix}`;
     }
   }
   return `0 seconds${suffix}`;
 }
 
 function getQueueKey(item) {
-  return `${item.taskId || ''}-${item.queued || ''}-${item.started || ''}-${item.ended || ''}`;
+  return `${item.taskId || ""}-${item.queued || ""}-${item.started || ""}-${item.ended || ""}`;
 }
 
 export default function Tasks() {
@@ -159,10 +162,14 @@ export default function Tasks() {
   async function fetchStatus() {
     // Skip fetching if effect isn't active or the page is hidden
     if (!activeRef.current) return;
-    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+    if (
+      typeof document !== "undefined" &&
+      document.visibilityState !== "visible"
+    )
+      return;
     setLoading(true);
     try {
-      const res = await fetch('/api/tasks/status');
+      const res = await fetch("/api/tasks/status");
       const data = await res.json();
       setStatus(data);
     } catch {
@@ -174,9 +181,13 @@ export default function Tasks() {
   async function fetchQueue() {
     // Skip fetching if effect isn't active or the page is hidden
     if (!activeRef.current) return;
-    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+    if (
+      typeof document !== "undefined" &&
+      document.visibilityState !== "visible"
+    )
+      return;
     try {
-      const res = await fetch('/api/tasks/queue');
+      const res = await fetch("/api/tasks/queue");
       const data = await res.json();
       if (data && Array.isArray(data.queues)) {
         setQueues(data.queues);
@@ -187,31 +198,31 @@ export default function Tasks() {
       setQueues([]);
     }
   }
-// Converts a time value in milliseconds to human-readable text, showing only the largest non-zero unit
-// durationToText: ms to human text, with rounding option
-// roundType: 'round' (default), 'cut', 'ceil'
+  // Converts a time value in milliseconds to human-readable text, showing only the largest non-zero unit
+  // durationToText: ms to human text, with rounding option
+  // roundType: 'round' (default), 'cut', 'ceil'
   useEffect(() => {
     // Don't start websocket/polling unless we're on the Tasks route
-    if (!location.pathname?.startsWith('/system/tasks')) {
+    if (!location.pathname?.startsWith("/system/tasks")) {
       activeRef.current = false;
       return;
     }
     activeRef.current = true;
     // Only activate polling/websocket when the user is on the Tasks route
-    if (!location.pathname?.startsWith('/system/tasks')) {
+    if (!location.pathname?.startsWith("/system/tasks")) {
       return;
     }
     // Detect dark mode
-    const mq = globalThis.matchMedia('(prefers-color-scheme: dark)');
+    const mq = globalThis.matchMedia("(prefers-color-scheme: dark)");
     setDarkMode(mq.matches);
     const handler = (e) => setDarkMode(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
   }, [location.pathname]);
 
   useEffect(() => {
     // Don't start websocket/polling unless we're on the Tasks route
-    if (!location.pathname?.startsWith('/system/tasks')) {
+    if (!location.pathname?.startsWith("/system/tasks")) {
       return;
     }
     let ws;
@@ -240,7 +251,7 @@ export default function Tasks() {
               } catch {
                 // ignore
               }
-            }
+            },
           };
         }
       } catch {
@@ -255,7 +266,7 @@ export default function Tasks() {
 
     // Visibility handler
     function handleVisibility() {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === "visible") {
         if (!wsConnected) startPolling();
       } else {
         stopPolling();
@@ -264,7 +275,11 @@ export default function Tasks() {
 
     // Try to connect to WebSocket
     try {
-  ws = new globalThis.WebSocket((globalThis.location.protocol === 'https:' ? 'wss://' : 'ws://') + globalThis.location.host + '/ws/tasks');
+      ws = new globalThis.WebSocket(
+        (globalThis.location.protocol === "https:" ? "wss://" : "ws://") +
+          globalThis.location.host +
+          "/ws/tasks",
+      );
       ws.onopen = () => {
         wsConnected = true;
         stopPolling();
@@ -282,19 +297,19 @@ export default function Tasks() {
       };
       ws.onerror = () => {
         wsConnected = false;
-        if (document.visibilityState === 'visible') startPolling();
+        if (document.visibilityState === "visible") startPolling();
       };
       ws.onclose = () => {
         wsConnected = false;
-        if (document.visibilityState === 'visible') startPolling();
+        if (document.visibilityState === "visible") startPolling();
       };
     } catch {
-      if (document.visibilityState === 'visible') startPolling();
+      if (document.visibilityState === "visible") startPolling();
     }
     // Fallback to polling if WebSocket fails
-    if (!wsConnected && document.visibilityState === 'visible') startPolling();
+    if (!wsConnected && document.visibilityState === "visible") startPolling();
 
-    document.addEventListener('visibilitychange', handleVisibility);
+    document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
       activeRef.current = false;
@@ -302,14 +317,17 @@ export default function Tasks() {
       if (ws) ws.close();
       // clear any global poller record
       try {
-        if (globalThis.window !== undefined && globalThis.__trailarr_tasks_polling?.stop) {
+        if (
+          globalThis.window !== undefined &&
+          globalThis.__trailarr_tasks_polling?.stop
+        ) {
           globalThis.__trailarr_tasks_polling.stop();
           delete globalThis.__trailarr_tasks_polling;
         }
       } catch {
         // ignore
       }
-      document.removeEventListener('visibilitychange', handleVisibility);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [location.pathname]);
 
@@ -319,8 +337,8 @@ export default function Tasks() {
   async function forceExecute(taskId) {
     try {
       await fetch(`/api/tasks/force`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId }),
       });
       // Immediately update status after force execute
@@ -332,7 +350,6 @@ export default function Tasks() {
 
   // Helper to format interval values for scheduled tasks
   // Unified formatter for intervals and time differences
-
 
   const styles = getStyles(darkMode);
 
@@ -349,27 +366,49 @@ export default function Tasks() {
   }, [loading]);
 
   if (showLoading) return <div style={styles.container}>Loading...</div>;
-  if (!status) return <div style={styles.container}>Error loading task status.</div>;
+  if (!status)
+    return <div style={styles.container}>Error loading task status.</div>;
 
   const schedules = status.schedules || [];
 
   // Helper to render status cell for scheduled tasks
   function renderScheduleStatus(scheduled) {
     if (scheduled.interval === 0) {
-      return <span style={{color: darkMode ? '#888' : '#bbb', fontStyle: 'italic'}}>Disabled</span>;
+      return (
+        <span
+          style={{ color: darkMode ? "#888" : "#bbb", fontStyle: "italic" }}
+        >
+          Disabled
+        </span>
+      );
     }
     const status = scheduled.status;
     if (!status) return <span>-</span>;
-    if (status === 'running') return <span style={{color: darkMode ? '#66aaff' : '#007bff'}}>Running</span>;
-    if (status === 'success') return <span style={{color: darkMode ? '#4fdc7b' : '#28a745'}}>Success</span>;
-    if (status === 'failed') return <span style={{color: darkMode ? '#ff6b6b' : '#dc3545'}}>Failed</span>;
+    if (status === "running")
+      return (
+        <span style={{ color: darkMode ? "#66aaff" : "#007bff" }}>Running</span>
+      );
+    if (status === "success")
+      return (
+        <span style={{ color: darkMode ? "#4fdc7b" : "#28a745" }}>Success</span>
+      );
+    if (status === "failed")
+      return (
+        <span style={{ color: darkMode ? "#ff6b6b" : "#dc3545" }}>Failed</span>
+      );
     return <span>{status}</span>;
   }
 
   // Helper to render interval cell
   function renderScheduleInterval(scheduled) {
     if (scheduled.interval === 0) {
-      return <span style={{color: darkMode ? '#888' : '#bbb', fontStyle: 'italic'}}>Disabled</span>;
+      return (
+        <span
+          style={{ color: darkMode ? "#888" : "#bbb", fontStyle: "italic" }}
+        >
+          Disabled
+        </span>
+      );
     }
     return formatInterval(scheduled.interval);
   }
@@ -377,29 +416,39 @@ export default function Tasks() {
   // Helper to render next execution cell
   function renderScheduleNextExecution(scheduled) {
     if (scheduled.interval === 0) {
-      return <span style={{color: darkMode ? '#888' : '#bbb', fontStyle: 'italic'}}>Disabled</span>;
+      return (
+        <span
+          style={{ color: darkMode ? "#888" : "#bbb", fontStyle: "italic" }}
+        >
+          Disabled
+        </span>
+      );
     }
-    return scheduled.nextExecution ? formatTimeDiff({from: new Date(), to: new Date(scheduled.nextExecution)}) : '-';
+    return scheduled.nextExecution
+      ? formatTimeDiff({
+          from: new Date(),
+          to: new Date(scheduled.nextExecution),
+        })
+      : "-";
   }
 
   // Helper to render force execute icon style
   function getForceIconStyle(scheduled) {
     let color;
-    if (scheduled.status === 'running') {
-      color = darkMode ? '#66aaff' : '#007bff';
+    if (scheduled.status === "running") {
+      color = darkMode ? "#66aaff" : "#007bff";
     } else {
-      color = darkMode ? '#aaa' : '#888';
+      color = darkMode ? "#aaa" : "#888";
     }
     return {
-      cursor: scheduled.status === 'running' ? 'not-allowed' : 'pointer',
-      opacity: scheduled.status === 'running' ? 0.5 : 1,
+      cursor: scheduled.status === "running" ? "not-allowed" : "pointer",
+      opacity: scheduled.status === "running" ? 0.5 : 1,
       color,
       ...iconNoOutline,
     };
   }
 
   // Helper to get unique key for queue items
-
 
   return (
     <div style={styles.container}>
@@ -408,114 +457,234 @@ export default function Tasks() {
         <thead>
           <tr>
             <th style={styles.th}>Name</th>
-            <th style={{...styles.th, textAlign: 'center'}}>Status</th>
-            <th style={{...styles.th, textAlign: 'center'}}>Interval</th>
-            <th style={{...styles.th, textAlign: 'center'}}>Last Execution</th>
-            <th style={{...styles.th, textAlign: 'center'}}>Last Duration</th>
-            <th style={{...styles.th, textAlign: 'center'}}>Next Execution</th>
-            <th style={{...styles.th, textAlign: 'center'}}></th>
+            <th style={{ ...styles.th, textAlign: "center" }}>Status</th>
+            <th style={{ ...styles.th, textAlign: "center" }}>Interval</th>
+            <th style={{ ...styles.th, textAlign: "center" }}>
+              Last Execution
+            </th>
+            <th style={{ ...styles.th, textAlign: "center" }}>Last Duration</th>
+            <th style={{ ...styles.th, textAlign: "center" }}>
+              Next Execution
+            </th>
+            <th style={{ ...styles.th, textAlign: "center" }}></th>
           </tr>
         </thead>
         <tbody>
           {schedules.length === 0 ? (
-            <tr><td colSpan={7} style={styles.td}>No scheduled tasks</td></tr>
-          ) : schedules.map((scheduled) => (
-            <tr key={scheduled.taskId || scheduled.name}>
-              <td style={styles.td}>{scheduled.name}</td>
-              <td style={{...styles.td, textAlign: 'center'}}>{renderScheduleStatus(scheduled)}</td>
-              <td style={{...styles.td, textAlign: 'center'}}>{renderScheduleInterval(scheduled)}</td>
-              <td style={{...styles.td, textAlign: 'center'}}>{scheduled.lastExecution ? formatTimeDiff({from: new Date(scheduled.lastExecution), to: new Date(), suffix: ' ago', roundType: 'cut'}) : '-'}</td>
-              <td style={{...styles.td, textAlign: 'center'}}>{scheduled.lastDuration ? formatDuration(scheduled.lastDuration) : '-'}</td>
-              <td style={{...styles.td, textAlign: 'center'}}>{renderScheduleNextExecution(scheduled)}</td>
-              <td style={{...styles.td, textAlign: 'center'}}>
-                <span
-                  style={{
-                    display: 'inline-block',
-                    marginLeft: '0.5em',
-                    verticalAlign: 'middle',
-                  }}
-                >
-                  <FaArrowsRotate
-                    onClick={scheduled.status === 'running' ? undefined : () => forceExecute(scheduled.taskId)}
-                    className={scheduled.status === 'running' ? 'spin-icon' : ''}
-                    style={getForceIconStyle(scheduled)}
-                    size={20}
-                    title={scheduled.status === 'running' ? 'Task is running' : 'Force Execute'}
-                    tabIndex={scheduled.status === 'running' ? -1 : 0}
-                    aria-disabled={scheduled.status === 'running'}
-                  />
-                </span>
+            <tr>
+              <td colSpan={7} style={styles.td}>
+                No scheduled tasks
               </td>
             </tr>
-          ))}
+          ) : (
+            schedules.map((scheduled) => (
+              <tr key={scheduled.taskId || scheduled.name}>
+                <td style={styles.td}>{scheduled.name}</td>
+                <td style={{ ...styles.td, textAlign: "center" }}>
+                  {renderScheduleStatus(scheduled)}
+                </td>
+                <td style={{ ...styles.td, textAlign: "center" }}>
+                  {renderScheduleInterval(scheduled)}
+                </td>
+                <td style={{ ...styles.td, textAlign: "center" }}>
+                  {scheduled.lastExecution
+                    ? formatTimeDiff({
+                        from: new Date(scheduled.lastExecution),
+                        to: new Date(),
+                        suffix: " ago",
+                        roundType: "cut",
+                      })
+                    : "-"}
+                </td>
+                <td style={{ ...styles.td, textAlign: "center" }}>
+                  {scheduled.lastDuration
+                    ? formatDuration(scheduled.lastDuration)
+                    : "-"}
+                </td>
+                <td style={{ ...styles.td, textAlign: "center" }}>
+                  {renderScheduleNextExecution(scheduled)}
+                </td>
+                <td style={{ ...styles.td, textAlign: "center" }}>
+                  <span
+                    style={{
+                      display: "inline-block",
+                      marginLeft: "0.5em",
+                      verticalAlign: "middle",
+                    }}
+                  >
+                    <FaArrowsRotate
+                      onClick={
+                        scheduled.status === "running"
+                          ? undefined
+                          : () => forceExecute(scheduled.taskId)
+                      }
+                      className={
+                        scheduled.status === "running" ? "spin-icon" : ""
+                      }
+                      style={getForceIconStyle(scheduled)}
+                      size={20}
+                      title={
+                        scheduled.status === "running"
+                          ? "Task is running"
+                          : "Force Execute"
+                      }
+                      tabIndex={scheduled.status === "running" ? -1 : 0}
+                      aria-disabled={scheduled.status === "running"}
+                    />
+                  </span>
+                </td>
+              </tr>
+            ))
+          )}
         </tbody>
       </table>
       <div style={styles.header}>Queue</div>
       <table style={styles.table}>
         <thead>
           <tr>
-            <th style={{...styles.th, textAlign: 'center'}}></th>
+            <th style={{ ...styles.th, textAlign: "center" }}></th>
             <th style={styles.th}>Task Name</th>
-            <th style={{...styles.th, textAlign: 'center'}}>Queued</th>
-            <th style={{...styles.th, textAlign: 'center'}}>Started</th>
-            <th style={{...styles.th, textAlign: 'center'}}>Ended</th>
-            <th style={{...styles.th, textAlign: 'center'}}>Duration</th>
+            <th style={{ ...styles.th, textAlign: "center" }}>Queued</th>
+            <th style={{ ...styles.th, textAlign: "center" }}>Started</th>
+            <th style={{ ...styles.th, textAlign: "center" }}>Ended</th>
+            <th style={{ ...styles.th, textAlign: "center" }}>Duration</th>
           </tr>
         </thead>
         <tbody>
-          {(Array.isArray(queues) && queues.length > 0) ? (() => {
-            const arr = queues;
-            return arr.map((item) => {
-            // Try to get the task name from schedules (by taskId)
-            let taskName = item.taskId;
-            if (schedules && item.taskId) {
-              const sch = schedules.find(s => s.taskId === item.taskId);
-              if (sch?.name) taskName = sch.name;
-            }
-            // Helper to render status icon
-            function renderQueueStatus() {
-              if (!item.status) return <span title="Unknown">-</span>;
-              if (item.status === 'success') return <span title="Success" style={{color: darkMode ? '#4fdc7b' : '#28a745'}}>&#x2714;</span>;
-              if (item.status === 'running') return <span title="Running" style={{color: darkMode ? '#66aaff' : '#007bff'}}>&#x25D4;</span>;
-              if (item.status === 'failed') return <span title="Failed" style={{color: darkMode ? '#ff6b6b' : '#dc3545'}}>&#x2716;</span>;
-              if (item.status === 'queued') return <FaClock title="Queued" style={{color: darkMode ? '#ffb300' : '#e6b800', verticalAlign: 'middle'}} />;
-              return <span title={item.status}>{item.status}</span>;
-            }
-            // Helper to render duration
-            function renderDuration() {
-              if (item.duration === null || item.duration === undefined || item.duration === '') return '—';
-              let dur = item.duration;
-              // If duration is a numeric string, convert to number
-              if (typeof dur === 'string') {
-                const n = Number(dur);
-                if (!Number.isNaN(n)) dur = n;
-              }
-              if (typeof dur === 'number' && !Number.isNaN(dur)) {
-                // Heuristic: if the number looks like nanoseconds (very large), convert to seconds
-                let seconds = dur;
-                if (Math.abs(dur) >= 1e6) {
-                  // treat as nanoseconds -> seconds
-                  seconds = dur / 1e9;
+          {Array.isArray(queues) && queues.length > 0 ? (
+            (() => {
+              const arr = queues;
+              return arr.map((item) => {
+                // Try to get the task name from schedules (by taskId)
+                let taskName = item.taskId;
+                if (schedules && item.taskId) {
+                  const sch = schedules.find((s) => s.taskId === item.taskId);
+                  if (sch?.name) taskName = sch.name;
                 }
-                return formatDuration(seconds);
-              }
-              // Fallback: let formatDuration handle strings like '1m2.3s' or '123ms'
-              return formatDuration(item.duration);
-            }
-            return (
-              <tr key={getQueueKey(item)}>
-                <td style={{...styles.td, textAlign: 'center'}}>{renderQueueStatus()}</td>
-                <td style={styles.td}>{taskName || '-'}</td>
-                <td style={{...styles.td, textAlign: 'center'}}>{item.queued ? formatTimeDiff({from: new Date(item.queued), to: new Date(), suffix: ' ago', roundType: 'cut'}) : '—'}</td>
-                <td style={{...styles.td, textAlign: 'center'}}>{item.started ? formatTimeDiff({from: new Date(item.started), to: new Date(), suffix: ' ago', roundType: 'cut'}) : '—'}</td>
-                <td style={{...styles.td, textAlign: 'center'}}>{item.ended ? formatTimeDiff({from: new Date(item.ended), to: new Date(), suffix: ' ago', roundType: 'cut'}) : '—'}</td>
-                <td style={{...styles.td, textAlign: 'right', paddingRight: '3em'}}>{renderDuration()}</td>
-              </tr>
-            );
-          });
-        })() : (
-          <tr><td colSpan={6} style={{...styles.td, textAlign: 'center'}}>No queue items</td></tr>
-        )}
+                // Helper to render status icon
+                function renderQueueStatus() {
+                  if (!item.status) return <span title="Unknown">-</span>;
+                  if (item.status === "success")
+                    return (
+                      <span
+                        title="Success"
+                        style={{ color: darkMode ? "#4fdc7b" : "#28a745" }}
+                      >
+                        &#x2714;
+                      </span>
+                    );
+                  if (item.status === "running")
+                    return (
+                      <span
+                        title="Running"
+                        style={{ color: darkMode ? "#66aaff" : "#007bff" }}
+                      >
+                        &#x25D4;
+                      </span>
+                    );
+                  if (item.status === "failed")
+                    return (
+                      <span
+                        title="Failed"
+                        style={{ color: darkMode ? "#ff6b6b" : "#dc3545" }}
+                      >
+                        &#x2716;
+                      </span>
+                    );
+                  if (item.status === "queued")
+                    return (
+                      <FaClock
+                        title="Queued"
+                        style={{
+                          color: darkMode ? "#ffb300" : "#e6b800",
+                          verticalAlign: "middle",
+                        }}
+                      />
+                    );
+                  return <span title={item.status}>{item.status}</span>;
+                }
+                // Helper to render duration
+                function renderDuration() {
+                  if (
+                    item.duration === null ||
+                    item.duration === undefined ||
+                    item.duration === ""
+                  )
+                    return "—";
+                  let dur = item.duration;
+                  // If duration is a numeric string, convert to number
+                  if (typeof dur === "string") {
+                    const n = Number(dur);
+                    if (!Number.isNaN(n)) dur = n;
+                  }
+                  if (typeof dur === "number" && !Number.isNaN(dur)) {
+                    // Heuristic: if the number looks like nanoseconds (very large), convert to seconds
+                    let seconds = dur;
+                    if (Math.abs(dur) >= 1e6) {
+                      // treat as nanoseconds -> seconds
+                      seconds = dur / 1e9;
+                    }
+                    return formatDuration(seconds);
+                  }
+                  // Fallback: let formatDuration handle strings like '1m2.3s' or '123ms'
+                  return formatDuration(item.duration);
+                }
+                return (
+                  <tr key={getQueueKey(item)}>
+                    <td style={{ ...styles.td, textAlign: "center" }}>
+                      {renderQueueStatus()}
+                    </td>
+                    <td style={styles.td}>{taskName || "-"}</td>
+                    <td style={{ ...styles.td, textAlign: "center" }}>
+                      {item.queued
+                        ? formatTimeDiff({
+                            from: new Date(item.queued),
+                            to: new Date(),
+                            suffix: " ago",
+                            roundType: "cut",
+                          })
+                        : "—"}
+                    </td>
+                    <td style={{ ...styles.td, textAlign: "center" }}>
+                      {item.started
+                        ? formatTimeDiff({
+                            from: new Date(item.started),
+                            to: new Date(),
+                            suffix: " ago",
+                            roundType: "cut",
+                          })
+                        : "—"}
+                    </td>
+                    <td style={{ ...styles.td, textAlign: "center" }}>
+                      {item.ended
+                        ? formatTimeDiff({
+                            from: new Date(item.ended),
+                            to: new Date(),
+                            suffix: " ago",
+                            roundType: "cut",
+                          })
+                        : "—"}
+                    </td>
+                    <td
+                      style={{
+                        ...styles.td,
+                        textAlign: "right",
+                        paddingRight: "3em",
+                      }}
+                    >
+                      {renderDuration()}
+                    </td>
+                  </tr>
+                );
+              });
+            })()
+          ) : (
+            <tr>
+              <td colSpan={6} style={{ ...styles.td, textAlign: "center" }}>
+                No queue items
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     </div>

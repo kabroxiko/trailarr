@@ -1,65 +1,100 @@
-import React, { useEffect, useState, Suspense } from 'react';
-import PropTypes from 'prop-types';
-import Select from 'react-select';
-import axios from 'axios';
-import Container from './Container.jsx';
-import ActionLane from './ActionLane.jsx';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSave, faSpinner } from '@fortawesome/free-solid-svg-icons';
-import SectionHeader from './SectionHeader.jsx';
-import Toast from './Toast.jsx';
+import React, { useEffect, useState, Suspense } from "react";
+import PropTypes from "prop-types";
+import Select from "react-select";
+import axios from "axios";
+import Container from "./Container.jsx";
+import ActionLane from "./ActionLane.jsx";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faSave, faSpinner } from "@fortawesome/free-solid-svg-icons";
+import SectionHeader from "./SectionHeader.jsx";
+import Toast from "./Toast.jsx";
 
-const ExtrasTypeMappingConfig = React.lazy(() => import('./ExtrasTypeMappingConfig.jsx'));
+const ExtrasTypeMappingConfig = React.lazy(
+  () => import("./ExtrasTypeMappingConfig.jsx"),
+);
 
 const EXTRA_TYPES = [
-  { key: 'trailers', label: 'Trailers' },
-  { key: 'scenes', label: 'Scenes' },
-  { key: 'behindTheScenes', label: 'Behind the Scenes' },
-  { key: 'interviews', label: 'Interviews' },
-  { key: 'featurettes', label: 'Featurettes' },
-  { key: 'deletedScenes', label: 'Deleted Scenes' },
-  { key: 'other', label: 'Other' },
+  { key: "trailers", label: "Trailers" },
+  { key: "scenes", label: "Scenes" },
+  { key: "behindTheScenes", label: "Behind the Scenes" },
+  { key: "interviews", label: "Interviews" },
+  { key: "featurettes", label: "Featurettes" },
+  { key: "deletedScenes", label: "Deleted Scenes" },
+  { key: "other", label: "Other" },
 ];
 
 const YTDLP_FLAGS = [
-  { key: 'quiet', label: 'Quiet (no output)', type: 'boolean' },
-  { key: 'noprogress', label: 'No Progress Bar', type: 'boolean' },
-  { key: 'writesubs', label: 'Write Subs', type: 'boolean' },
-  { key: 'writeautosubs', label: 'Write Auto Subs', type: 'boolean' },
-  { key: 'embedsubs', label: 'Embed Subs', type: 'boolean' },
-  { key: 'remuxvideo', label: 'Remux Video', type: 'string' },
-  { key: 'subformat', label: 'Subtitle Format', type: 'string' },
-  { key: 'sublangs', label: 'Subtitle Languages', type: 'string' },
-  { key: 'requestedformats', label: 'Requested Formats', type: 'string' },
-  { key: 'timeout', label: 'Timeout (s)', type: 'number' },
-  { key: 'sleepInterval', label: 'Sleep Interval (s)', type: 'number' },
-  { key: 'maxDownloads', label: 'Max Downloads', type: 'number' },
-  { key: 'limitRate', label: 'Limit Rate', type: 'string' },
-  { key: 'sleepRequests', label: 'Sleep Requests', type: 'number' },
-  { key: 'maxSleepInterval', label: 'Max Sleep Interval (s)', type: 'number' },
+  { key: "quiet", label: "Quiet (no output)", type: "boolean" },
+  { key: "noprogress", label: "No Progress Bar", type: "boolean" },
+  { key: "writesubs", label: "Write Subs", type: "boolean" },
+  { key: "writeautosubs", label: "Write Auto Subs", type: "boolean" },
+  { key: "embedsubs", label: "Embed Subs", type: "boolean" },
+  { key: "remuxvideo", label: "Remux Video", type: "string" },
+  { key: "subformat", label: "Subtitle Format", type: "string" },
+  { key: "sublangs", label: "Subtitle Languages", type: "string" },
+  { key: "requestedformats", label: "Requested Formats", type: "string" },
+  { key: "timeout", label: "Timeout (s)", type: "number" },
+  { key: "sleepInterval", label: "Sleep Interval (s)", type: "number" },
+  { key: "maxDownloads", label: "Max Downloads", type: "number" },
+  { key: "limitRate", label: "Limit Rate", type: "string" },
+  { key: "sleepRequests", label: "Sleep Requests", type: "number" },
+  { key: "maxSleepInterval", label: "Max Sleep Interval (s)", type: "number" },
 ];
 
 export default function ExtrasSettings({ darkMode }) {
-  const isDark = typeof globalThis.matchMedia === 'function' ? globalThis.matchMedia('(prefers-color-scheme: dark)').matches : false;
+  const isDark =
+    typeof globalThis.matchMedia === "function"
+      ? globalThis.matchMedia("(prefers-color-scheme: dark)").matches
+      : false;
   useEffect(() => {
     const setColors = () => {
-      document.documentElement.style.setProperty('--settings-bg', isDark ? '#222' : '#fff');
-      document.documentElement.style.setProperty('--settings-text', isDark ? '#eee' : '#222');
-      document.documentElement.style.setProperty('--save-lane-bg', isDark ? '#333' : '#e5e7eb');
-      document.documentElement.style.setProperty('--save-lane-text', isDark ? '#eee' : '#222');
-      document.documentElement.style.setProperty('--settings-input-bg', isDark ? '#333' : '#f5f5f5');
-      document.documentElement.style.setProperty('--settings-input-text', isDark ? '#eee' : '#222');
-      document.documentElement.style.setProperty('--settings-table-bg', isDark ? '#444' : '#f7f7f7');
-      document.documentElement.style.setProperty('--settings-table-text', isDark ? '#f3f3f3' : '#222');
-      document.documentElement.style.setProperty('--settings-table-header-bg', isDark ? '#555' : '#ededed');
-      document.documentElement.style.setProperty('--settings-table-header-text', isDark ? '#fff' : '#222');
+      document.documentElement.style.setProperty(
+        "--settings-bg",
+        isDark ? "#222" : "#fff",
+      );
+      document.documentElement.style.setProperty(
+        "--settings-text",
+        isDark ? "#eee" : "#222",
+      );
+      document.documentElement.style.setProperty(
+        "--save-lane-bg",
+        isDark ? "#333" : "#e5e7eb",
+      );
+      document.documentElement.style.setProperty(
+        "--save-lane-text",
+        isDark ? "#eee" : "#222",
+      );
+      document.documentElement.style.setProperty(
+        "--settings-input-bg",
+        isDark ? "#333" : "#f5f5f5",
+      );
+      document.documentElement.style.setProperty(
+        "--settings-input-text",
+        isDark ? "#eee" : "#222",
+      );
+      document.documentElement.style.setProperty(
+        "--settings-table-bg",
+        isDark ? "#444" : "#f7f7f7",
+      );
+      document.documentElement.style.setProperty(
+        "--settings-table-text",
+        isDark ? "#f3f3f3" : "#222",
+      );
+      document.documentElement.style.setProperty(
+        "--settings-table-header-bg",
+        isDark ? "#555" : "#ededed",
+      );
+      document.documentElement.style.setProperty(
+        "--settings-table-header-text",
+        isDark ? "#fff" : "#222",
+      );
     };
     setColors();
-    if (typeof globalThis.matchMedia === 'function') {
-      const mq = globalThis.matchMedia('(prefers-color-scheme: dark)');
-      mq.addEventListener('change', setColors);
+    if (typeof globalThis.matchMedia === "function") {
+      const mq = globalThis.matchMedia("(prefers-color-scheme: dark)");
+      mq.addEventListener("change", setColors);
       return () => {
-        mq.removeEventListener('change', setColors);
+        mq.removeEventListener("change", setColors);
       };
     }
     return undefined;
@@ -67,9 +102,9 @@ export default function ExtrasSettings({ darkMode }) {
   const [settings, setSettings] = useState({});
   const [ytFlags, setYtFlags] = useState({});
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [ytError, setYtError] = useState('');
-  const [toast, setToast] = useState('');
+  const [error, setError] = useState("");
+  const [ytError, setYtError] = useState("");
+  const [toast, setToast] = useState("");
   const [toastSuccess, setToastSuccess] = useState(true);
   const [tmdbTypes, setTmdbTypes] = useState([]);
   const [plexTypes, setPlexTypes] = useState([]);
@@ -77,39 +112,41 @@ export default function ExtrasSettings({ darkMode }) {
 
   useEffect(() => {
     Promise.all([
-      axios.get('/api/tmdb/extratypes'),
-      axios.get('/api/settings/extratypes'),
-      axios.get('/api/settings/canonicalizeextratype'),
-      axios.get('/api/settings/ytdlpflags'),
+      axios.get("/api/tmdb/extratypes"),
+      axios.get("/api/settings/extratypes"),
+      axios.get("/api/settings/canonicalizeextratype"),
+      axios.get("/api/settings/ytdlpflags"),
     ])
       .then(([tmdbRes, plexRes, mapRes, ytRes]) => {
         setTmdbTypes(tmdbRes.data.tmdbExtraTypes);
-          // Backend returns an array (mapp) of { key,label,value }
-          if (!Array.isArray(plexRes.data)) {
-            setError('Server response missing mapp array in /api/settings/extratypes');
-            return;
+        // Backend returns an array (mapp) of { key,label,value }
+        if (!Array.isArray(plexRes.data)) {
+          setError(
+            "Server response missing mapp array in /api/settings/extratypes",
+          );
+          return;
+        }
+        const mapp = plexRes.data;
+        setPlexTypes(mapp);
+        // Build settings object from mapp array
+        const settingsFromMapp = {};
+        for (const entry of mapp) {
+          if (entry?.key) {
+            settingsFromMapp[entry.key] = !!entry.value;
           }
-          const mapp = plexRes.data;
-          setPlexTypes(mapp);
-          // Build settings object from mapp array
-          const settingsFromMapp = {};
-          for (const entry of mapp) {
-            if (entry?.key) {
-              settingsFromMapp[entry.key] = !!entry.value;
-            }
+        }
+        const initialMapping = { ...mapRes.data.mapping };
+        for (const type of tmdbRes.data.tmdbExtraTypes) {
+          if (!initialMapping[type]) {
+            initialMapping[type] = "Other";
           }
-          const initialMapping = { ...mapRes.data.mapping };
-          for (const type of tmdbRes.data.tmdbExtraTypes) {
-            if (!initialMapping[type]) {
-              initialMapping[type] = "Other";
-            }
-          }
-          setMapping(initialMapping);
-          setSettings(settingsFromMapp);
+        }
+        setMapping(initialMapping);
+        setSettings(settingsFromMapp);
         setYtFlags(ytRes.data);
       })
       .catch(() => {
-        setError('Failed to load settings');
+        setError("Failed to load settings");
       });
   }, [darkMode, isDark]);
 
@@ -118,24 +155,24 @@ export default function ExtrasSettings({ darkMode }) {
   };
 
   const handleYtFlagChange = (key, value) => {
-    setYtFlags(prev => ({ ...prev, [key]: value }));
+    setYtFlags((prev) => ({ ...prev, [key]: value }));
   };
 
   const handleSave = async () => {
     setSaving(true);
-    setToast('');
-    setError('');
-    setYtError('');
+    setToast("");
+    setError("");
+    setYtError("");
     try {
-      await axios.post('/api/settings/extratypes', settings);
-      await axios.post('/api/settings/canonicalizeextratype', { mapping });
-      await axios.post('/api/settings/ytdlpflags', ytFlags);
-      setToast('All settings saved successfully!');
+      await axios.post("/api/settings/extratypes", settings);
+      await axios.post("/api/settings/canonicalizeextratype", { mapping });
+      await axios.post("/api/settings/ytdlpflags", ytFlags);
+      setToast("All settings saved successfully!");
       setToastSuccess(true);
       setSaving(false);
     } catch {
-      setError('Failed to save one or more settings');
-      setToast('Failed to save one or more settings');
+      setError("Failed to save one or more settings");
+      setToast("Failed to save one or more settings");
       setToastSuccess(false);
       setSaving(false);
     }
@@ -143,106 +180,143 @@ export default function ExtrasSettings({ darkMode }) {
 
   const handleYtSave = () => {
     if (
-      typeof ytFlags.maxSleepInterval === 'number' &&
-      typeof ytFlags.sleepInterval === 'number' &&
+      typeof ytFlags.maxSleepInterval === "number" &&
+      typeof ytFlags.sleepInterval === "number" &&
       ytFlags.maxSleepInterval < ytFlags.sleepInterval
     ) {
-      setYtError('Max Sleep Interval must not be lower than Sleep Interval.');
+      setYtError("Max Sleep Interval must not be lower than Sleep Interval.");
       return;
     }
-    axios.post('/api/settings/ytdlpflags', ytFlags)
+    axios
+      .post("/api/settings/ytdlpflags", ytFlags)
       .then(() => {
         // success
       })
       .catch(() => {
-        setYtError('Failed to save yt-dlp flags');
+        setYtError("Failed to save yt-dlp flags");
       });
   };
 
   // Save lane logic
-  const isChanged = EXTRA_TYPES.some(({ key }) => settings[key] !== undefined && settings[key] !== false) || Object.keys(ytFlags).length > 0;
+  const isChanged =
+    EXTRA_TYPES.some(
+      ({ key }) => settings[key] !== undefined && settings[key] !== false,
+    ) || Object.keys(ytFlags).length > 0;
 
   return (
     <Container>
       {/* Save lane */}
       <ActionLane
-        buttons={[{
-          icon: saving
-            ? <FontAwesomeIcon icon={faSpinner} spin />
-            : <FontAwesomeIcon icon={faSave} />,
-          label: 'Save',
-          onClick: handleSave,
-          disabled: saving || !isChanged,
-          loading: saving,
-          showLabel: globalThis.window === undefined ? true : globalThis.window.innerWidth > 900,
-        }]}
+        buttons={[
+          {
+            icon: saving ? (
+              <FontAwesomeIcon icon={faSpinner} spin />
+            ) : (
+              <FontAwesomeIcon icon={faSave} />
+            ),
+            label: "Save",
+            onClick: handleSave,
+            disabled: saving || !isChanged,
+            loading: saving,
+            showLabel:
+              globalThis.window === undefined
+                ? true
+                : globalThis.window.innerWidth > 900,
+          },
+        ]}
         error={error}
         darkMode={darkMode}
       />
-  <Toast message={toast} onClose={() => setToast('')} darkMode={darkMode} success={toastSuccess} />
-      <div style={{ marginTop: '4.5rem', background: 'var(--settings-bg, #fff)', color: 'var(--settings-text, #222)', borderRadius: 12, boxShadow: '0 1px 4px #0001', padding: '2rem' }}>
+      <Toast
+        message={toast}
+        onClose={() => setToast("")}
+        darkMode={darkMode}
+        success={toastSuccess}
+      />
+      <div
+        style={{
+          marginTop: "4.5rem",
+          background: "var(--settings-bg, #fff)",
+          color: "var(--settings-text, #222)",
+          borderRadius: 12,
+          boxShadow: "0 1px 4px #0001",
+          padding: "2rem",
+        }}
+      >
         <SectionHeader>Extra Types</SectionHeader>
-        <div style={{ marginBottom: '2em' }}>
+        <div style={{ marginBottom: "2em" }}>
           <Select
             isMulti
-            options={EXTRA_TYPES.map(({ key, label }) => ({ value: key, label }))}
-            value={EXTRA_TYPES.filter(({ key }) => settings[key]).map(({ key, label }) => ({ value: key, label }))}
-            onChange={selected => {
+            options={EXTRA_TYPES.map(({ key, label }) => ({
+              value: key,
+              label,
+            }))}
+            value={EXTRA_TYPES.filter(({ key }) => settings[key]).map(
+              ({ key, label }) => ({ value: key, label }),
+            )}
+            onChange={(selected) => {
               const newSettings = { ...settings };
-              for (const { key } of EXTRA_TYPES) { newSettings[key] = false; }
-              for (const { value } of selected) { newSettings[value] = true; }
+              for (const { key } of EXTRA_TYPES) {
+                newSettings[key] = false;
+              }
+              for (const { value } of selected) {
+                newSettings[value] = true;
+              }
               setSettings(newSettings);
             }}
             styles={{
               control: (base, state) => ({
                 ...base,
-                background: isDark ? '#23232a' : '#fff',
-                borderColor: state.isFocused ? '#a855f7' : '#444',
-                boxShadow: state.isFocused ? '0 0 0 2px #a855f7' : 'none',
-                color: isDark ? '#fff' : '#222',
+                background: isDark ? "#23232a" : "#fff",
+                borderColor: state.isFocused ? "#a855f7" : "#444",
+                boxShadow: state.isFocused ? "0 0 0 2px #a855f7" : "none",
+                color: isDark ? "#fff" : "#222",
                 borderRadius: 8,
                 minHeight: 32,
                 fontSize: 13,
-                padding: '0 4px',
+                padding: "0 4px",
                 maxWidth: 480,
               }),
-              valueContainer: base => ({
+              valueContainer: (base) => ({
                 ...base,
-                padding: '2px 4px',
+                padding: "2px 4px",
               }),
-              indicatorsContainer: base => ({
+              indicatorsContainer: (base) => ({
                 ...base,
                 height: 32,
               }),
-              multiValue: base => ({
+              multiValue: (base) => ({
                 ...base,
-                background: isDark ? '#333' : '#e5e7eb',
-                color: isDark ? '#fff' : '#222',
+                background: isDark ? "#333" : "#e5e7eb",
+                color: isDark ? "#fff" : "#222",
                 borderRadius: 6,
                 fontSize: 13,
                 height: 24,
-                margin: '2px 2px',
-                display: 'flex',
-                alignItems: 'center',
+                margin: "2px 2px",
+                display: "flex",
+                alignItems: "center",
               }),
-              multiValueLabel: base => ({
+              multiValueLabel: (base) => ({
                 ...base,
-                color: isDark ? '#fff' : '#222',
+                color: isDark ? "#fff" : "#222",
                 fontWeight: 500,
                 fontSize: 13,
-                padding: '0 6px',
+                padding: "0 6px",
               }),
-              multiValueRemove: base => ({
+              multiValueRemove: (base) => ({
                 ...base,
-                color: isDark ? '#a855f7' : '#6d28d9',
+                color: isDark ? "#a855f7" : "#6d28d9",
                 fontSize: 13,
                 height: 24,
-                ':hover': { background: isDark ? '#a855f7' : '#6d28d9', color: '#fff' },
+                ":hover": {
+                  background: isDark ? "#a855f7" : "#6d28d9",
+                  color: "#fff",
+                },
               }),
-              menu: base => ({
+              menu: (base) => ({
                 ...base,
-                background: isDark ? '#23232a' : '#fff',
-                color: isDark ? '#fff' : '#222',
+                background: isDark ? "#23232a" : "#fff",
+                color: isDark ? "#fff" : "#222",
                 borderRadius: 8,
                 fontSize: 13,
               }),
@@ -250,20 +324,20 @@ export default function ExtrasSettings({ darkMode }) {
                 ...base,
                 // SonarLint: extract nested ternaries
                 background: (() => {
-                  if (state.isSelected) return isDark ? '#a855f7' : '#6d28d9';
-                  if (state.isFocused) return isDark ? '#333' : '#eee';
-                  return isDark ? '#23232a' : '#fff';
+                  if (state.isSelected) return isDark ? "#a855f7" : "#6d28d9";
+                  if (state.isFocused) return isDark ? "#333" : "#eee";
+                  return isDark ? "#23232a" : "#fff";
                 })(),
                 color: (() => {
-                  if (state.isSelected) return '#fff';
-                  return isDark ? '#fff' : '#222';
+                  if (state.isSelected) return "#fff";
+                  return isDark ? "#fff" : "#222";
                 })(),
                 fontWeight: state.isSelected ? 600 : 400,
                 fontSize: 13,
                 height: 32,
-                display: 'flex',
-                alignItems: 'center',
-                lineHeight: 'normal',
+                display: "flex",
+                alignItems: "center",
+                lineHeight: "normal",
               }),
             }}
             placeholder="Select extra types..."
@@ -282,42 +356,78 @@ export default function ExtrasSettings({ darkMode }) {
             plexTypes={plexTypes}
           />
         </Suspense>
-        <hr style={{ margin: '2em 0', borderColor: isDark ? '#444' : '#eee' }} />
+        <hr
+          style={{ margin: "2em 0", borderColor: isDark ? "#444" : "#eee" }}
+        />
         <SectionHeader>yt-dlp Download Flags</SectionHeader>
-        <form onSubmit={e => { e.preventDefault(); handleYtSave(); }}>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleYtSave();
+          }}
+        >
           {YTDLP_FLAGS.map(({ key, label, type }) => (
-            <div key={key} style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-              {type === 'boolean' ? (
+            <div
+              key={key}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                marginBottom: 16,
+              }}
+            >
+              {type === "boolean" ? (
                 <>
                   <input
                     type="checkbox"
                     id={key}
                     checked={!!ytFlags[key]}
                     onChange={() => handleYtFlagChange(key, !ytFlags[key])}
-                    style={{ marginRight: 12, accentColor: isDark ? '#2563eb' : '#6d28d9' }}
+                    style={{
+                      marginRight: 12,
+                      accentColor: isDark ? "#2563eb" : "#6d28d9",
+                    }}
                   />
-                  <label htmlFor={key} style={{ fontSize: 16 }}>{label}</label>
+                  <label htmlFor={key} style={{ fontSize: 16 }}>
+                    {label}
+                  </label>
                 </>
               ) : (
                 <>
-                  <label htmlFor={key} style={{ fontSize: 16, minWidth: 180, textAlign: 'left', width: 180 }}>{label}</label>
+                  <label
+                    htmlFor={key}
+                    style={{
+                      fontSize: 16,
+                      minWidth: 180,
+                      textAlign: "left",
+                      width: 180,
+                    }}
+                  >
+                    {label}
+                  </label>
                   <input
-                    type={type === 'number' ? 'number' : 'text'}
+                    type={type === "number" ? "number" : "text"}
                     id={key}
-                    value={ytFlags[key] ?? ''}
-                    onChange={e => handleYtFlagChange(key, type === 'number' ? Number(e.target.value) : e.target.value)}
+                    value={ytFlags[key] ?? ""}
+                    onChange={(e) =>
+                      handleYtFlagChange(
+                        key,
+                        type === "number"
+                          ? Number(e.target.value)
+                          : e.target.value,
+                      )
+                    }
                     style={{
                       marginLeft: 12,
                       width: 120,
                       minWidth: 80,
                       maxWidth: 160,
-                      padding: '0.15em 0.5em',
+                      padding: "0.15em 0.5em",
                       fontSize: 13,
-                      border: '1px solid',
-                      borderColor: isDark ? '#444' : '#ccc',
+                      border: "1px solid",
+                      borderColor: isDark ? "#444" : "#ccc",
                       borderRadius: 4,
-                      background: isDark ? '#23232a' : '#fff',
-                      color: isDark ? '#e5e7eb' : '#222',
+                      background: isDark ? "#23232a" : "#fff",
+                      color: isDark ? "#e5e7eb" : "#222",
                     }}
                   />
                 </>
@@ -325,7 +435,9 @@ export default function ExtrasSettings({ darkMode }) {
             </div>
           ))}
         </form>
-        {ytError && <div style={{ color: 'red', marginBottom: 12 }}>{ytError}</div>}
+        {ytError && (
+          <div style={{ color: "red", marginBottom: 12 }}>{ytError}</div>
+        )}
       </div>
     </Container>
   );

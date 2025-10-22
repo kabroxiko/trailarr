@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
-import ExtraCard from './ExtraCard.jsx';
-import SectionHeader from './SectionHeader.jsx';
-import Toast from './Toast';
-import PropTypes from 'prop-types';
-import './ExtrasList.mobile.css';
+import React, { useState, useEffect, useRef } from "react";
+import ExtraCard from "./ExtraCard.jsx";
+import SectionHeader from "./SectionHeader.jsx";
+import Toast from "./Toast";
+import PropTypes from "prop-types";
+import "./ExtrasList.mobile.css";
 
 function ExtrasList({
   extrasByType,
@@ -16,25 +16,32 @@ function ExtrasList({
   setYoutubeModal,
   YoutubeEmbed,
 }) {
-  const [toastMsg, setToastMsg] = useState('');
+  const [toastMsg, setToastMsg] = useState("");
   const [toastSuccess, setToastSuccess] = useState(false);
   const wsRef = useRef(null);
 
   // WebSocket: Listen for download queue updates
   useEffect(() => {
-  const wsUrl = (globalThis.location.protocol === 'https:' ? 'wss://' : 'ws://') + globalThis.location.host + '/ws/download-queue';
-  const ws = new globalThis.WebSocket(wsUrl);
+    const wsUrl =
+      (globalThis.location.protocol === "https:" ? "wss://" : "ws://") +
+      globalThis.location.host +
+      "/ws/download-queue";
+    const ws = new globalThis.WebSocket(wsUrl);
     wsRef.current = ws;
     ws.onopen = () => {
-      console.debug('[WebSocket] Connected to download queue');
+      console.debug("[WebSocket] Connected to download queue");
     };
     // Extracted to reduce nesting
     function updateExtraWithQueue(ex, queue) {
-      const queueItem = queue.find(q => q.youtubeId === ex.YoutubeId);
+      const queueItem = queue.find((q) => q.youtubeId === ex.YoutubeId);
       if (queueItem) {
         // Only show toast if status transitions to 'failed' or 'rejected'
-        if ((queueItem.status === 'failed' || queueItem.status === 'rejected') &&
-            ex.Status !== 'failed' && ex.Status !== 'rejected' && (queueItem.reason || queueItem.Reason)) {
+        if (
+          (queueItem.status === "failed" || queueItem.status === "rejected") &&
+          ex.Status !== "failed" &&
+          ex.Status !== "rejected" &&
+          (queueItem.reason || queueItem.Reason)
+        ) {
           setToastMsg(queueItem.reason || queueItem.Reason);
           setToastSuccess(false);
         }
@@ -50,26 +57,26 @@ function ExtrasList({
     }
 
     function updateExtrasWithQueue(prev, queue) {
-      return prev.map(ex => updateExtraWithQueue(ex, queue));
+      return prev.map((ex) => updateExtraWithQueue(ex, queue));
     }
 
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-        if (msg.type === 'download_queue_update' && Array.isArray(msg.queue)) {
-          if (typeof setExtras === 'function') {
-            setExtras(prev => updateExtrasWithQueue(prev, msg.queue));
+        if (msg.type === "download_queue_update" && Array.isArray(msg.queue)) {
+          if (typeof setExtras === "function") {
+            setExtras((prev) => updateExtrasWithQueue(prev, msg.queue));
           }
         }
       } catch (err) {
-        console.debug('[WebSocket] Error parsing message', err);
+        console.debug("[WebSocket] Error parsing message", err);
       }
     };
     ws.onerror = (e) => {
-      console.debug('[WebSocket] Error', e);
+      console.debug("[WebSocket] Error", e);
     };
     ws.onclose = () => {
-      console.debug('[WebSocket] Closed');
+      console.debug("[WebSocket] Closed");
     };
     return () => {
       ws.close();
@@ -80,15 +87,18 @@ function ExtrasList({
   const renderExtrasGroup = (type, typeExtras) => (
     <div key={type} style={{ marginBottom: 32 }}>
       <SectionHeader>{type}</SectionHeader>
-      <div className="extras-list-group" style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 0px))',
-        gap: '32px',
-        justifyItems: 'start',
-        alignItems: 'start',
-        width: '100%',
-        justifyContent: 'start',
-      }}>
+      <div
+        className="extras-list-group"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 0px))",
+          gap: "32px",
+          justifyItems: "start",
+          alignItems: "start",
+          width: "100%",
+          justifyContent: "start",
+        }}
+      >
         {typeExtras.map((extra, idx) => (
           <ExtraCard
             key={extra.YoutubeId || idx}
@@ -104,7 +114,7 @@ function ExtrasList({
             setModalMsg={setModalMsg}
             setShowModal={setShowModal}
             YoutubeEmbed={YoutubeEmbed}
-            onPlay={videoId => setYoutubeModal({ open: true, videoId })}
+            onPlay={(videoId) => setYoutubeModal({ open: true, videoId })}
             showToast={setToastMsg}
           />
         ))}
@@ -115,12 +125,19 @@ function ExtrasList({
   // Render 'Trailers' first, then others except 'Other', then 'Other' last
   return (
     <>
-  <Toast message={toastMsg} onClose={() => setToastMsg('')} darkMode={darkMode} success={toastSuccess} />
-      {extrasByType['Trailers'] && renderExtrasGroup('Trailers', extrasByType['Trailers'])}
+      <Toast
+        message={toastMsg}
+        onClose={() => setToastMsg("")}
+        darkMode={darkMode}
+        success={toastSuccess}
+      />
+      {extrasByType["Trailers"] &&
+        renderExtrasGroup("Trailers", extrasByType["Trailers"])}
       {Object.entries(extrasByType)
-        .filter(([type]) => type !== 'Trailers' && type !== 'Other')
+        .filter(([type]) => type !== "Trailers" && type !== "Other")
         .map(([type, typeExtras]) => renderExtrasGroup(type, typeExtras))}
-      {extrasByType['Other'] && renderExtrasGroup('Other', extrasByType['Other'])}
+      {extrasByType["Other"] &&
+        renderExtrasGroup("Other", extrasByType["Other"])}
     </>
   );
 }

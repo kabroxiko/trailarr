@@ -1,6 +1,7 @@
 /* Spin animation for task icons */
 
-.spin-icon, svg.spin-icon {
+.spin-icon,
+svg.spin-icon {
   animation: spin 1s linear infinite !important;
 }
 

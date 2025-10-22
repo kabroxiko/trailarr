@@ -1,10 +1,17 @@
-import React from 'react';
-import PropTypes from 'prop-types';
-import IconButton from './IconButton.jsx';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { Link } from 'react-router-dom';
-import { faCog, faFilm, faHistory, faStar, faBan, faServer } from '@fortawesome/free-solid-svg-icons';
-import './SidebarDesktop.css';
+import React from "react";
+import PropTypes from "prop-types";
+import IconButton from "./IconButton.jsx";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { Link } from "react-router-dom";
+import {
+  faCog,
+  faFilm,
+  faHistory,
+  faStar,
+  faBan,
+  faServer,
+} from "@fortawesome/free-solid-svg-icons";
+import "./SidebarDesktop.css";
 
 export default function SidebarDesktop({
   darkMode,
@@ -12,46 +19,60 @@ export default function SidebarDesktop({
   selectedSettingsSub,
   selectedSystemSub,
   isOpen,
-  handleToggle
+  handleToggle,
 }) {
   function renderWantedSubmenu() {
     return (
-      <ul style={{
-        listStyle: 'none',
-        padding: 0,
-        margin: '8px 0 0 0',
-        background: darkMode ? '#23232a' : '#f3f4f6',
-        borderRadius: 6,
-        color: darkMode ? '#e5e7eb' : '#222',
-        textAlign: 'left'
-      }}>
-        {['Movies', 'Series'].map((submenu) => {
+      <ul
+        style={{
+          listStyle: "none",
+          padding: 0,
+          margin: "8px 0 0 0",
+          background: darkMode ? "#23232a" : "#f3f4f6",
+          borderRadius: 6,
+          color: darkMode ? "#e5e7eb" : "#222",
+          textAlign: "left",
+        }}
+      >
+        {["Movies", "Series"].map((submenu) => {
           const selected = selectedSettingsSub === submenu;
-          const borderLeft = selected ? '3px solid #a855f7' : '3px solid transparent';
+          const borderLeft = selected
+            ? "3px solid #a855f7"
+            : "3px solid transparent";
           let color;
           if (selected) {
-            color = darkMode ? '#a855f7' : '#6d28d9';
+            color = darkMode ? "#a855f7" : "#6d28d9";
           } else {
-            color = darkMode ? '#e5e7eb' : '#333';
+            color = darkMode ? "#e5e7eb" : "#333";
           }
-          const fontWeight = selected ? 'bold' : 'normal';
+          const fontWeight = selected ? "bold" : "normal";
           const styleLink = {
             color,
-            textDecoration: 'none',
-            display: 'block',
-            width: '100%',
-            textAlign: 'left',
-            background: 'none',
-            border: 'none',
+            textDecoration: "none",
+            display: "block",
+            width: "100%",
+            textAlign: "left",
+            background: "none",
+            border: "none",
             fontWeight,
-            cursor: 'pointer',
+            cursor: "pointer",
           };
           return (
-            <li key={submenu} style={{ padding: '0.5em 1em', borderLeft, background: 'none', color, fontWeight, cursor: 'pointer', textAlign: 'left' }}>
-              <Link
-                to={`/wanted/${submenu.toLowerCase()}`}
-                style={styleLink}
-              >{submenu}</Link>
+            <li
+              key={submenu}
+              style={{
+                padding: "0.5em 1em",
+                borderLeft,
+                background: "none",
+                color,
+                fontWeight,
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+            >
+              <Link to={`/wanted/${submenu.toLowerCase()}`} style={styleLink}>
+                {submenu}
+              </Link>
             </li>
           );
         })}
@@ -60,42 +81,56 @@ export default function SidebarDesktop({
   }
   function renderSettingsSubmenu() {
     return (
-      <ul style={{
-        listStyle: 'none',
-        padding: 0,
-        margin: '8px 0 0 0',
-        background: darkMode ? '#23232a' : '#f3f4f6',
-        borderRadius: 6,
-        color: darkMode ? '#e5e7eb' : '#222',
-        textAlign: 'left'
-      }}>
-        {['General', 'Radarr', 'Sonarr', 'Extras'].map((submenu) => {
+      <ul
+        style={{
+          listStyle: "none",
+          padding: 0,
+          margin: "8px 0 0 0",
+          background: darkMode ? "#23232a" : "#f3f4f6",
+          borderRadius: 6,
+          color: darkMode ? "#e5e7eb" : "#222",
+          textAlign: "left",
+        }}
+      >
+        {["General", "Radarr", "Sonarr", "Extras"].map((submenu) => {
           const selected = selectedSettingsSub === submenu;
-          const borderLeft = selected ? '3px solid #a855f7' : '3px solid transparent';
+          const borderLeft = selected
+            ? "3px solid #a855f7"
+            : "3px solid transparent";
           let color;
           if (selected) {
-            color = darkMode ? '#a855f7' : '#6d28d9';
+            color = darkMode ? "#a855f7" : "#6d28d9";
           } else {
-            color = darkMode ? '#e5e7eb' : '#333';
+            color = darkMode ? "#e5e7eb" : "#333";
           }
-          const fontWeight = selected ? 'bold' : 'normal';
+          const fontWeight = selected ? "bold" : "normal";
           const styleLink = {
             color,
-            textDecoration: 'none',
-            display: 'block',
-            width: '100%',
-            textAlign: 'left',
-            background: 'none',
-            border: 'none',
+            textDecoration: "none",
+            display: "block",
+            width: "100%",
+            textAlign: "left",
+            background: "none",
+            border: "none",
             fontWeight,
-            cursor: 'pointer',
+            cursor: "pointer",
           };
           return (
-            <li key={submenu} style={{ padding: '0.5em 1em', borderLeft, background: 'none', color, fontWeight, cursor: 'pointer', textAlign: 'left' }}>
-              <Link
-                to={`/settings/${submenu.toLowerCase()}`}
-                style={styleLink}
-              >{submenu}</Link>
+            <li
+              key={submenu}
+              style={{
+                padding: "0.5em 1em",
+                borderLeft,
+                background: "none",
+                color,
+                fontWeight,
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+            >
+              <Link to={`/settings/${submenu.toLowerCase()}`} style={styleLink}>
+                {submenu}
+              </Link>
             </li>
           );
         })}
@@ -104,42 +139,59 @@ export default function SidebarDesktop({
   }
   function renderSystemSubmenu() {
     return (
-      <ul style={{
-        listStyle: 'none',
-        padding: 0,
-        margin: '8px 0 0 0',
-        background: darkMode ? '#23232a' : '#f3f4f6',
-        borderRadius: 6,
-        color: darkMode ? '#e5e7eb' : '#222',
-        textAlign: 'left'
-      }}>
-        {['Tasks', 'Logs'].map((submenu) => {
+      <ul
+        style={{
+          listStyle: "none",
+          padding: 0,
+          margin: "8px 0 0 0",
+          background: darkMode ? "#23232a" : "#f3f4f6",
+          borderRadius: 6,
+          color: darkMode ? "#e5e7eb" : "#222",
+          textAlign: "left",
+        }}
+      >
+        {["Tasks", "Logs"].map((submenu) => {
           const selected = selectedSystemSub === submenu;
-          const borderLeft = selected ? '3px solid #a855f7' : '3px solid transparent';
+          const borderLeft = selected
+            ? "3px solid #a855f7"
+            : "3px solid transparent";
           let color;
           if (selected) {
-            color = darkMode ? '#a855f7' : '#6d28d9';
+            color = darkMode ? "#a855f7" : "#6d28d9";
           } else {
-            color = darkMode ? '#e5e7eb' : '#333';
+            color = darkMode ? "#e5e7eb" : "#333";
           }
-          const fontWeight = selected ? 'bold' : 'normal';
+          const fontWeight = selected ? "bold" : "normal";
           const styleLink = {
             color,
-            textDecoration: 'none',
-            display: 'block',
-            width: '100%',
-            textAlign: 'left',
-            background: 'none',
-            border: 'none',
+            textDecoration: "none",
+            display: "block",
+            width: "100%",
+            textAlign: "left",
+            background: "none",
+            border: "none",
             fontWeight,
-            cursor: 'pointer',
+            cursor: "pointer",
           };
           return (
-            <li key={submenu} style={{ padding: '0.5em 1em', borderLeft, background: 'none', color, fontWeight, cursor: 'pointer', textAlign: 'left' }}>
+            <li
+              key={submenu}
+              style={{
+                padding: "0.5em 1em",
+                borderLeft,
+                background: "none",
+                color,
+                fontWeight,
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+            >
               <Link
-                to={submenu === 'Tasks' ? "/system/tasks" : "/system/logs"}
+                to={submenu === "Tasks" ? "/system/tasks" : "/system/logs"}
                 style={styleLink}
-              >{submenu}</Link>
+              >
+                {submenu}
+              </Link>
             </li>
           );
         })}
@@ -147,18 +199,18 @@ export default function SidebarDesktop({
     );
   }
   const menuItems = [
-    { name: 'Movies', icon: faFilm, route: '/' },
-    { name: 'Series', icon: faCog, route: '/series' },
-    { name: 'History', icon: faHistory, route: '/history' },
-    { name: 'Wanted', icon: faStar },
-    { name: 'Blacklist', icon: faBan, route: '/blacklist' },
-    { name: 'Settings', icon: faCog },
-    { name: 'System', icon: faServer }
+    { name: "Movies", icon: faFilm, route: "/" },
+    { name: "Series", icon: faCog, route: "/series" },
+    { name: "History", icon: faHistory, route: "/history" },
+    { name: "Wanted", icon: faStar },
+    { name: "Blacklist", icon: faBan, route: "/blacklist" },
+    { name: "Settings", icon: faCog },
+    { name: "System", icon: faServer },
   ];
   const firstSubmenuRoute = {
-    Wanted: '/wanted/movies',
-    Settings: '/settings/general',
-    System: '/system/tasks',
+    Wanted: "/wanted/movies",
+    Settings: "/settings/general",
+    System: "/system/tasks",
   };
   const handleMenuClick = (name) => {
     if (firstSubmenuRoute[name]) {
@@ -168,48 +220,51 @@ export default function SidebarDesktop({
     }
   };
   return (
-    <aside className="sidebar-desktop" style={{
-      width: 220,
-      background: darkMode ? '#23232a' : '#fff',
-      borderRight: darkMode ? '1px solid #333' : '1px solid #e5e7eb',
-      padding: '0em 0',
-      height: 'calc(100vh - 64px)',
-      boxSizing: 'border-box',
-      position: 'fixed',
-      top: 64,
-      left: 0,
-      zIndex: 105
-    }}>
+    <aside
+      className="sidebar-desktop"
+      style={{
+        width: 220,
+        background: darkMode ? "#23232a" : "#fff",
+        borderRight: darkMode ? "1px solid #333" : "1px solid #e5e7eb",
+        padding: "0em 0",
+        height: "calc(100vh - 64px)",
+        boxSizing: "border-box",
+        position: "fixed",
+        top: 64,
+        left: 0,
+        zIndex: 105,
+      }}
+    >
       <nav>
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
           {menuItems.map(({ name, icon, route }) => {
             let background, color, fontWeight;
             if (selectedSection === name) {
-              background = darkMode ? '#333' : '#f3f4f6';
-              color = darkMode ? '#a855f7' : '#6d28d9';
-              fontWeight = 'bold';
+              background = darkMode ? "#333" : "#f3f4f6";
+              color = darkMode ? "#a855f7" : "#6d28d9";
+              fontWeight = "bold";
             } else {
-              background = 'none';
-              color = darkMode ? '#e5e7eb' : '#333';
-              fontWeight = 'normal';
+              background = "none";
+              color = darkMode ? "#e5e7eb" : "#333";
+              fontWeight = "normal";
             }
             const styleCommon = {
-              textDecoration: 'none',
+              textDecoration: "none",
               background,
-              border: 'none',
+              border: "none",
               color,
               fontWeight,
-              textAlign: 'left',
-              padding: '0.5em 1em',
+              textAlign: "left",
+              padding: "0.5em 1em",
               borderRadius: 6,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75em',
-              outline: 'none',
-              boxShadow: 'none',
-              WebkitTapHighlightColor: 'transparent',
-              transition: 'box-shadow 0.1s',
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.75em",
+              outline: "none",
+              boxShadow: "none",
+              WebkitTapHighlightColor: "transparent",
+              transition: "box-shadow 0.1s",
             };
             if (route) {
               return (
@@ -219,7 +274,20 @@ export default function SidebarDesktop({
                     style={styleCommon}
                     className="sidebar-menu-link"
                   >
-                    <IconButton icon={<FontAwesomeIcon icon={icon} color={darkMode ? '#e5e7eb' : '#333'} />} style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} />
+                    <IconButton
+                      icon={
+                        <FontAwesomeIcon
+                          icon={icon}
+                          color={darkMode ? "#e5e7eb" : "#333"}
+                        />
+                      }
+                      style={{
+                        background: "none",
+                        padding: 0,
+                        margin: 0,
+                        border: "none",
+                      }}
+                    />
                     {name}
                   </Link>
                 </li>
@@ -234,12 +302,27 @@ export default function SidebarDesktop({
                   className="sidebar-menu-btn"
                   onClick={() => handleMenuClick(name)}
                 >
-                  <IconButton icon={<FontAwesomeIcon icon={icon} color={darkMode ? '#e5e7eb' : '#333'} />} style={{ background: 'none', padding: 0, margin: 0, border: 'none' }} />
+                  <IconButton
+                    icon={
+                      <FontAwesomeIcon
+                        icon={icon}
+                        color={darkMode ? "#e5e7eb" : "#333"}
+                      />
+                    }
+                    style={{
+                      background: "none",
+                      padding: 0,
+                      margin: 0,
+                      border: "none",
+                    }}
+                  />
                   {name}
                 </button>
-                {name === 'Wanted' && isOpen('Wanted') && renderWantedSubmenu()}
-                {name === 'Settings' && isOpen('Settings') && renderSettingsSubmenu()}
-                {name === 'System' && isOpen('System') && renderSystemSubmenu()}
+                {name === "Wanted" && isOpen("Wanted") && renderWantedSubmenu()}
+                {name === "Settings" &&
+                  isOpen("Settings") &&
+                  renderSettingsSubmenu()}
+                {name === "System" && isOpen("System") && renderSystemSubmenu()}
               </li>
             );
           })}

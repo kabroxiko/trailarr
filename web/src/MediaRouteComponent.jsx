@@ -2,20 +2,54 @@ import React from "react";
 import PropTypes from "prop-types";
 import MediaList from "./components/MediaList";
 
-function MediaRouteComponent({ items, search, darkMode, error, getSearchSections, type, loading }) {
+function MediaRouteComponent({
+  items,
+  search,
+  darkMode,
+  error,
+  getSearchSections,
+  type,
+  loading,
+}) {
   const { titleMatches, overviewMatches } = getSearchSections(items);
   return (
     <>
       {search.trim() ? (
         <>
-          <MediaList items={titleMatches} darkMode={darkMode} type={type} loading={loading} />
-          <div style={{ margin: '1.5em 0 0.5em 1em', fontWeight: 700, fontSize: 26, textAlign: 'left', width: '100%', letterSpacing: 0.5 }}>Other Results</div>
-          <MediaList items={overviewMatches} darkMode={darkMode} type={type} loading={loading} />
+          <MediaList
+            items={titleMatches}
+            darkMode={darkMode}
+            type={type}
+            loading={loading}
+          />
+          <div
+            style={{
+              margin: "1.5em 0 0.5em 1em",
+              fontWeight: 700,
+              fontSize: 26,
+              textAlign: "left",
+              width: "100%",
+              letterSpacing: 0.5,
+            }}
+          >
+            Other Results
+          </div>
+          <MediaList
+            items={overviewMatches}
+            darkMode={darkMode}
+            type={type}
+            loading={loading}
+          />
         </>
       ) : (
-        <MediaList items={items} darkMode={darkMode} type={type} loading={loading} />
+        <MediaList
+          items={items}
+          darkMode={darkMode}
+          type={type}
+          loading={loading}
+        />
       )}
-      {error && <div style={{ color: 'red', marginTop: '1em' }}>{error}</div>}
+      {error && <div style={{ color: "red", marginTop: "1em" }}>{error}</div>}
     </>
   );
 }

@@ -1,18 +1,19 @@
-import React, { useEffect, useState } from 'react';
-import PropTypes from 'prop-types';
-import MediaList from './MediaList';
+import React, { useEffect, useState } from "react";
+import PropTypes from "prop-types";
+import MediaList from "./MediaList";
 
 export default function Wanted({ darkMode, type }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   useEffect(() => {
     async function fetchWanted() {
       setLoading(true);
-      setError('');
+      setError("");
       try {
-        const endpoint = type === 'movie' ? '/api/movies/wanted' : '/api/series/wanted';
+        const endpoint =
+          type === "movie" ? "/api/movies/wanted" : "/api/series/wanted";
         const res = await fetch(endpoint);
         const data = await res.json();
         const sorted = (data.items || []).slice().sort((a, b) => {
@@ -22,21 +23,23 @@ export default function Wanted({ darkMode, type }) {
         });
         setItems(sorted);
       } catch {
-        setError('Failed to fetch wanted ' + (type === 'movie' ? 'movies' : 'series'));
+        setError(
+          "Failed to fetch wanted " + (type === "movie" ? "movies" : "series"),
+        );
       }
       setLoading(false);
     }
     fetchWanted();
   }, [type]);
   return (
-    <div style={{ padding: '0em 0em', width: '100%' }}>
+    <div style={{ padding: "0em 0em", width: "100%" }}>
       {loading && <div>Loading...</div>}
-      {error && <div style={{ color: 'red' }}>{error}</div>}
+      {error && <div style={{ color: "red" }}>{error}</div>}
       <MediaList
         items={items}
         darkMode={darkMode}
         type={type}
-        basePath={type === 'series' ? '/wanted/series' : '/wanted/movies'}
+        basePath={type === "series" ? "/wanted/series" : "/wanted/movies"}
         loading={loading}
       />
     </div>
@@ -45,7 +48,7 @@ export default function Wanted({ darkMode, type }) {
 
 Wanted.propTypes = {
   darkMode: PropTypes.bool,
-  type: PropTypes.oneOf(['movie', 'series']).isRequired,
+  type: PropTypes.oneOf(["movie", "series"]).isRequired,
 };
 
 Wanted.defaultProps = {
