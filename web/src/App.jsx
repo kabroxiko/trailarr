@@ -227,20 +227,20 @@ function App() {
         sidebarOpen={sidebarOpen}
         onSidebarToggle={handleSidebarToggle}
       />
-  <div style={{ display: 'flex', width: '100vw', height: 'calc(100vh - 64px)', position: 'relative' }}>
-        <Sidebar
-          selectedSection={selectedSection}
-          setSelectedSection={setSelectedSection}
-          selectedSettingsSub={selectedSettingsSub}
-          setSelectedSettingsSub={setSelectedSettingsSub}
-          darkMode={darkMode}
-          selectedSystemSub={selectedSystemSub}
-          setSelectedSystemSub={setSelectedSystemSub}
-          mobile={isMobile}
-          open={sidebarOpen}
-          onClose={handleSidebarClose}
-          onToggle={handleSidebarToggle}
-        />
+    <div style={{ display: 'flex', width: '100vw', height: 'calc(100vh - 64px)', position: 'relative' }}>
+      <Sidebar
+        selectedSection={selectedSection}
+        setSelectedSection={setSelectedSection}
+        selectedSettingsSub={selectedSettingsSub}
+        setSelectedSettingsSub={setSelectedSettingsSub}
+        darkMode={darkMode}
+        selectedSystemSub={selectedSystemSub}
+        setSelectedSystemSub={setSelectedSystemSub}
+        mobile={isMobile}
+        open={sidebarOpen}
+        onClose={handleSidebarClose}
+        onToggle={handleSidebarToggle}
+      />
         <main style={{
           flex: 1,
           padding: '0em',
@@ -259,12 +259,15 @@ function App() {
             background: darkMode ? '#23232a' : '#fff',
             boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb',
             padding: '0em',
-            width: '100%',
-            maxWidth: '100%',
+            width: '100vw',
+            maxWidth: '100vw',
             flex: 1,
             overflowY: 'auto',
             overflowX: 'hidden',
-            color: darkMode ? '#e5e7eb' : '#222' }}>
+            color: darkMode ? '#e5e7eb' : '#222',
+            marginLeft: window.innerWidth > 900 ? 220 : 0,
+            marginTop: 64
+          }}>
             <React.Suspense fallback={null}>
               <Routes>
                 <Route path="/series" element={<MediaRouteComponent

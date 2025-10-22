@@ -6,7 +6,19 @@ import PropTypes from 'prop-types';
 
 export default function Header({ darkMode, search, setSearch, mobile, sidebarOpen, onSidebarToggle }) {
   return (
-    <header style={{ width: '100%', height: 64, background: darkMode ? '#23232a' : '#fff', display: 'flex', alignItems: 'center', boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb', padding: '0 24px', position: 'relative', zIndex: 10 }}>
+    <header style={{
+      width: '100%',
+      height: 64,
+      background: darkMode ? '#23232a' : '#fff',
+      display: 'flex',
+      alignItems: 'center',
+      boxShadow: darkMode ? '0 1px 4px #222' : '0 1px 4px #e5e7eb',
+      padding: '0 24px',
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      zIndex: 110
+    }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1 }}>
         <img src="/logo.svg" alt="Logo" style={{ width: mobile ? 28 : 40, height: mobile ? 28 : 40, marginRight: mobile ? 0 : 12 }} />
         {mobile && (

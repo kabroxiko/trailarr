@@ -416,11 +416,12 @@ func LoadMediaFromRedis(path string) ([]map[string]interface{}, error) {
 	case SeriesRedisKey:
 		redisKey = "trailarr:series"
 	default:
-		return nil, fmt.Errorf("unsupported path for redis: %s", path)
+		return nil, fmt.Errorf("unsupported path for bbolt: %s", path)
 	}
-	val, err := client.Get(ctx, redisKey).Result()
+	valRes := client.Get(ctx, redisKey)
+	val, err := valRes.Result()
 	if err != nil {
-		if err.Error() == "redis: nil" {
+		if err == ErrNotFound {
 			return []map[string]interface{}{}, nil // treat as empty
 		}
 		return nil, err
@@ -443,7 +444,7 @@ func SaveMediaToRedis(path string, items []map[string]interface{}) error {
 	case SeriesRedisKey:
 		redisKey = "trailarr:series"
 	default:
-		return fmt.Errorf("unsupported path for redis: %s", path)
+		return fmt.Errorf("unsupported path for bbolt: %s", path)
 	}
 	data, err := json.Marshal(items)
 	if err != nil {

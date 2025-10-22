@@ -17,7 +17,7 @@ RUN make build
 
 # Final image
 FROM ubuntu:22.04
-RUN apt-get update && apt-get install -y ca-certificates python3 python3-pip redis-server wget xz-utils \
+RUN apt-get update && apt-get install -y ca-certificates python3 python3-pip wget xz-utils \
 	&& rm -rf /var/lib/apt/lists/* \
 	&& wget -O - https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz | tar -xJ -C /usr/local/bin --strip-components=1 --wildcards '*/ffmpeg' '*/ffprobe' \
 	&& chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe \
@@ -27,5 +27,4 @@ WORKDIR /app
 COPY --from=go-builder /app/bin/trailarr /app/bin/trailarr
 
 EXPOSE 8080
-# Start a local Redis server in the background and then run Trailarr. We disable persistence to reduce I/O.
 CMD ["/app/bin/trailarr"]

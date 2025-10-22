@@ -1,3 +1,11 @@
+.sidebar-menu-link.selected,
+.sidebar-menu-link.selected:focus {
+  background: #e5e7ff !important;
+  color: #6d28d9 !important;
+  box-shadow: 0 0 0 2px #a855f7;
+  display: inline-block;
+  width: auto;
+}
 /* Remove default focus outline and background, add custom focus style for sidebar menu items */
 .sidebar-menu-link:focus, .sidebar-menu-btn:focus {
   outline: none;

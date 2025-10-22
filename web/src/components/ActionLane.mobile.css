@@ -11,7 +11,7 @@
     box-shadow: none !important;
   }
   .media-action-lane button {
-    padding: 0.08rem 1rem !important;
+    padding: 0.3rem 1rem !important;
     font-size: 0.85em !important;
     min-height: 22px !important;
     height: 22px !important;
@@ -25,5 +25,18 @@
 @media (min-width: 901px) {
   .search-label {
     display: inline !important;
+  }
+  .media-action-lane {
+    left: 220px !important;
+    width: calc(100% - 220px) !important;
+    padding: 0.8rem 0rem !important;
+    gap: 0.3rem !important;
+    height: 58px !important;
+    min-height: 58px !important;
+  }
+  .media-action-lane button svg {
+    font-size: 32px !important;
+    height: 32px !important;
+    width: 32px !important;
   }
 }

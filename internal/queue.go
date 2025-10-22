@@ -16,7 +16,7 @@ func GetTaskQueueFileHandler() gin.HandlerFunc {
 		ctx := context.Background()
 		vals, err := client.LRange(ctx, TaskQueueRedisKey, 0, -1).Result()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read queue from redis", "detail": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read queue from bbolt", "detail": err.Error()})
 			return
 		}
 		queues := make([]TaskStatus, 0, len(vals))

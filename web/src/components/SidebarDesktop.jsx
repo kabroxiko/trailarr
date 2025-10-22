@@ -162,13 +162,24 @@ export default function SidebarDesktop({
   };
   const handleMenuClick = (name) => {
     if (firstSubmenuRoute[name]) {
-      window.location.href = firstSubmenuRoute[name];
+      globalThis.location.href = firstSubmenuRoute[name];
     } else {
       handleToggle(name);
     }
   };
   return (
-    <aside className="sidebar-desktop" style={{ width: 220, background: darkMode ? '#23232a' : '#fff', borderRight: darkMode ? '1px solid #333' : '1px solid #e5e7eb', padding: '0em 0', height: '100%', boxSizing: 'border-box' }}>
+    <aside className="sidebar-desktop" style={{
+      width: 220,
+      background: darkMode ? '#23232a' : '#fff',
+      borderRight: darkMode ? '1px solid #333' : '1px solid #e5e7eb',
+      padding: '0em 0',
+      height: 'calc(100vh - 64px)',
+      boxSizing: 'border-box',
+      position: 'fixed',
+      top: 64,
+      left: 0,
+      zIndex: 105
+    }}>
       <nav>
         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {menuItems.map(({ name, icon, route }) => {
@@ -188,7 +199,6 @@ export default function SidebarDesktop({
               border: 'none',
               color,
               fontWeight,
-              width: '100%',
               textAlign: 'left',
               padding: '0.5em 1em',
               borderRadius: 6,

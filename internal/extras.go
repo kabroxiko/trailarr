@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 )
 
 const extrasEntryKeyFmt = "%s:%s:%d"
@@ -50,7 +49,7 @@ func GetExtrasForMedia(ctx context.Context, mediaType MediaType, mediaId int) ([
 	perMediaKey := fmt.Sprintf(perMediaKeyFmt, mediaType, mediaId)
 
 	vals, err := client.HVals(ctx, perMediaKey).Result()
-	if err != nil && err != redis.Nil {
+	if err != nil {
 		return nil, err
 	}
 
@@ -160,8 +159,9 @@ func GetExtraByYoutubeId(ctx context.Context, youtubeId string, mediaType MediaT
 	client := GetRedisClient()
 	key := ExtrasRedisKey
 	entryKey := fmt.Sprintf(extrasEntryKeyFmt, youtubeId, mediaType, mediaId)
-	val, err := client.HGet(ctx, key, entryKey).Result()
-	if err == redis.Nil {
+	valRes := client.HGet(ctx, key, entryKey)
+	val, err := valRes.Result()
+	if err == ErrNotFound {
 		return nil, nil
 	} else if err != nil {
 		return nil, err

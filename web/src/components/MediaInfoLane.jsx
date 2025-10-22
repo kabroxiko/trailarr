@@ -36,7 +36,7 @@ export default function MediaInfoLane({ media, mediaType, darkMode = false, erro
 						 boxSizing: 'border-box',
 						 padding: '24px 16px 16px 16px',
 						 gap: 32,
-						 marginTop: 64, // Add top margin to prevent overlap with action lane
+						 marginTop: window.innerWidth > 900 ? 64 : 28
 					 }}>
 				<div className="media-info-poster" style={{ minWidth: 150, zIndex: 2, display: 'flex', justifyContent: 'flex-start', alignItems: 'flex-start', height: '100%', padding: 0, marginTop: 32 }}>
 								<img

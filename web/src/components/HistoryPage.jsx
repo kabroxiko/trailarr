@@ -18,6 +18,18 @@ function formatDate(date) {
   return `${diff} days ago`;
 }
 
+// Helper to get link for a history item
+function getMediaLink(item) {
+  // Only use mediaId for links
+  if (item.mediaId) {
+    if (item.mediaType === 'movie') {
+      return `/history/movies/${item.mediaId}`;
+    } else if (item.mediaType === 'tv') {
+      return `/history/series/${item.mediaId}`;
+    }
+  }
+  return null;
+}
 
 const HistoryPage = () => {
   const [history, setHistory] = useState([]);
@@ -27,19 +39,6 @@ const HistoryPage = () => {
   const pageSize = 20;
   const totalPages = Math.ceil(history.length / pageSize);
   const paginatedHistory = history.slice((page - 1) * pageSize, page * pageSize);
-
-  // Helper to get link for a history item
-  function getMediaLink(item) {
-    // Only use mediaId for links
-    if (item.mediaId) {
-      if (item.mediaType === 'movie') {
-        return `/history/movies/${item.mediaId}`;
-      } else if (item.mediaType === 'tv') {
-        return `/history/series/${item.mediaId}`;
-      }
-    }
-    return null;
-  }
 
   useEffect(() => {
     setLoading(true);
@@ -155,7 +154,7 @@ const HistoryPage = () => {
   // Set icon color variable for dark/light mode
   useEffect(() => {
     const setTableColors = () => {
-      const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const isDark = globalThis.matchMedia('(prefers-color-scheme: dark)').matches;
       document.documentElement.style.setProperty('--history-table-bg', isDark ? '#18181b' : '#fff');
       document.documentElement.style.setProperty('--history-table-text', isDark ? '#e5e7eb' : '#222');
       document.documentElement.style.setProperty('--history-table-header-bg', isDark ? '#27272a' : '#fff');
@@ -168,13 +167,13 @@ const HistoryPage = () => {
       document.documentElement.style.setProperty('--history-table-extra-type', isDark ? '#fff' : '#000');
       document.documentElement.style.setProperty('--history-table-extra-title', isDark ? '#d1d5db' : '#444');
       document.documentElement.style.setProperty('--history-table-date', isDark ? '#a1a1aa' : '#888');
-  document.documentElement.style.setProperty('--history-icon-color', isDark ? '#fff' : '#111');
-  document.documentElement.style.setProperty('--history-table-pagination', isDark ? '#e5e7eb' : '#222');
+      document.documentElement.style.setProperty('--history-icon-color', isDark ? '#fff' : '#111');
+      document.documentElement.style.setProperty('--history-table-pagination', isDark ? '#e5e7eb' : '#222');
     };
     setTableColors();
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', setTableColors);
+    globalThis.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', setTableColors);
     return () => {
-      window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', setTableColors);
+      globalThis.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', setTableColors);
     };
   }, []);
   // Page background style for dark mode

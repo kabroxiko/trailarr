@@ -14,8 +14,8 @@ export default function ActionLane({ buttons = [], darkMode = false, error, chil
   const laneText = darkMode ? '#e5e7eb' : 'var(--save-lane-text, #222)';
   return (
     <div className="media-action-lane" style={{
-      position: 'absolute',
-      top: 0,
+      position: 'fixed',
+      top: 64,
       left: 0,
       width: '100%',
       background: laneBg,
@@ -25,7 +25,7 @@ export default function ActionLane({ buttons = [], darkMode = false, error, chil
       flexDirection: 'column',
       alignItems: 'flex-start',
       gap: '0.7rem',
-      zIndex: 10,
+      zIndex: 100,
       boxShadow: darkMode ? '0 2px 8px #0008' : '0 2px 8px #0001',
       borderBottom: darkMode ? '1.5px solid #444' : '1.5px solid #e5e7eb',
       transition: 'background 0.2s, color 0.2s',

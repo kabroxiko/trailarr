@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import PropTypes from 'prop-types';
 import MediaList from './MediaList';
 
 export default function Wanted({ darkMode, type }) {
@@ -27,7 +28,6 @@ export default function Wanted({ darkMode, type }) {
     }
     fetchWanted();
   }, [type]);
-
   return (
     <div style={{ padding: '0em 0em', width: '100%' }}>
       {loading && <div>Loading...</div>}
@@ -42,3 +42,12 @@ export default function Wanted({ darkMode, type }) {
     </div>
   );
 }
+
+Wanted.propTypes = {
+  darkMode: PropTypes.bool,
+  type: PropTypes.oneOf(['movie', 'series']).isRequired,
+};
+
+Wanted.defaultProps = {
+  darkMode: false,
+};
