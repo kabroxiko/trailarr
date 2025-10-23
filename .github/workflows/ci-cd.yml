@@ -61,7 +61,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21.x'
+          go-version: '1.25.x'
       - name: Set job GOMODCACHE
         run: |
           echo "GOMODCACHE=$HOME/.cache/go-mod" >> $GITHUB_ENV
@@ -73,9 +73,9 @@ jobs:
             ~/.cache/go-build
             $HOME/.cache/go-mod
             **/vendor
-          key: ${{ runner.os }}-go-1.21-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-1.25-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-1.21-
+            ${{ runner.os }}-go-1.25-
 
       - name: Install dependencies
         run: |
@@ -84,45 +84,6 @@ jobs:
       - name: Run Go tests
         run: |
           make test
-
-      - name: Ensure covdata is available
-        env:
-          COVDATA_URL: ${{ secrets.COVDATA_URL }}
-        run: |
-          set -euo pipefail
-          # 1) If `go tool covdata` exists, nothing to do.
-          if go tool covdata pkglist >/dev/null 2>&1; then
-            echo "go tool covdata is available"
-            exit 0
-          fi
-
-          mkdir -p "$HOME/.local/bin"
-
-          # 2) Try to download prebuilt binary from secret-provided URL
-          if [ -n "${COVDATA_URL:-}" ]; then
-            echo "Downloading covdata from provided COVDATA_URL"
-            curl -fsSL "$COVDATA_URL" -o /tmp/covdata && chmod +x /tmp/covdata && mv /tmp/covdata "$HOME/.local/bin/covdata"
-            echo "$HOME/.local/bin" >> $GITHUB_PATH
-            echo "Downloaded covdata to $HOME/.local/bin/covdata"
-            exit 0
-          fi
-
-          # 3) Fallback: clone golang/tools and try to build cmd/covdata from source
-          echo "No prebuilt covdata provided and go tool covdata missing; attempting to build from source"
-          git clone https://github.com/golang/tools.git /tmp/golang-tools
-          if [ -d /tmp/golang-tools/cmd/covdata ]; then
-            echo "Building covdata from /tmp/golang-tools/cmd/covdata"
-            cd /tmp/golang-tools/cmd/covdata
-            go build -o $HOME/.local/bin/covdata .
-            chmod +x $HOME/.local/bin/covdata
-            echo "$HOME/.local/bin" >> $GITHUB_PATH
-            echo "Built covdata and placed in $HOME/.local/bin/covdata"
-            exit 0
-          else
-            echo "Upstream golang/tools does not contain cmd/covdata in this commit; skipping build."
-            echo "If covdata is required, provide a prebuilt binary URL in the COVDATA_URL secret."
-            exit 0
-          fi
 
       - name: Generate coverage
         run: |
@@ -263,7 +224,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21.x'
+          go-version: '1.25.x'
       - name: Download dist folder
         uses: actions/download-artifact@v4
         with:
