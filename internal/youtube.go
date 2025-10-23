@@ -18,10 +18,32 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const ytDlpSkipDownload = "--skip-download"
-const ytDlpSearchPrefix = "ytsearch10:"
+// Package-level constants and variables. Keep these together so tests can
+// override timings or swap implementations (eg. fakeRunner) in TestMain.
+const (
+	ytDlpSkipDownload = "--skip-download"
+	ytDlpSearchPrefix = "ytsearch10:"
+	YtDlpCmd          = "yt-dlp"
+)
 
-const YtDlpCmd = "yt-dlp"
+var (
+	// Test hooks: when true, yt-dlp calls are mocked/simulated for faster tests.
+	YtDlpTestMode = false
+
+	// Configurable delays (can be shortened during tests)
+	QueueItemRemoveDelay = 10 * time.Second
+	QueuePollInterval    = 2 * time.Second
+
+	// Additional configurable timings used across the package. Tests can shorten these.
+	DownloadQueueWatcherInterval    = 1 * time.Second
+	TooManyRequestsPauseDuration    = 5 * time.Minute
+	TooManyRequestsPauseLogInterval = 30 * time.Second
+	TasksDepsWaitInterval           = 5 * time.Second
+
+	// runtime state (moved here for tidy grouping)
+	downloadStatusMap = make(map[string]*DownloadStatus) // keyed by YouTubeID
+	queueMutex        sync.Mutex
+)
 
 // YouTube trailer search SSE handler (progressive results)
 func YouTubeTrailerSearchStreamHandler(c *gin.Context) {
@@ -97,6 +119,23 @@ func streamYtDlpSearchForTerm(term string, remaining int, videoIdSet map[string]
 	ytDlpArgs := []string{"-j", ytDlpSearchPrefix + searchQuery, ytDlpSkipDownload}
 	TrailarrLog(INFO, "YouTube", "yt-dlp command (SSE): yt-dlp %v", ytDlpArgs)
 
+	if YtDlpTestMode {
+		// Fast test-mode: emit fake IDs based on term
+		added := 0
+		for i := 0; i < remaining; i++ {
+			fakeID := fmt.Sprintf("test-%s-%d", strings.ReplaceAll(term, " ", "-"), i)
+			if !videoIdSet[fakeID] {
+				videoIdSet[fakeID] = true
+				result := gin.H{"id": gin.H{"videoId": fakeID}, "snippet": gin.H{"title": fakeID}}
+				b, _ := json.Marshal(result)
+				fmt.Fprintf(c.Writer, "data: %s\n\n", b)
+				c.Writer.Flush()
+				added++
+			}
+		}
+		return added, nil
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 
@@ -118,17 +157,13 @@ func streamYtDlpSearchForTerm(term string, remaining int, videoIdSet map[string]
 
 // startYtDlpCommand starts the yt-dlp command with the provided args and returns a buffered reader for stdout.
 func startYtDlpCommand(ctx context.Context, cmdName string, args []string) (*bufio.Reader, *exec.Cmd, error) {
-	cmd := exec.CommandContext(ctx, cmdName, args...)
-	stdout, err := cmd.StdoutPipe()
+	// Delegate to the configurable runner
+	stdout, cmd, err := ytDlpRunner.StartCommand(ctx, cmdName, args)
 	if err != nil {
-		TrailarrLog(ERROR, "YouTube", "Failed to get StdoutPipe: %v", err)
+		TrailarrLog(ERROR, "YouTube", "Failed to start yt-dlp via runner: %v", err)
 		return nil, nil, err
 	}
-	if err := cmd.Start(); err != nil {
-		TrailarrLog(ERROR, "YouTube", "Failed to start yt-dlp: %v", err)
-		return nil, nil, err
-	}
-	TrailarrLog(INFO, "YouTube", "Started yt-dlp process (SSE streaming)...")
+	TrailarrLog(INFO, "YouTube", "Started yt-dlp process (SSE streaming) via runner...")
 	return bufio.NewReader(stdout), cmd, nil
 }
 
@@ -255,8 +290,7 @@ type DownloadStatus struct {
 	Error     string
 }
 
-var downloadStatusMap = make(map[string]*DownloadStatus) // keyed by YouTubeID
-var queueMutex sync.Mutex
+// runtime state (declared above in the package var block)
 
 // BatchStatusRequest is the request body for batch status queries
 type BatchStatusRequest struct {
@@ -580,8 +614,8 @@ func processQueueItem(ctx context.Context, idx int, item DownloadQueueItem) erro
 		BroadcastDownloadQueueChanges([]DownloadQueueItem{item})
 	}
 
-	// 7) Wait briefly then remove from queue
-	time.Sleep(10 * time.Second)
+	// 7) Wait briefly then remove from queue (configurable for tests)
+	time.Sleep(QueueItemRemoveDelay)
 	b, _ := json.Marshal(item)
 	_ = client.LRem(ctx, DownloadQueue, 1, b).Err()
 
@@ -625,13 +659,13 @@ func markItemDownloading(ctx context.Context, idx int, item DownloadQueueItem) e
 }
 
 func handleTooManyRequestsPause(err429 *TooManyRequestsError) {
-	TrailarrLog(WARN, "QUEUE", "[StartDownloadQueueWorker] 429 detected, pausing queue for 5 minutes: %s", err429.Error())
-	pauseUntil := time.Now().Add(5 * time.Minute)
+	TrailarrLog(WARN, "QUEUE", "[StartDownloadQueueWorker] 429 detected, pausing queue for %v: %s", TooManyRequestsPauseDuration, err429.Error())
+	pauseUntil := time.Now().Add(TooManyRequestsPauseDuration)
 	for time.Now().Before(pauseUntil) {
 		TrailarrLog(INFO, "QUEUE", "[StartDownloadQueueWorker] Queue paused for 429. Resuming in %v seconds...", int(time.Until(pauseUntil).Seconds()))
-		time.Sleep(30 * time.Second)
+		time.Sleep(TooManyRequestsPauseLogInterval)
 	}
-	TrailarrLog(INFO, "QUEUE", "[StartDownloadQueueWorker] 5-minute pause for 429 complete. Resuming queue.")
+	TrailarrLog(INFO, "QUEUE", "[StartDownloadQueueWorker] %v pause for 429 complete. Resuming queue.", TooManyRequestsPauseDuration)
 }
 
 func updateFinalStatusInRedis(ctx context.Context, idx int, finalStatus, failReason string) error {
@@ -939,17 +973,13 @@ func checkRejectedExtras(info *downloadInfo, youtubeId string) *ExtraDownloadMet
 
 func performDownload(info *downloadInfo, youtubeId string) (*ExtraDownloadMetadata, error) {
 	args := buildYtDlpArgs(info, youtubeId, true)
-	// Execute yt-dlp command
-	cmd := exec.Command(YtDlpCmd, args...)
-	cmd.Dir = info.TempDir
-	output, err := cmd.CombinedOutput()
+	// Execute yt-dlp command via configurable runner
+	output, err := ytDlpRunner.CombinedOutput(YtDlpCmd, args, info.TempDir)
 
 	if err != nil && isImpersonationErrorNative(string(output)) {
 		fmt.Printf("[DownloadYouTubeExtra] Impersonation failed, retrying without impersonation: %s\n", youtubeId)
 		args = buildYtDlpArgs(info, youtubeId, false)
-		cmd = exec.Command(YtDlpCmd, args...)
-		cmd.Dir = info.TempDir
-		output, err = cmd.CombinedOutput()
+		output, err = ytDlpRunner.CombinedOutput(YtDlpCmd, args, info.TempDir)
 	}
 
 	if len(output) > 0 {
@@ -1250,17 +1280,21 @@ func searchYtDlpForTerms(terms []string, maxResults int) ([]gin.H, error) {
 // runYtDlpSearch executes yt-dlp for a single searchQuery, appending unique results to results up to maxResults.
 func runYtDlpSearch(searchQuery string, videoIdSet map[string]bool, results *[]gin.H, maxResults int) error {
 	ytDlpArgs := []string{"-j", ytDlpSearchPrefix + searchQuery, ytDlpSkipDownload}
+	if YtDlpTestMode {
+		runYtDlpSearchTestMode(searchQuery, videoIdSet, results, maxResults)
+		return nil
+	}
+	return runYtDlpSearchReal(searchQuery, videoIdSet, results, maxResults, ytDlpArgs)
+}
+
+func runYtDlpSearchReal(searchQuery string, videoIdSet map[string]bool, results *[]gin.H, maxResults int, ytDlpArgs []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, YtDlpCmd, ytDlpArgs...)
-	stdout, err := cmd.StdoutPipe()
+	stdout, cmd, err := ytDlpRunner.StartCommand(ctx, YtDlpCmd, ytDlpArgs)
 	if err != nil {
-		return fmt.Errorf("failed to get StdoutPipe: %w", err)
+		return fmt.Errorf("failed to start yt-dlp via runner: %w", err)
 	}
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start yt-dlp: %w", err)
-	}
-	TrailarrLog(INFO, "YouTube", "Started yt-dlp process (streaming)...")
+	TrailarrLog(INFO, "YouTube", "Started yt-dlp process (streaming) via runner...")
 	reader := bufio.NewReader(stdout)
 
 	for {
@@ -1290,6 +1324,17 @@ func runYtDlpSearch(searchQuery string, videoIdSet map[string]bool, results *[]g
 		TrailarrLog(ERROR, "YouTube", "yt-dlp search timed out for query: %s", searchQuery)
 	}
 	return nil
+}
+
+// runYtDlpSearchTestMode appends deterministic fake results for tests.
+func runYtDlpSearchTestMode(searchQuery string, videoIdSet map[string]bool, results *[]gin.H, maxResults int) {
+	for i := 0; i < maxResults; i++ {
+		id := fmt.Sprintf("test-%s-%d", strings.ReplaceAll(searchQuery, " ", "-"), i)
+		if !videoIdSet[id] {
+			videoIdSet[id] = true
+			*results = append(*results, gin.H{"id": gin.H{"videoId": id}, "snippet": gin.H{"title": id}})
+		}
+	}
 }
 
 // parseYtDlpLine parses a single yt-dlp JSON line and appends it to results if unique.

@@ -13,6 +13,8 @@ endif
 
 .PHONY: build clean run
 
+.PHONY: test test-fast
+
 build:
 	go mod tidy
 	go mod vendor
@@ -32,3 +34,24 @@ ifeq ($(GOOS),windows)
 else
 	rm -rf $(BIN_DIR)/*
 endif
+
+# Run the full test suite in a CI-friendly way (skip embedded redis startup)
+test:
+	@echo "Running full test suite (embedded redis disabled)"
+	go test ./... -v
+
+# Faster, package-scoped tests for quick cycles
+test-fast:
+	@echo "Running internal package tests (embedded redis disabled)"
+	go test ./internal -v
+
+# Generate coverage report (coverage/coverage.out)
+coverage:
+	@echo "Generating coverage report (coverage/coverage.out)"
+	@mkdir -p coverage
+	go test ./... -coverprofile=coverage/coverage.out
+
+# Generate HTML coverage (coverage/coverage.html)
+coverage-html: coverage
+	@echo "Generating HTML coverage report (coverage/coverage.html)"
+	go tool cover -html=coverage/coverage.out -o coverage/coverage.html

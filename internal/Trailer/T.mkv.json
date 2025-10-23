@@ -1,0 +1,10 @@
+{
+  "MediaType": "movie",
+  "MediaId": 1,
+  "MediaTitle": "",
+  "ExtraType": "Trailer",
+  "ExtraTitle": "T",
+  "YouTubeID": "yt-123",
+  "FileName": "Trailer/T.mkv",
+  "Status": "downloaded"
+}

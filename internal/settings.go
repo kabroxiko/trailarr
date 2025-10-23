@@ -3,58 +3,19 @@ package internal
 import (
 	"encoding/json"
 	"fmt"
-	"log"
-	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"gopkg.in/yaml.v3"
+	yamlv3 "gopkg.in/yaml.v3"
 )
 
-// StartRedisServer starts a Redis server as a subprocess, using TrailarrRoot as the database directory.
-func StartRedisServer() error {
-	// If REDIS_ADDR is set and reachable, don't start an embedded redis-server.
-	addr := os.Getenv("REDIS_ADDR")
-	if addr == "" {
-		addr = "127.0.0.1:6379"
-	}
-	// Try a quick TCP dial to see if Redis is already running
-	conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
-	if err == nil {
-		conn.Close()
-		log.Printf("Redis already reachable at %s, skipping embedded start", addr)
-		return nil
-	}
-
-	cmd := exec.Command("redis-server", "--dir", TrailarrRoot)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	err = cmd.Start()
-	if err != nil {
-		log.Printf("Failed to start Redis: %v", err)
-		return err
-	}
-	log.Printf("Redis started with PID %d", cmd.Process.Pid)
-	return nil
-}
-
-func init() {
-	err := StartRedisServer()
-	if err != nil {
-		log.Printf("Redis server failed to start: %v", err)
-	}
-}
+// Note: embedded Redis server startup was removed. Redis must be running as a
+// separate service and reachable via REDIS_ADDR before starting Trailarr.
 
 const (
 	ApiReturnedStatusFmt     = "API returned status %d"
-	TrailarrRoot             = "/var/lib/trailarr"
-	ConfigPath               = TrailarrRoot + "/config/config.yml"
-	MediaCoverPath           = TrailarrRoot + "/MediaCover"
-	CookiesFile              = TrailarrRoot + "/.config/google-chrome/cookies.txt"
-	LogsDir                  = TrailarrRoot + "/logs"
 	MoviesRedisKey           = "trailarr:movies"
 	SeriesRedisKey           = "trailarr:series"
 	ExtrasRedisKey           = "trailarr:extras"
@@ -71,6 +32,15 @@ const (
 	ErrInvalidRequest        = "invalid request"
 )
 
+// Path and runtime-configurable variables. Tests may override these.
+var (
+	TrailarrRoot   = "/var/lib/trailarr"
+	ConfigPath     = TrailarrRoot + "/config/config.yml"
+	MediaCoverPath = TrailarrRoot + "/MediaCover"
+	CookiesFile    = TrailarrRoot + "/.config/google-chrome/cookies.txt"
+	LogsDir        = TrailarrRoot + "/logs"
+)
+
 // Global in-memory config
 var Config map[string]interface{}
 
@@ -81,7 +51,7 @@ func LoadConfig() error {
 		return err
 	}
 	var cfg map[string]interface{}
-	err = yaml.Unmarshal(data, &cfg)
+	err = yamlv3.Unmarshal(data, &cfg)
 	if err != nil {
 		return err
 	}
@@ -124,7 +94,7 @@ func GetCanonicalizeExtraTypeConfig() (CanonicalizeExtraTypeConfig, error) {
 		return CanonicalizeExtraTypeConfig{Mapping: map[string]string{}}, err
 	}
 	var config map[string]interface{}
-	_ = yaml.Unmarshal(data, &config)
+	_ = yamlv3.Unmarshal(data, &config)
 	sec, ok := config["canonicalizeExtraType"].(map[string]interface{})
 	cfg := CanonicalizeExtraTypeConfig{Mapping: map[string]string{}}
 	if ok {
@@ -389,7 +359,7 @@ func readConfigFileRaw() (map[string]interface{}, error) {
 		// Treat empty file as missing config
 		return nil, fmt.Errorf("empty config file")
 	}
-	err = yaml.Unmarshal(data, &config)
+	err = yamlv3.Unmarshal(data, &config)
 	if err != nil {
 		return nil, err
 	}
@@ -404,7 +374,7 @@ func readConfigFile() (map[string]interface{}, error) {
 		return nil, err
 	}
 	var config map[string]interface{}
-	err = yaml.Unmarshal(data, &config)
+	err = yamlv3.Unmarshal(data, &config)
 	if err != nil {
 		return nil, err
 	}
@@ -413,7 +383,7 @@ func readConfigFile() (map[string]interface{}, error) {
 
 // Helper to write config map to file
 func writeConfigFile(config map[string]interface{}) error {
-	out, err := yaml.Marshal(config)
+	out, err := yamlv3.Marshal(config)
 	if err != nil {
 		return err
 	}
@@ -447,7 +417,7 @@ func GetYtdlpFlagsConfig() (YtdlpFlagsConfig, error) {
 		return DefaultYtdlpFlagsConfig(), err
 	}
 	var config map[string]interface{}
-	if err := yaml.Unmarshal(data, &config); err != nil {
+	if err := yamlv3.Unmarshal(data, &config); err != nil {
 		return DefaultYtdlpFlagsConfig(), err
 	}
 	sec, ok := config["ytdlpFlags"].(map[string]interface{})
@@ -646,8 +616,14 @@ type ExtraTypesConfig struct {
 
 // GetExtraTypesConfig loads extra types config from config.yml
 func GetExtraTypesConfig() (ExtraTypesConfig, error) {
+	// If we don't have an in-memory config, try to read from disk so callers see persisted values.
 	if Config == nil {
-		return defaultExtraTypes, nil
+		if cfgMap, err := readConfigFile(); err == nil {
+			Config = cfgMap
+		} else {
+			// If read failed, fall back to defaults
+			return defaultExtraTypes, nil
+		}
 	}
 	sec, _ := Config["extraTypes"].(map[string]interface{})
 	cfg := ExtraTypesConfig{}
@@ -692,8 +668,10 @@ func SaveExtraTypesConfig(cfg ExtraTypesConfig) error {
 	}
 	err = writeConfigFile(config)
 	if err == nil {
-		// Update in-memory config
-		if Config != nil {
+		// Update in-memory config to reflect persisted changes so future GETs return them.
+		if Config == nil {
+			Config = config
+		} else {
 			Config["extraTypes"] = config["extraTypes"]
 		}
 	}
@@ -762,7 +740,7 @@ func EnsureSyncTimingsConfig() (map[string]int, error) {
 		return defaultTimings, err
 	}
 	var cfg map[string]interface{}
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	if err := yamlv3.Unmarshal(data, &cfg); err != nil {
 		return defaultTimings, err
 	}
 
@@ -777,7 +755,7 @@ func EnsureSyncTimingsConfig() (map[string]int, error) {
 	if _, hasExtras := timings["extras"]; !hasExtras {
 		timings["extras"] = 360
 		cfg["syncTimings"] = timings
-		out, err := yaml.Marshal(cfg)
+		out, err := yamlv3.Marshal(cfg)
 		if err == nil {
 			_ = os.WriteFile(ConfigPath, out, 0644)
 		}
@@ -790,7 +768,7 @@ func EnsureSyncTimingsConfig() (map[string]int, error) {
 // createConfigWithTimings writes a new config file with only syncTimings set to the provided map.
 func createConfigWithTimings(timings map[string]int) (map[string]int, error) {
 	cfg := map[string]interface{}{"syncTimings": timings}
-	out, err := yaml.Marshal(cfg)
+	out, err := yamlv3.Marshal(cfg)
 	if err != nil {
 		return timings, err
 	}
@@ -808,7 +786,7 @@ func createConfigWithTimings(timings map[string]int) (map[string]int, error) {
 // It ignores write errors to preserve original behavior where write failures were non-fatal.
 func writeSyncTimingsToConfig(cfg map[string]interface{}, timings map[string]int) error {
 	cfg["syncTimings"] = timings
-	out, err := yaml.Marshal(cfg)
+	out, err := yamlv3.Marshal(cfg)
 	if err != nil {
 		return err
 	}
@@ -856,7 +834,7 @@ func loadMediaSettings(section string) (MediaSettings, error) {
 		return MediaSettings{}, fmt.Errorf("settings not found: %w", err)
 	}
 	var allSettings map[string]interface{}
-	if err := yaml.Unmarshal(data, &allSettings); err != nil {
+	if err := yamlv3.Unmarshal(data, &allSettings); err != nil {
 		TrailarrLog(WARN, "Settings", "invalid settings: %v", err)
 		return MediaSettings{}, fmt.Errorf("invalid settings: %w", err)
 	}
@@ -891,7 +869,7 @@ func GetPathMappings(mediaType MediaType) ([][]string, error) {
 		return nil, err
 	}
 	var config map[string]interface{}
-	if err := yaml.Unmarshal(data, &config); err != nil {
+	if err := yamlv3.Unmarshal(data, &config); err != nil {
 		return nil, err
 	}
 	sec, _ := config[section].(map[string]interface{})
@@ -931,7 +909,7 @@ func GetProviderUrlAndApiKey(provider string) (string, string, error) {
 		return "", "", err
 	}
 	var config map[string]interface{}
-	if err := yaml.Unmarshal(data, &config); err != nil {
+	if err := yamlv3.Unmarshal(data, &config); err != nil {
 		return "", "", err
 	}
 	sec, ok := config[provider].(map[string]interface{})
@@ -953,7 +931,7 @@ func GetSettingsHandler(section string) gin.HandlerFunc {
 		}
 
 		var config map[string]interface{}
-		if err := yaml.Unmarshal(data, &config); err != nil {
+		if err := yamlv3.Unmarshal(data, &config); err != nil {
 			respondJSON(c, http.StatusOK, gin.H{"providerURL": "", "apiKey": "", "pathMappings": []interface{}{}})
 			return
 		}
@@ -976,7 +954,7 @@ func GetSettingsHandler(section string) gin.HandlerFunc {
 		if updated && sectionData != nil {
 			sectionData["pathMappings"] = mergedPathMappings
 			config[section] = sectionData
-			out, _ := yaml.Marshal(config)
+			out, _ := yamlv3.Marshal(config)
 			if err := os.WriteFile(ConfigPath, out, 0644); err != nil {
 				TrailarrLog(ERROR, "Settings", "Failed to save updated config: %v", err)
 			} else {
@@ -1038,12 +1016,12 @@ func mergeFoldersIntoMappings(pathMappings []map[string]interface{}, mappings []
 func SaveSettingsHandler(section string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			ProviderURL  string `yaml:"url"`
-			APIKey       string `yaml:"apiKey"`
+			ProviderURL  string `json:"url" yaml:"url"`
+			APIKey       string `json:"apiKey" yaml:"apiKey"`
 			PathMappings []struct {
-				From string `yaml:"from"`
-				To   string `yaml:"to"`
-			} `yaml:"pathMappings"`
+				From string `json:"from" yaml:"from"`
+				To   string `json:"to" yaml:"to"`
+			} `json:"pathMappings" yaml:"pathMappings"`
 		}
 		if err := c.BindJSON(&req); err != nil {
 			respondError(c, http.StatusBadRequest, ErrInvalidRequest)
@@ -1081,7 +1059,7 @@ func getGeneralSettingsHandler(c *gin.Context) {
 		return
 	}
 	var config map[string]interface{}
-	_ = yaml.Unmarshal(data, &config)
+	_ = yamlv3.Unmarshal(data, &config)
 	var tmdbKey string
 	var autoDownloadExtras bool = true
 	var logLevel string = "Info"

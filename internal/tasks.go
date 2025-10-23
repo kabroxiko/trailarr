@@ -16,6 +16,9 @@ import (
 
 var GlobalSyncQueue []TaskStatus
 
+// Configurable task timings (tests may shorten these)
+var TasksInitialDelay = time.Duration(0)
+
 // Parametric force sync for Radarr/Sonarr
 type SyncQueueItem struct {
 	TaskId   string
@@ -466,7 +469,12 @@ func scheduleTask(t bgTask) {
 	if initialDelay < 0 {
 		initialDelay = 0
 	}
-	time.Sleep(initialDelay)
+	// Allow override for tests (TasksInitialDelay) when set to non-zero
+	if TasksInitialDelay > 0 {
+		time.Sleep(TasksInitialDelay)
+	} else {
+		time.Sleep(initialDelay)
+	}
 
 	ticker := time.NewTicker(t.interval)
 	defer ticker.Stop()
@@ -482,7 +490,7 @@ func scheduleTask(t bgTask) {
 					break
 				}
 				TrailarrLog(INFO, "Tasks", "Waiting for radarr/sonarr to run before extras")
-				time.Sleep(5 * time.Second)
+				time.Sleep(TasksDepsWaitInterval)
 			}
 		}
 		go runTaskAsync(TaskID(t.id), t.syncFunc)

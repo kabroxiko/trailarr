@@ -61,14 +61,52 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21.x'
-      - name: Run Go tests (if any)
+          go-version: '1.25'
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            **/vendor
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Install dependencies
         run: |
-          if ls internal/*_test.go 1> /dev/null 2>&1; then
-            go test ./internal/... -v
-          else
-            echo "No Go tests found."
-          fi
+          go mod download
+
+      - name: Run Go tests
+        run: |
+          make test
+
+      - name: Generate coverage
+        run: |
+          make coverage
+
+      - name: Generate coverage HTML
+        run: |
+          make coverage-html
+
+      - name: Upload coverage (.out)
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-out
+          path: coverage/coverage.out
+
+      - name: Upload coverage (html)
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: coverage/coverage.html
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage/coverage.out
+          flags: unittests
+          verbose: true
 
   tag:
     runs-on: ubuntu-latest
