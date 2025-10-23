@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"fmt"
 	"sync"
 )
 
@@ -13,7 +14,6 @@ type fakeRedisClient struct {
 
 var (
 	fakeClient *fakeRedisClient
-	fakeOnce   sync.Once
 	fakeMu     sync.Mutex
 )
 
@@ -37,28 +37,210 @@ type boltLike interface {
 	HDel(ctx context.Context, key, field string) error
 }
 
-// noopBolt is a lightweight in-memory/no-op implementation used when the real Bolt
-// DB can't be opened. It returns empty results and non-fatal errors (ErrNotFound
-// for Get/HGet) to keep package init and tests from panicking.
-type noopBolt struct{}
+// memBolt is a lightweight in-memory implementation of boltLike used when the
+// on-disk BoltDB cannot be opened. It provides basic persistence semantics for
+// sets, hashes and lists sufficient for tests.
+type memBolt struct {
+	mu     sync.RWMutex
+	kv     map[string][]byte
+	hashes map[string]map[string][]byte
+	lists  map[string][][]byte
+}
 
-func (n *noopBolt) Ping(ctx context.Context) error                            { return nil }
-func (n *noopBolt) RPush(ctx context.Context, key string, value []byte) error { return nil }
-func (n *noopBolt) LRange(ctx context.Context, key string, start, stop int64) ([]string, error) {
-	return []string{}, nil
+func newMemBolt() *memBolt {
+	return &memBolt{
+		kv:     make(map[string][]byte),
+		hashes: make(map[string]map[string][]byte),
+		lists:  make(map[string][][]byte),
+	}
 }
-func (n *noopBolt) LTrim(ctx context.Context, key string, start, stop int64) error        { return nil }
-func (n *noopBolt) LSet(ctx context.Context, key string, index int64, value []byte) error { return nil }
-func (n *noopBolt) LRem(ctx context.Context, key string, count int, value []byte) error   { return nil }
-func (n *noopBolt) Del(ctx context.Context, key string) error                             { return nil }
-func (n *noopBolt) Set(ctx context.Context, key string, value []byte) error               { return nil }
-func (n *noopBolt) Get(ctx context.Context, key string) (string, error)                   { return "", ErrNotFound }
-func (n *noopBolt) HSet(ctx context.Context, key, field string, value []byte) error       { return nil }
-func (n *noopBolt) HGet(ctx context.Context, key, field string) (string, error) {
-	return "", ErrNotFound
+
+func (m *memBolt) Ping(ctx context.Context) error { return nil }
+
+func (m *memBolt) Set(ctx context.Context, key string, value []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.kv[key] = append([]byte(nil), value...)
+	return nil
 }
-func (n *noopBolt) HVals(ctx context.Context, key string) ([]string, error) { return []string{}, nil }
-func (n *noopBolt) HDel(ctx context.Context, key, field string) error       { return nil }
+
+func (m *memBolt) Get(ctx context.Context, key string) (string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	v, ok := m.kv[key]
+	if !ok {
+		return "", ErrNotFound
+	}
+	return string(append([]byte(nil), v...)), nil
+}
+
+func (m *memBolt) Del(ctx context.Context, key string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.kv, key)
+	delete(m.hashes, key)
+	delete(m.lists, key)
+	return nil
+}
+
+// Hash operations
+func (m *memBolt) HSet(ctx context.Context, key, field string, value []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.hashes[key]; !ok {
+		m.hashes[key] = make(map[string][]byte)
+	}
+	m.hashes[key][field] = append([]byte(nil), value...)
+	return nil
+}
+
+func (m *memBolt) HGet(ctx context.Context, key, field string) (string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	h, ok := m.hashes[key]
+	if !ok {
+		return "", ErrNotFound
+	}
+	v, ok2 := h[field]
+	if !ok2 {
+		return "", ErrNotFound
+	}
+	return string(append([]byte(nil), v...)), nil
+}
+
+func (m *memBolt) HVals(ctx context.Context, key string) ([]string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	h, ok := m.hashes[key]
+	if !ok {
+		return []string{}, nil
+	}
+	out := make([]string, 0, len(h))
+	for _, v := range h {
+		out = append(out, string(append([]byte(nil), v...)))
+	}
+	return out, nil
+}
+
+func (m *memBolt) HDel(ctx context.Context, key, field string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if h, ok := m.hashes[key]; ok {
+		delete(h, field)
+		if len(h) == 0 {
+			delete(m.hashes, key)
+		}
+	}
+	return nil
+}
+
+// List operations
+func (m *memBolt) RPush(ctx context.Context, key string, value []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.lists[key] = append(m.lists[key], append([]byte(nil), value...))
+	return nil
+}
+
+func (m *memBolt) LRange(ctx context.Context, key string, start, stop int64) ([]string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	vals := m.lists[key]
+	n := int64(len(vals))
+	if n == 0 {
+		return []string{}, nil
+	}
+	if start < 0 {
+		start = n + start
+	}
+	if stop < 0 {
+		stop = n + stop
+	}
+	if start < 0 {
+		start = 0
+	}
+	if stop >= n {
+		stop = n - 1
+	}
+	if start > stop || start >= n {
+		return []string{}, nil
+	}
+	out := make([]string, 0, stop-start+1)
+	for i := start; i <= stop; i++ {
+		out = append(out, string(append([]byte(nil), vals[i]...)))
+	}
+	return out, nil
+}
+
+func (m *memBolt) LTrim(ctx context.Context, key string, start, stop int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	vals := m.lists[key]
+	n := int64(len(vals))
+	if n == 0 {
+		delete(m.lists, key)
+		return nil
+	}
+	if start < 0 {
+		start = n + start
+	}
+	if stop < 0 {
+		stop = n + stop
+	}
+	if start < 0 {
+		start = 0
+	}
+	if stop >= n {
+		stop = n - 1
+	}
+	if start > stop {
+		delete(m.lists, key)
+		return nil
+	}
+	newVals := make([][]byte, 0, stop-start+1)
+	for i := start; i <= stop; i++ {
+		newVals = append(newVals, append([]byte(nil), vals[i]...))
+	}
+	m.lists[key] = newVals
+	return nil
+}
+
+func (m *memBolt) LSet(ctx context.Context, key string, index int64, value []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	vals := m.lists[key]
+	if index < 0 || index >= int64(len(vals)) {
+		return fmt.Errorf("index out of range")
+	}
+	vals[index] = append([]byte(nil), value...)
+	m.lists[key] = vals
+	return nil
+}
+
+func (m *memBolt) LRem(ctx context.Context, key string, count int, value []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	vals := m.lists[key]
+	if len(vals) == 0 {
+		return nil
+	}
+	target := string(value)
+	newVals := make([][]byte, 0, len(vals))
+	removed := 0
+	for _, v := range vals {
+		if removed < count && string(v) == target {
+			removed++
+			continue
+		}
+		newVals = append(newVals, append([]byte(nil), v...))
+	}
+	if len(newVals) == 0 {
+		delete(m.lists, key)
+		return nil
+	}
+	m.lists[key] = newVals
+	return nil
+}
 
 func GetRedisClient() *fakeRedisClient {
 	// Fast path: if we've already created a client, try to return it. If it's backed
@@ -67,17 +249,9 @@ func GetRedisClient() *fakeRedisClient {
 	fc := fakeClient
 	fakeMu.Unlock()
 	if fc != nil {
-		// if currently noop, attempt to replace with real bolt if possible
-		if _, ok := fc.b.(*noopBolt); ok {
-			if b, err := GetBoltClient(); err == nil && b != nil {
-				fakeMu.Lock()
-				// replace with real bolt-backed client
-				fakeClient = &fakeRedisClient{b: b}
-				fc = fakeClient
-				fakeMu.Unlock()
-			}
-		}
-		return fc
+		// if currently memBolt, attempt to upgrade to real bolt
+		tryUpgradeToBolt()
+		return fakeClient
 	}
 
 	// Not created yet; try to create a real Bolt-backed client first.
@@ -90,16 +264,52 @@ func GetRedisClient() *fakeRedisClient {
 		fakeMu.Unlock()
 		return fc
 	}
+	// If GetBoltClient failed (boltOnce may have run earlier), try openBoltDB
+	// directly so tests that set TrailarrRoot get a working DB.
+	if b2, err2 := openBoltDB(); err2 == nil && b2 != nil {
+		fakeMu.Lock()
+		if fakeClient == nil {
+			fakeClient = &fakeRedisClient{b: b2}
+		}
+		fc = fakeClient
+		fakeMu.Unlock()
+		return fc
+	}
 
 	// Fall back to noop but store it so subsequent calls are fast; later calls will
 	// attempt to upgrade to real Bolt if it becomes available.
 	fakeMu.Lock()
 	if fakeClient == nil {
-		fakeClient = &fakeRedisClient{b: &noopBolt{}}
+		fakeClient = &fakeRedisClient{b: newMemBolt()}
 	}
 	fc = fakeClient
 	fakeMu.Unlock()
 	return fc
+}
+
+// tryUpgradeToBolt attempts to replace a memBolt-backed fakeClient with a real Bolt-backed
+// client. It is best-effort and returns silently if it cannot open Bolt.
+func tryUpgradeToBolt() {
+	fakeMu.Lock()
+	curr := fakeClient
+	fakeMu.Unlock()
+	if curr == nil {
+		return
+	}
+	if _, ok := curr.b.(*memBolt); !ok {
+		return
+	}
+	if b, err := GetBoltClient(); err == nil && b != nil {
+		fakeMu.Lock()
+		fakeClient = &fakeRedisClient{b: b}
+		fakeMu.Unlock()
+		return
+	}
+	if b2, err2 := openBoltDB(); err2 == nil && b2 != nil {
+		fakeMu.Lock()
+		fakeClient = &fakeRedisClient{b: b2}
+		fakeMu.Unlock()
+	}
 }
 
 // PingRedis checks if backend is reachable
