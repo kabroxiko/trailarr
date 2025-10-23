@@ -5,7 +5,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	bolt "go.etcd.io/bbolt"
@@ -22,12 +24,42 @@ var boltClient *BoltClient
 var boltOnce sync.Once
 
 func openBoltDB() (*BoltClient, error) {
+	// Prevent test runs from creating the real on-disk DB when the default
+	// TrailarrRoot is being used. Tests should set TrailarrRoot to a temp
+	// directory (see many tests in internal/*_test.go). If we detect we're in
+	// a test binary and TrailarrRoot is the default system path, return an
+	// error so callers fall back to the in-memory implementation.
+	if isTestBinary() && TrailarrRoot == "/var/lib/trailarr" {
+		return nil, fmt.Errorf("refusing to open on-disk bolt DB during tests when TrailarrRoot=%s", TrailarrRoot)
+	}
+
 	dbPath := filepath.Join(TrailarrRoot, "trailarr.db")
+	// Ensure parent directory exists to avoid surprising errors when using a
+	// non-default TrailarrRoot. (When using the default and not running
+	// tests, the directory is expected to exist or the service has
+	// permissions to create it.)
+	_ = os.MkdirAll(filepath.Dir(dbPath), 0o755)
 	db, err := bolt.Open(dbPath, 0600, nil)
 	if err != nil {
 		return nil, err
 	}
 	return &BoltClient{db: db}, nil
+}
+
+// isTestBinary attempts to detect if the current process is a 'go test'
+// binary. This is a heuristic (checks the executable name) used to avoid
+// opening the real on-disk DB during unit tests when the default root is in
+// a system path.
+func isTestBinary() bool {
+	// os.Args[0] for 'go test' executed binaries usually ends with '.test'
+	if strings.HasSuffix(os.Args[0], ".test") {
+		return true
+	}
+	// Also honor GOTEST environment variable if set by some CI or wrappers
+	if v := os.Getenv("GOTEST"); v != "" {
+		return true
+	}
+	return false
 }
 
 // GetBoltClient returns a singleton BoltClient
