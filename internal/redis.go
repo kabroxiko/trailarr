@@ -14,6 +14,7 @@ type fakeRedisClient struct {
 var (
 	fakeClient *fakeRedisClient
 	fakeOnce   sync.Once
+	fakeMu     sync.Mutex
 )
 
 // GetRedisClient returns an adapter that satisfies the minimal methods callers expect.
@@ -60,17 +61,45 @@ func (n *noopBolt) HVals(ctx context.Context, key string) ([]string, error) { re
 func (n *noopBolt) HDel(ctx context.Context, key, field string) error       { return nil }
 
 func GetRedisClient() *fakeRedisClient {
-	fakeOnce.Do(func() {
-		b, err := GetBoltClient()
-		if err != nil {
-			// Don't panic during package init (tests/CI may not have TrailarrRoot set).
-			// Provide a noop implementation so callers get safe, empty responses.
-			fakeClient = &fakeRedisClient{b: &noopBolt{}}
-			return
+	// Fast path: if we've already created a client, try to return it. If it's backed
+	// by noopBolt, attempt to re-open the real BoltDB in case tests changed TrailarrRoot.
+	fakeMu.Lock()
+	fc := fakeClient
+	fakeMu.Unlock()
+	if fc != nil {
+		// if currently noop, attempt to replace with real bolt if possible
+		if _, ok := fc.b.(*noopBolt); ok {
+			if b, err := GetBoltClient(); err == nil && b != nil {
+				fakeMu.Lock()
+				// replace with real bolt-backed client
+				fakeClient = &fakeRedisClient{b: b}
+				fc = fakeClient
+				fakeMu.Unlock()
+			}
 		}
-		fakeClient = &fakeRedisClient{b: b}
-	})
-	return fakeClient
+		return fc
+	}
+
+	// Not created yet; try to create a real Bolt-backed client first.
+	if b, err := GetBoltClient(); err == nil && b != nil {
+		fakeMu.Lock()
+		if fakeClient == nil {
+			fakeClient = &fakeRedisClient{b: b}
+		}
+		fc = fakeClient
+		fakeMu.Unlock()
+		return fc
+	}
+
+	// Fall back to noop but store it so subsequent calls are fast; later calls will
+	// attempt to upgrade to real Bolt if it becomes available.
+	fakeMu.Lock()
+	if fakeClient == nil {
+		fakeClient = &fakeRedisClient{b: &noopBolt{}}
+	}
+	fc = fakeClient
+	fakeMu.Unlock()
+	return fc
 }
 
 // PingRedis checks if backend is reachable
