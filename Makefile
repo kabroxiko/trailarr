@@ -49,6 +49,10 @@ test-fast:
 coverage:
 	@echo "Generating coverage report (coverage/coverage.out)"
 	@mkdir -p coverage
+	# Ensure covdata tool (used by Go toolchain for coverage handling) is installed.
+	# Installing is a no-op if already present in module cache/bin.
+	@echo "Ensuring covdata tool is available..."
+	@which covdata >/dev/null 2>&1 || (echo "Installing covdata..." && go install golang.org/x/tools/cmd/covdata@latest)
 	go test ./... -coverprofile=coverage/coverage.out
 
 # Generate HTML coverage (coverage/coverage.html)
