@@ -112,7 +112,7 @@ func DownloadQueueWatcher(path string, onChange func(changed []DownloadQueueItem
 				lastQueue = newQueue
 			}
 		}
-		time.Sleep(1 * time.Second)
+		time.Sleep(DownloadQueueWatcherInterval)
 	}
 }
 
