@@ -956,7 +956,7 @@ func performDownload(info *downloadInfo, youtubeId string) (*ExtraDownloadMetada
 	output, err := ytDlpRunner.CombinedOutput(YtDlpCmd, args, info.TempDir)
 
 	if err != nil && isImpersonationErrorNative(string(output)) {
-		fmt.Printf("[DownloadYouTubeExtra] Impersonation failed, retrying without impersonation: %s\n", youtubeId)
+		TrailarrLog(WARN, "YouTube", "Impersonation failed for %s, retrying without impersonation", youtubeId)
 		args = buildYtDlpArgs(info, youtubeId, false)
 		output, err = ytDlpRunner.CombinedOutput(YtDlpCmd, args, info.TempDir)
 	}
