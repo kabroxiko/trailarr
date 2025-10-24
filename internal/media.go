@@ -212,7 +212,6 @@ func SyncMedia(provider, apiPath, cacheFile string, filter func(map[string]inter
 	// Minimal fast sync: fetch the list from provider, apply filter, save to cache.
 	// Skip extras scanning, poster caching and new-item background processing to keep this fast.
 	start := time.Now()
-	TrailarrLog(DEBUG, "SyncMedia", "Starting fast SyncMedia (minimal): provider=%s apiPath=%s cacheFile=%s", provider, apiPath, cacheFile)
 
 	allItems, err := fetchProviderItems(provider, apiPath)
 	if err != nil {
@@ -316,13 +315,6 @@ func CacheMediaPosters(
 ) {
 	TrailarrLog(INFO, "CacheMediaPosters", "Starting poster caching for section: %s, baseDir: %s, items: %d", section, baseDir, len(idList))
 
-	type posterJob struct {
-		id        string
-		idDir     string
-		localPath string
-		posterUrl string
-	}
-
 	// Load provider settings once
 	settings, err := loadMediaSettings(section)
 	if err != nil {
@@ -344,15 +336,21 @@ func CacheMediaPosters(
 	}
 
 	if len(jobsList) == 0 {
-		TrailarrLog(DEBUG, "CacheMediaPosters", "No poster jobs to process for section=%s", section)
 		return
 	}
 
-	// Worker pool
+	// Run worker pool and process jobs
 	maxWorkers := 8
 	if len(jobsList) < maxWorkers {
 		maxWorkers = len(jobsList)
 	}
+	success, failed := processPosterJobs(jobsList, maxWorkers, section)
+
+	TrailarrLog(INFO, "CacheMediaPosters", "Finished poster caching for section=%s workers=%d jobs=%d success=%d failed=%d", section, maxWorkers, len(jobsList), success, failed)
+}
+
+// processPosterJobs runs a worker pool to process poster download jobs and returns success/failed counts
+func processPosterJobs(jobsList []posterJob, maxWorkers int, section string) (int64, int64) {
 	jobs := make(chan posterJob, len(jobsList))
 	var wg sync.WaitGroup
 	var success int64
@@ -363,25 +361,13 @@ func CacheMediaPosters(
 		go func(workerID int) {
 			defer wg.Done()
 			for job := range jobs {
-				// ensure directory exists
-				if err := os.MkdirAll(job.idDir, 0775); err != nil {
-					atomic.AddInt64(&failed, 1)
-					TrailarrLog(DEBUG, "CacheMediaPosters", "worker=%d failed to create dir for id=%s: %v", workerID, job.id, err)
-					continue
-				}
-				// skip if already cached
-				if _, err := os.Stat(job.localPath); err == nil {
-					atomic.AddInt64(&success, 1)
-					continue
-				}
-				TrailarrLog(DEBUG, "CacheMediaPosters", "worker=%d downloading poster for id=%s: %s -> %s", workerID, job.id, job.posterUrl, job.localPath)
-				if err := fetchAndCachePoster(job.localPath, job.posterUrl, section); err != nil {
+				_, err := handlePosterJob(job, section)
+				if err != nil {
 					atomic.AddInt64(&failed, 1)
 					TrailarrLog(WARN, "CacheMediaPosters", "worker=%d failed to cache poster for %s id=%s: %v", workerID, section, job.id, err)
 					continue
 				}
 				atomic.AddInt64(&success, 1)
-				TrailarrLog(DEBUG, "CacheMediaPosters", "worker=%d successfully cached poster for id=%s: %s", workerID, job.id, job.localPath)
 			}
 		}(w)
 	}
@@ -393,7 +379,25 @@ func CacheMediaPosters(
 	close(jobs)
 	wg.Wait()
 
-	TrailarrLog(INFO, "CacheMediaPosters", "Finished poster caching for section=%s workers=%d jobs=%d success=%d failed=%d", section, maxWorkers, len(jobsList), atomic.LoadInt64(&success), atomic.LoadInt64(&failed))
+	return atomic.LoadInt64(&success), atomic.LoadInt64(&failed)
+}
+
+// handlePosterJob performs the actual work for a single poster job.
+// Returns (skipped, error) where skipped==true means the file already existed.
+func handlePosterJob(job posterJob, section string) (bool, error) {
+	// ensure directory exists
+	if err := os.MkdirAll(job.idDir, 0775); err != nil {
+		return false, fmt.Errorf("failed to create dir: %w", err)
+	}
+	// skip if already cached
+	if _, err := os.Stat(job.localPath); err == nil {
+		return true, nil
+	}
+	// download and cache
+	if err := fetchAndCachePoster(job.localPath, job.posterUrl, section); err != nil {
+		return false, err
+	}
+	return false, nil
 }
 
 // Finds the media path for a given id in a cache file
@@ -422,6 +426,14 @@ func FindMediaPathByID(cacheFile string, mediaId int) (string, error) {
 type MediaSettings struct {
 	ProviderURL string `yaml:"url"`
 	APIKey      string `yaml:"apiKey"`
+}
+
+// posterJob represents a single poster download task used by CacheMediaPosters
+type posterJob struct {
+	id        string
+	idDir     string
+	localPath string
+	posterUrl string
 }
 
 // Trims trailing slash from a URL

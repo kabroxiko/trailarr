@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, lazy, Suspense } from "react";
 import BlacklistPage from "./components/BlacklistPage";
 import MediaRouteComponent from "./MediaRouteComponent";
 import Toast from "./components/Toast";
 import { Routes, Route, useLocation } from "react-router-dom";
-import MediaDetails from "./components/MediaDetails";
+// Lazy-load heavy pages to reduce initial bundle while keeping vendor_react grouping
+const MediaDetails = lazy(() => import("./components/MediaDetails"));
 import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
 import GeneralSettings from "./components/GeneralSettings";
@@ -11,7 +12,7 @@ import Tasks from "./components/Tasks";
 import HistoryPage from "./components/HistoryPage";
 import Wanted from "./components/Wanted";
 import SettingsPage from "./components/SettingsPage";
-import ExtrasSettings from "./components/ExtrasSettings";
+const ExtrasSettings = lazy(() => import("./components/ExtrasSettings"));
 import LogsPage from "./components/LogsPage";
 import { getSeries, getMovies, getRadarrSettings } from "./api";
 
@@ -301,61 +302,73 @@ function App() {
                 <Route
                   path="/movies/:id"
                   element={
-                    <MediaDetails
-                      mediaItems={movies}
-                      loading={moviesLoading}
-                      mediaType="movie"
-                    />
+                    <Suspense fallback={<div>Loading media...</div>}>
+                      <MediaDetails
+                        mediaItems={movies}
+                        loading={moviesLoading}
+                        mediaType="movie"
+                      />
+                    </Suspense>
                   }
                 />
                 <Route
                   path="/series/:id"
                   element={
-                    <MediaDetails
-                      mediaItems={series}
-                      loading={seriesLoading}
-                      mediaType="tv"
-                    />
+                    <Suspense fallback={<div>Loading media...</div>}>
+                      <MediaDetails
+                        mediaItems={series}
+                        loading={seriesLoading}
+                        mediaType="tv"
+                      />
+                    </Suspense>
                   }
                 />
                 <Route
                   path="/wanted/movies/:id"
                   element={
-                    <MediaDetails
-                      mediaItems={movies}
-                      loading={moviesLoading}
-                      mediaType="movie"
-                    />
+                    <Suspense fallback={<div>Loading media...</div>}>
+                      <MediaDetails
+                        mediaItems={movies}
+                        loading={moviesLoading}
+                        mediaType="movie"
+                      />
+                    </Suspense>
                   }
                 />
                 <Route
                   path="/wanted/series/:id"
                   element={
-                    <MediaDetails
-                      mediaItems={series}
-                      loading={seriesLoading}
-                      mediaType="tv"
-                    />
+                    <Suspense fallback={<div>Loading media...</div>}>
+                      <MediaDetails
+                        mediaItems={series}
+                        loading={seriesLoading}
+                        mediaType="tv"
+                      />
+                    </Suspense>
                   }
                 />
                 <Route
                   path="/history/movies/:id"
                   element={
-                    <MediaDetails
-                      mediaItems={movies}
-                      loading={moviesLoading}
-                      mediaType="movie"
-                    />
+                    <Suspense fallback={<div>Loading media...</div>}>
+                      <MediaDetails
+                        mediaItems={movies}
+                        loading={moviesLoading}
+                        mediaType="movie"
+                      />
+                    </Suspense>
                   }
                 />
                 <Route
                   path="/history/series/:id"
                   element={
-                    <MediaDetails
-                      mediaItems={series}
-                      loading={seriesLoading}
-                      mediaType="tv"
-                    />
+                    <Suspense fallback={<div>Loading media...</div>}>
+                      <MediaDetails
+                        mediaItems={series}
+                        loading={seriesLoading}
+                        mediaType="tv"
+                      />
+                    </Suspense>
                   }
                 />
                 <Route path="/history" element={<HistoryPage />} />
@@ -378,7 +391,11 @@ function App() {
                 <Route path="/settings/general" element={<GeneralSettings />} />
                 <Route
                   path="/settings/extras"
-                  element={<ExtrasSettings darkMode={darkMode} />}
+                  element={
+                    <Suspense fallback={<div>Loading settings...</div>}>
+                      <ExtrasSettings darkMode={darkMode} />
+                    </Suspense>
+                  }
                 />
                 <Route path="/system/tasks" element={<Tasks />} />
                 <Route path="/system/logs" element={<LogsPage />} />
