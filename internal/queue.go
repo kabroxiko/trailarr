@@ -42,3 +42,22 @@ func GetTaskQueueFileHandler() gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{"queues": queues})
 	}
 }
+
+// GetTaskQueueDebugHandler returns raw debug information about the stored task
+// queue (count and raw serialized entries). This is useful for debugging
+// whether items are being persisted/truncated in the underlying store.
+func GetTaskQueueDebugHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		client := GetStoreClient()
+		ctx := context.Background()
+		vals, err := client.LRange(ctx, TaskQueueStoreKey, 0, -1)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read queue from store", "detail": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"count": len(vals),
+			"raw":   vals,
+		})
+	}
+}

@@ -288,7 +288,35 @@ func buildSchedules(states TaskStates) []TaskSchedule {
 }
 
 func buildTaskQueues() []TaskStatus {
-	return GlobalSyncQueue
+	// Read queue from the persistent store so callers get the same data
+	// as the file-based API handler.
+	client := GetStoreClient()
+	ctx := context.Background()
+	vals, err := client.LRange(ctx, TaskQueueStoreKey, 0, -1)
+	if err != nil {
+		return []TaskStatus{}
+	}
+	queues := make([]TaskStatus, 0, len(vals))
+	for _, v := range vals {
+		var qi SyncQueueItem
+		if err := json.Unmarshal([]byte(v), &qi); err != nil {
+			continue
+		}
+		queues = append(queues, TaskStatus{
+			TaskId:   qi.TaskId,
+			Queued:   qi.Queued,
+			Started:  qi.Started,
+			Ended:    qi.Ended,
+			Duration: qi.Duration.Seconds(),
+			Status:   qi.Status,
+			Error:    qi.Error,
+		})
+	}
+	sortTaskQueuesByQueuedDesc(queues)
+	if len(queues) > 100 {
+		queues = queues[:100]
+	}
+	return queues
 }
 
 func sortTaskQueuesByQueuedDesc(queues []TaskStatus) {
@@ -306,10 +334,27 @@ func pushTaskQueueItem(item SyncQueueItem) error {
 		return err
 	}
 	if err := client.RPush(ctx, TaskQueueStoreKey, b); err != nil {
+		TrailarrLog(WARN, "Tasks", "Failed to RPush queue item TaskId=%s Queued=%s: %v", item.TaskId, item.Queued, err)
 		return err
 	}
+	TrailarrLog(INFO, "Tasks", "Pushed queue item TaskId=%s Queued=%s Status=%s", item.TaskId, item.Queued, item.Status)
+	// Diagnostic: log current list length after push
+	if valsAfterPush, err := client.LRange(ctx, TaskQueueStoreKey, 0, -1); err == nil {
+		TrailarrLog(DEBUG, "Tasks", "Queue length after RPush: %d", len(valsAfterPush))
+	}
+
 	// Trim to reasonable max
-	return client.LTrim(ctx, TaskQueueStoreKey, -int64(TaskQueueMaxLen), -1)
+	if err := client.LTrim(ctx, TaskQueueStoreKey, -int64(TaskQueueMaxLen), -1); err != nil {
+		TrailarrLog(WARN, "Tasks", "Failed to LTrim queue key %s: %v", TaskQueueStoreKey, err)
+		return err
+	}
+	// Diagnostic: log current list length after trim
+	if valsAfterTrim, err := client.LRange(ctx, TaskQueueStoreKey, 0, -1); err == nil {
+		TrailarrLog(DEBUG, "Tasks", "Trimmed queue key %s to max len %d; current length=%d", TaskQueueStoreKey, TaskQueueMaxLen, len(valsAfterTrim))
+	} else {
+		TrailarrLog(DEBUG, "Tasks", "Trimmed queue key %s to max len %d", TaskQueueStoreKey, TaskQueueMaxLen)
+	}
+	return nil
 }
 
 // updateTaskQueueItem searches from the end to find a matching TaskId+Queued and updates it
@@ -321,21 +366,52 @@ func updateTaskQueueItem(taskId string, queued time.Time, update func(*SyncQueue
 		return err
 	}
 	// search from the back
+	var lastRunningIndex = -1
+	var lastRunningItem SyncQueueItem
 	for i := len(vals) - 1; i >= 0; i-- {
 		var qi SyncQueueItem
 		if err := json.Unmarshal([]byte(vals[i]), &qi); err != nil {
 			continue
 		}
+		// Exact match on TaskId + Queued (preferred)
 		if qi.TaskId == taskId && qi.Queued.Equal(queued) {
 			update(&qi)
 			b, err := json.Marshal(qi)
 			if err != nil {
+				TrailarrLog(WARN, "Tasks", "Failed to marshal updated queue item TaskId=%s Queued=%s: %v", qi.TaskId, qi.Queued, err)
 				return err
 			}
-			// set list element at index i
-			return client.LSet(ctx, TaskQueueStoreKey, int64(i), b)
+			if err := client.LSet(ctx, TaskQueueStoreKey, int64(i), b); err != nil {
+				TrailarrLog(WARN, "Tasks", "Failed to LSet queue item at index %d TaskId=%s Queued=%s: %v", i, qi.TaskId, qi.Queued, err)
+				return err
+			}
+			TrailarrLog(INFO, "Tasks", "Updated queue item TaskId=%s Queued=%s Status=%s", qi.TaskId, qi.Queued, qi.Status)
+			return nil
+		}
+		// Keep track of the last 'running' entry for fallback
+		if qi.TaskId == taskId && qi.Status == "running" && lastRunningIndex == -1 {
+			lastRunningIndex = i
+			lastRunningItem = qi
 		}
 	}
+
+	// Fallback: update the most recent running item for this TaskId (handles small timestamp mismatches)
+	if lastRunningIndex != -1 {
+		update(&lastRunningItem)
+		b, err := json.Marshal(lastRunningItem)
+		if err != nil {
+			TrailarrLog(WARN, "Tasks", "Failed to marshal fallback-updated queue item TaskId=%s Queued=%s: %v", lastRunningItem.TaskId, lastRunningItem.Queued, err)
+			return err
+		}
+		if err := client.LSet(ctx, TaskQueueStoreKey, int64(lastRunningIndex), b); err != nil {
+			TrailarrLog(WARN, "Tasks", "Failed to LSet fallback queue item at index %d TaskId=%s Queued=%s: %v", lastRunningIndex, lastRunningItem.TaskId, lastRunningItem.Queued, err)
+			return err
+		}
+		TrailarrLog(INFO, "Tasks", "Fallback-updated most recent running queue item TaskId=%s Queued=%s Status=%s", lastRunningItem.TaskId, lastRunningItem.Queued, lastRunningItem.Status)
+		return nil
+	}
+
+	TrailarrLog(DEBUG, "Tasks", "No matching queue item found to update for TaskId=%s Queued=%s", taskId, queued)
 	return nil
 }
 

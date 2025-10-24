@@ -333,6 +333,8 @@ func registerHealthAndTaskRoutes(r *gin.Engine) {
 	// API endpoint for scheduled/queue status
 	r.GET("/api/tasks/status", GetAllTasksStatus())
 	r.GET("/api/tasks/queue", GetTaskQueueFileHandler())
+	// Debug endpoint: raw store contents and count
+	r.GET("/api/tasks/queue/debug", GetTaskQueueDebugHandler())
 	r.POST("/api/tasks/force", TaskHandler())
 }
 

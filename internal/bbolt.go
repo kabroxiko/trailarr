@@ -183,7 +183,17 @@ func (c *BoltClient) RPush(ctx context.Context, key string, value []byte) error 
 			return err
 		}
 		seq, _ := b.NextSequence()
-		return b.Put(u64ToBytes(seq), value)
+		if err := b.Put(u64ToBytes(seq), value); err != nil {
+			return err
+		}
+		// Diagnostic: count current entries in this list bucket
+		var count int
+		_ = b.ForEach(func(k, v []byte) error {
+			count++
+			return nil
+		})
+		TrailarrLog(DEBUG, "Bolt", "RPush key=%s seq=%d new_count=%d", key, seq, count)
+		return nil
 	})
 }
 
@@ -238,6 +248,22 @@ func listBucketValues(b *bolt.Bucket) [][]byte {
 	return vals
 }
 
+// listBucketKVs returns the key/value pairs in the bucket in iteration order.
+// Keys and values are copied so callers may modify returned slices safely.
+func listBucketKVs(b *bolt.Bucket) [][2][]byte {
+	var kvs [][2][]byte
+	if b == nil {
+		return kvs
+	}
+	_ = b.ForEach(func(k, v []byte) error {
+		kk := append([]byte(nil), k...)
+		vv := append([]byte(nil), v...)
+		kvs = append(kvs, [2][]byte{kk, vv})
+		return nil
+	})
+	return kvs
+}
+
 func normalizeRange(n, start, stop int64) (int64, int64, bool) {
 	if n == 0 {
 		return 0, 0, true
@@ -267,25 +293,31 @@ func (c *BoltClient) LTrim(ctx context.Context, key string, start, stop int64) e
 		if b == nil {
 			return nil
 		}
-		vals := listBucketValues(b)
-		s, e, empty := normalizeRange(int64(len(vals)), start, stop)
+		kvs := listBucketKVs(b)
+		s, e, empty := normalizeRange(int64(len(kvs)), start, stop)
 		if empty {
 			// clear bucket
 			_ = tx.DeleteBucket(listBucketName(key))
+			TrailarrLog(DEBUG, "Bolt", "LTrim key=%s resulted in empty bucket (start=%d stop=%d) -> deleted", key, start, stop)
 			return nil
 		}
-		keep := vals[s : e+1]
-		// delete and recreate
+		keep := kvs[s : e+1]
+		// delete and recreate, but preserve original sequence keys so LSet can
+		// continue to target the correct underlying entry. Use the original
+		// keys instead of reindexing to 1..N.
 		_ = tx.DeleteBucket(listBucketName(key))
 		nb, err := tx.CreateBucketIfNotExists(listBucketName(key))
 		if err != nil {
 			return err
 		}
-		for i, v := range keep {
-			if err := nb.Put(u64ToBytes(uint64(i+1)), v); err != nil {
+		for _, kv := range keep {
+			k := kv[0]
+			v := kv[1]
+			if err := nb.Put(k, v); err != nil {
 				return err
 			}
 		}
+		TrailarrLog(DEBUG, "Bolt", "LTrim key=%s start=%d stop=%d kept=%d", key, s, e, len(keep))
 		return nil
 	})
 }
@@ -297,25 +329,23 @@ func (c *BoltClient) LSet(ctx context.Context, key string, index int64, value []
 			return fmt.Errorf("index out of range")
 		}
 		// rebuild all into slice, set index, rewrite
-		var vals [][]byte
-		_ = b.ForEach(func(k, v []byte) error {
-			vals = append(vals, append([]byte(nil), v...))
-			return nil
-		})
-		if index < 0 || index >= int64(len(vals)) {
+		kvs := listBucketKVs(b)
+		if index < 0 || index >= int64(len(kvs)) {
 			return fmt.Errorf("index out of range")
 		}
-		vals[index] = append([]byte(nil), value...)
+		// replace value at the same key
+		kvs[index][1] = append([]byte(nil), value...)
 		_ = tx.DeleteBucket(listBucketName(key))
 		nb, err := tx.CreateBucketIfNotExists(listBucketName(key))
 		if err != nil {
 			return err
 		}
-		for i, v := range vals {
-			if err := nb.Put(u64ToBytes(uint64(i+1)), v); err != nil {
+		for _, kv := range kvs {
+			if err := nb.Put(kv[0], kv[1]); err != nil {
 				return err
 			}
 		}
+		TrailarrLog(DEBUG, "Bolt", "LSet key=%s index=%d total=%d", key, index, len(kvs))
 		return nil
 	})
 }
