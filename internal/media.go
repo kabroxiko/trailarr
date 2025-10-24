@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -207,22 +209,40 @@ func streamResponse(c *gin.Context, ct string, r io.Reader) {
 
 // Syncs media cache and caches poster images for Radarr/Sonarr
 func SyncMedia(provider, apiPath, cacheFile string, filter func(map[string]interface{}) bool, posterDir string, posterSuffixes []string) error {
-	err := SyncMediaCache(provider, apiPath, cacheFile, filter)
+	// Minimal fast sync: fetch the list from provider, apply filter, save to cache.
+	// Skip extras scanning, poster caching and new-item background processing to keep this fast.
+	start := time.Now()
+	TrailarrLog(DEBUG, "SyncMedia", "Starting fast SyncMedia (minimal): provider=%s apiPath=%s cacheFile=%s", provider, apiPath, cacheFile)
+
+	allItems, err := fetchProviderItems(provider, apiPath)
 	if err != nil {
+		TrailarrLog(WARN, "SyncMedia", "Failed to fetch items from provider=%s apiPath=%s: %v", provider, apiPath, err)
 		return err
 	}
-	items, err := loadCache(cacheFile)
-	if err != nil {
+
+	filtered := make([]map[string]interface{}, 0, len(allItems))
+	for _, m := range allItems {
+		if filter == nil || filter(m) {
+			filtered = append(filtered, m)
+		}
+	}
+
+	if err := saveItems(cacheFile, filtered); err != nil {
+		TrailarrLog(WARN, "SyncMedia", "Failed to save cache %s: %v", cacheFile, err)
 		return err
 	}
+	// Cache poster images for the filtered items as part of sync (best-effort).
+	// Run poster caching synchronously here so the cache is populated immediately.
 	CacheMediaPosters(
 		provider,
 		posterDir,
-		items,
+		filtered,
 		"id",
 		posterSuffixes,
 		true, // debug
 	)
+
+	TrailarrLog(INFO, "SyncMedia", "Fast SyncMedia completed: provider=%s saved=%d duration=%v", provider, len(filtered), time.Since(start))
 	return nil
 }
 
@@ -295,40 +315,85 @@ func CacheMediaPosters(
 	debug bool, // enable debug output
 ) {
 	TrailarrLog(INFO, "CacheMediaPosters", "Starting poster caching for section: %s, baseDir: %s, items: %d", section, baseDir, len(idList))
+
 	type posterJob struct {
 		id        string
 		idDir     string
 		localPath string
 		posterUrl string
 	}
+
+	// Load provider settings once
+	settings, err := loadMediaSettings(section)
+	if err != nil {
+		TrailarrLog(WARN, "CacheMediaPosters", "Failed to load media settings for section=%s: %v", section, err)
+		return
+	}
+	apiBase := trimTrailingSlash(settings.ProviderURL)
+
+	// Build jobs
+	jobsList := make([]posterJob, 0, len(idList)*len(posterSuffixes))
 	for _, item := range idList {
 		id := fmt.Sprintf("%v", item[idKey])
-		settings, err := loadMediaSettings(section)
-		if err != nil {
-			continue
-		}
-		apiBase := trimTrailingSlash(settings.ProviderURL)
-		jobs := Map(posterSuffixes, func(suffix string) posterJob {
-			idDir := baseDir + "/" + id
+		idDir := baseDir + "/" + id
+		for _, suffix := range posterSuffixes {
 			localPath := idDir + suffix
 			posterUrl := apiBase + RemoteMediaCoverPath + id + suffix
-			return posterJob{id, idDir, localPath, posterUrl}
-		})
-		for _, job := range jobs {
-			if err := os.MkdirAll(job.idDir, 0775); err != nil {
-				continue
-			}
-			if _, err := os.Stat(job.localPath); err == nil {
-				continue
-			}
-			TrailarrLog(INFO, "CacheMediaPosters", "Attempting to cache poster for %s id=%s: %s -> %s", section, job.id, job.posterUrl, job.localPath)
-			if err := fetchAndCachePoster(job.localPath, job.posterUrl, section); err != nil {
-				TrailarrLog(WARN, "CacheMediaPosters", "Failed to cache poster for %s id=%s: %v", section, job.id, err)
-			}
-			TrailarrLog(INFO, "CacheMediaPosters", "Successfully cached poster for %s id=%s: %s", section, job.id, job.localPath)
+			jobsList = append(jobsList, posterJob{id, idDir, localPath, posterUrl})
 		}
 	}
-	TrailarrLog(INFO, "CacheMediaPosters", "Finished poster caching for section: %s", section)
+
+	if len(jobsList) == 0 {
+		TrailarrLog(DEBUG, "CacheMediaPosters", "No poster jobs to process for section=%s", section)
+		return
+	}
+
+	// Worker pool
+	maxWorkers := 8
+	if len(jobsList) < maxWorkers {
+		maxWorkers = len(jobsList)
+	}
+	jobs := make(chan posterJob, len(jobsList))
+	var wg sync.WaitGroup
+	var success int64
+	var failed int64
+
+	for w := 0; w < maxWorkers; w++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			for job := range jobs {
+				// ensure directory exists
+				if err := os.MkdirAll(job.idDir, 0775); err != nil {
+					atomic.AddInt64(&failed, 1)
+					TrailarrLog(DEBUG, "CacheMediaPosters", "worker=%d failed to create dir for id=%s: %v", workerID, job.id, err)
+					continue
+				}
+				// skip if already cached
+				if _, err := os.Stat(job.localPath); err == nil {
+					atomic.AddInt64(&success, 1)
+					continue
+				}
+				TrailarrLog(DEBUG, "CacheMediaPosters", "worker=%d downloading poster for id=%s: %s -> %s", workerID, job.id, job.posterUrl, job.localPath)
+				if err := fetchAndCachePoster(job.localPath, job.posterUrl, section); err != nil {
+					atomic.AddInt64(&failed, 1)
+					TrailarrLog(WARN, "CacheMediaPosters", "worker=%d failed to cache poster for %s id=%s: %v", workerID, section, job.id, err)
+					continue
+				}
+				atomic.AddInt64(&success, 1)
+				TrailarrLog(DEBUG, "CacheMediaPosters", "worker=%d successfully cached poster for id=%s: %s", workerID, job.id, job.localPath)
+			}
+		}(w)
+	}
+
+	// Enqueue jobs
+	for _, j := range jobsList {
+		jobs <- j
+	}
+	close(jobs)
+	wg.Wait()
+
+	TrailarrLog(INFO, "CacheMediaPosters", "Finished poster caching for section=%s workers=%d jobs=%d success=%d failed=%d", section, maxWorkers, len(jobsList), atomic.LoadInt64(&success), atomic.LoadInt64(&failed))
 }
 
 // Finds the media path for a given id in a cache file
@@ -369,9 +434,9 @@ func trimTrailingSlash(url string) string {
 
 // Loads a JSON cache file into a generic slice
 func loadCache(path string) ([]map[string]interface{}, error) {
-	// Use Redis for movies and series
-	if path == MoviesRedisKey || path == SeriesRedisKey {
-		items, err := LoadMediaFromRedis(path)
+	// Use store for movies and series
+	if path == MoviesStoreKey || path == SeriesStoreKey {
+		items, err := LoadMediaFromStore(path)
 		if err != nil {
 			return nil, err
 		}
@@ -405,21 +470,21 @@ func processLoadedItems(items []map[string]interface{}, path string) []map[strin
 	return items
 }
 
-// LoadMediaFromRedis loads movies or series from Redis, expects path to be MoviesRedisKey or SeriesRedisKey
-func LoadMediaFromRedis(path string) ([]map[string]interface{}, error) {
-	client := GetRedisClient()
+// LoadMediaFromStore loads movies or series from the persistent store.
+// Expects path to be MoviesStoreKey or SeriesStoreKey.
+func LoadMediaFromStore(path string) ([]map[string]interface{}, error) {
+	client := GetStoreClient()
 	ctx := context.Background()
-	var redisKey string
+	var storeKey string
 	switch path {
-	case MoviesRedisKey:
-		redisKey = "trailarr:movies"
-	case SeriesRedisKey:
-		redisKey = "trailarr:series"
+	case MoviesStoreKey:
+		storeKey = "trailarr:movies"
+	case SeriesStoreKey:
+		storeKey = "trailarr:series"
 	default:
 		return nil, fmt.Errorf("unsupported path for bbolt: %s", path)
 	}
-	valRes := client.Get(ctx, redisKey)
-	val, err := valRes.Result()
+	val, err := client.Get(ctx, storeKey)
 	if err != nil {
 		if err == ErrNotFound {
 			return []map[string]interface{}{}, nil // treat as empty
@@ -433,16 +498,17 @@ func LoadMediaFromRedis(path string) ([]map[string]interface{}, error) {
 	return items, nil
 }
 
-// SaveMediaToRedis saves movies or series to Redis, expects path to be MoviesRedisKey or SeriesRedisKey
-func SaveMediaToRedis(path string, items []map[string]interface{}) error {
-	client := GetRedisClient()
+// SaveMediaToStore saves movies or series to the persistent store.
+// Expects path to be MoviesStoreKey or SeriesStoreKey.
+func SaveMediaToStore(path string, items []map[string]interface{}) error {
+	client := GetStoreClient()
 	ctx := context.Background()
-	var redisKey string
+	var storeKey string
 	switch path {
-	case MoviesRedisKey:
-		redisKey = "trailarr:movies"
-	case SeriesRedisKey:
-		redisKey = "trailarr:series"
+	case MoviesStoreKey:
+		storeKey = "trailarr:movies"
+	case SeriesStoreKey:
+		storeKey = "trailarr:series"
 	default:
 		return fmt.Errorf("unsupported path for bbolt: %s", path)
 	}
@@ -450,15 +516,15 @@ func SaveMediaToRedis(path string, items []map[string]interface{}) error {
 	if err != nil {
 		return err
 	}
-	return client.Set(ctx, redisKey, data, 0).Err()
+	return client.Set(ctx, storeKey, data)
 }
 
 // Helper: Detect media type and main cache path
 func detectMediaTypeAndMainCachePath(path string) (MediaType, string) {
 	if strings.Contains(path, "movie") || strings.Contains(path, "Movie") {
-		return MediaTypeMovie, MoviesRedisKey
+		return MediaTypeMovie, MoviesStoreKey
 	} else if strings.Contains(path, "series") || strings.Contains(path, "Series") {
-		return MediaTypeTV, SeriesRedisKey
+		return MediaTypeTV, SeriesStoreKey
 	}
 	return "", ""
 }
@@ -516,24 +582,36 @@ func updateItemTitle(item map[string]interface{}, titleMap map[string]string) {
 // Syncs only the JSON cache for Radarr/Sonarr, not the media files themselves
 // Pass mediaType (MediaTypeMovie or MediaTypeTV), apiPath (e.g. "/api/v3/movie"), cacheFile, and a filter function for items
 func SyncMediaCache(provider, apiPath, cacheFile string, filter func(map[string]interface{}) bool) error {
+	start := time.Now()
+	TrailarrLog(DEBUG, "SyncMediaCache", "Starting SyncMediaCache: provider=%s apiPath=%s cacheFile=%s", provider, apiPath, cacheFile)
+
 	allItems, err := fetchProviderItems(provider, apiPath)
 	if err != nil {
+		TrailarrLog(WARN, "SyncMediaCache", "Failed to fetch items from provider=%s apiPath=%s: %v", provider, apiPath, err)
 		return err
 	}
+	TrailarrLog(DEBUG, "SyncMediaCache", "Fetched %d items from provider %s", len(allItems), provider)
 
 	ctx := context.Background()
 	items := collectFilteredItems(ctx, provider, allItems, filter)
+	TrailarrLog(DEBUG, "SyncMediaCache", "Filtered items count for provider %s: %d", provider, len(items))
 
 	// Load previous items (if any) so we can detect newly added media
 	prevItems, _ := loadCache(cacheFile)
+	TrailarrLog(DEBUG, "SyncMediaCache", "Previous cache size for %s: %d", cacheFile, len(prevItems))
 
 	// Save items to the appropriate backend
-	_ = saveItems(cacheFile, items)
+	if err := saveItems(cacheFile, items); err != nil {
+		TrailarrLog(WARN, "SyncMediaCache", "Failed to save items to %s: %v", cacheFile, err)
+	} else {
+		TrailarrLog(DEBUG, "SyncMediaCache", "Saved %d items to %s", len(items), cacheFile)
+	}
 
 	// Handle new items (best-effort, background tasks)
 	handleNewItems(provider, items, prevItems)
+	TrailarrLog(DEBUG, "SyncMediaCache", "Triggered background processing for new items (provider=%s)", provider)
 
-	TrailarrLog(INFO, "SyncMediaCache", "[Sync%s] Synced %d items to cache.", provider, len(items))
+	TrailarrLog(INFO, "SyncMediaCache", "[Sync%s] Synced %d items to cache. duration=%v", provider, len(items), time.Since(start))
 
 	// After syncing main cache, update wanted status in main JSON
 	var mediaType MediaType
@@ -542,28 +620,68 @@ func SyncMediaCache(provider, apiPath, cacheFile string, filter func(map[string]
 	} else {
 		mediaType = MediaTypeTV
 	}
-	_ = updateWantedStatusInMainJson(mediaType, cacheFile)
+	if err := updateWantedStatusInMainJson(mediaType, cacheFile); err != nil {
+		TrailarrLog(WARN, "SyncMediaCache", "updateWantedStatusInMainJson failed for %s: %v", cacheFile, err)
+	} else {
+		TrailarrLog(DEBUG, "SyncMediaCache", "updateWantedStatusInMainJson completed for %s", cacheFile)
+	}
 	return nil
 }
 
 // collectFilteredItems applies the filter and records extras for each accepted item.
 func collectFilteredItems(ctx context.Context, provider string, allItems []map[string]interface{}, filter func(map[string]interface{}) bool) []map[string]interface{} {
+	TrailarrLog(DEBUG, "collectFilteredItems", "Starting collectFilteredItems for provider=%s total_items=%d", provider, len(allItems))
+	start := time.Now()
+	total := len(allItems)
+
+	// First: filter items (no extras ingestion yet) so we can dispatch ingestion
 	items := make([]map[string]interface{}, 0)
-	for _, m := range allItems {
+	for idx, m := range allItems {
+		TrailarrLog(DEBUG, "collectFilteredItems", "Inspecting item %d/%d for provider=%s id=%v", idx+1, total, provider, m["id"])
 		if !filter(m) {
 			continue
 		}
-		// Record extras into the unified collection (not attached to the item)
-		_ = addExtrasFromItem(ctx, provider, m)
 		items = append(items, m)
 	}
+
+	filtered := len(items)
+	if filtered == 0 {
+		TrailarrLog(DEBUG, "collectFilteredItems", "provider=%s total_fetched=%d filtered=0 duration=%v", provider, total, time.Since(start))
+		return items
+	}
+
+	// Dispatch extras ingestion asynchronously using a bounded worker pool.
+	// We buffer the jobs channel to avoid blocking; workers run in background and process jobs.
+	jobs := make(chan map[string]interface{}, filtered)
+	workerCount := 8
+	if filtered < workerCount {
+		workerCount = filtered
+	}
+
+	for w := 0; w < workerCount; w++ {
+		go func(workerID int) {
+			for m := range jobs {
+				if err := addExtrasFromItem(ctx, provider, m); err != nil {
+					TrailarrLog(DEBUG, "collectFilteredItems", "async addExtrasFromItem error provider=%s worker=%d id=%v: %v", provider, workerID, m["id"], err)
+				}
+			}
+		}(w)
+	}
+
+	// enqueue jobs (non-blocking because channel is buffered to filtered)
+	for _, m := range items {
+		jobs <- m
+	}
+	close(jobs)
+
+	TrailarrLog(DEBUG, "collectFilteredItems", "provider=%s total_fetched=%d filtered=%d dispatched_extras_jobs=%d workers=%d duration=%v", provider, total, filtered, filtered, workerCount, time.Since(start))
 	return items
 }
 
-// saveItems persists items either to Redis or to a file depending on cacheFile.
+// saveItems persists items either to the embedded store or to a file depending on cacheFile.
 func saveItems(cacheFile string, items []map[string]interface{}) error {
-	if cacheFile == MoviesRedisKey || cacheFile == SeriesRedisKey {
-		return SaveMediaToRedis(cacheFile, items)
+	if cacheFile == MoviesStoreKey || cacheFile == SeriesStoreKey {
+		return SaveMediaToStore(cacheFile, items)
 	}
 	return WriteJSONFile(cacheFile, items)
 }
@@ -871,9 +989,9 @@ func updateWantedStatusInMainJson(mediaType MediaType, cacheFile string) error {
 		}
 		item["wanted"] = !hasTrailer
 	}
-	// Save to Redis for movies/series, file for others
-	if cacheFile == MoviesRedisKey || cacheFile == SeriesRedisKey {
-		return SaveMediaToRedis(cacheFile, items)
+	// Save to store for movies/series, file for others
+	if cacheFile == MoviesStoreKey || cacheFile == SeriesStoreKey {
+		return SaveMediaToStore(cacheFile, items)
 	}
 	return WriteJSONFile(cacheFile, items)
 }
@@ -927,7 +1045,7 @@ func SyncMediaType(mediaType MediaType) error {
 		return SyncMedia(
 			"radarr",
 			"/api/v3/movie",
-			MoviesRedisKey,
+			MoviesStoreKey,
 			func(m map[string]interface{}) bool {
 				hasFile, ok := m["hasFile"].(bool)
 				return ok && hasFile
@@ -939,7 +1057,7 @@ func SyncMediaType(mediaType MediaType) error {
 		return SyncMedia(
 			"sonarr",
 			"/api/v3/series",
-			SeriesRedisKey,
+			SeriesStoreKey,
 			func(m map[string]interface{}) bool {
 				stats, ok := m["statistics"].(map[string]interface{})
 				if !ok {

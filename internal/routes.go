@@ -416,9 +416,9 @@ func registerMediaAndSettingsRoutes(r *gin.Engine) {
 		fallbackPath string
 		extrasType   MediaType
 	}{
-		{"movies", MoviesRedisKey,
+		{"movies", MoviesStoreKey,
 			"/Movies", MediaTypeMovie},
-		{"series", SeriesRedisKey, "/Series", MediaTypeTV},
+		{"series", SeriesStoreKey, "/Series", MediaTypeTV},
 	} {
 		r.GET("/api/"+media.section, GetMediaHandler(media.cacheFile, "id"))
 		r.GET("/api/"+media.section+"/wanted", GetMissingExtrasHandler(media.cacheFile))

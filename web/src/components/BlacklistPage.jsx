@@ -1,4 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
+import PropTypes from "prop-types";
+import "./BlacklistPage.mobile.css";
+import ExtraCard from "./ExtraCard.jsx";
+import YoutubePlayer from "./YoutubePlayer.jsx";
+import Container from "./Container.jsx";
+import SectionHeader from "./SectionHeader.jsx";
+
 // Helper to normalize reason string for grouping (moved to outer scope)
 function normalizeReason(reason) {
   if (!reason) return "Other";
@@ -35,12 +42,6 @@ function normalizeReason(reason) {
     .replace(/ERROR: \[youtube\] [\w-]+:/, "ERROR: [youtube] <id>:")
     .trim();
 }
-import PropTypes from "prop-types";
-import "./BlacklistPage.mobile.css";
-import ExtraCard from "./ExtraCard.jsx";
-import YoutubePlayer from "./YoutubePlayer.jsx";
-import Container from "./Container.jsx";
-import SectionHeader from "./SectionHeader.jsx";
 
 // Subcomponent to render a single group item (reduces nesting in main render)
 function BlacklistGroupItem({

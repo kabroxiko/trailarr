@@ -128,11 +128,11 @@ func TestCanonicalizeExtraTypeMapping(t *testing.T) {
 }
 
 func TestGetExtrasForMediaFallback(t *testing.T) {
-	// exercise GetExtrasForMedia fallback logic by using BoltClient-backed Redis shim
-	// We'll use AddOrUpdateExtra and GetExtrasForMedia that interact with Redis client in tests
+	// exercise GetExtrasForMedia fallback logic by using BoltClient-backed store shim
+	// We'll use AddOrUpdateExtra and GetExtrasForMedia that interact with the store client in tests
 	ctx := context.Background()
 	// ensure extras key empty
-	_ = GetRedisClient().Del(ctx, ExtrasRedisKey)
+	_ = GetStoreClient().Del(ctx, ExtrasStoreKey)
 	// add global entry
 	entry := ExtrasEntry{MediaType: MediaTypeMovie, MediaId: 42, YoutubeId: "y42", ExtraTitle: "E", ExtraType: "T", Status: "downloaded"}
 	_ = AddOrUpdateExtra(ctx, entry)

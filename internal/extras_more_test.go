@@ -8,7 +8,7 @@ import (
 func TestAddGetRemoveExtraLifecycle(t *testing.T) {
 	ctx := context.Background()
 	// ensure clean keys - best-effort
-	_ = GetRedisClient().Del(ctx, ExtrasRedisKey)
+	_ = GetStoreClient().Del(ctx, ExtrasStoreKey)
 	// Add
 	e := ExtrasEntry{MediaType: MediaTypeMovie, MediaId: 100, YoutubeId: "tadd", ExtraTitle: "T", ExtraType: "Trailers", Status: "downloaded"}
 	if err := AddOrUpdateExtra(ctx, e); err != nil {
@@ -36,7 +36,7 @@ func TestAddGetRemoveExtraLifecycle(t *testing.T) {
 
 func TestRemoveAll429RejectionsRemovesEntry(t *testing.T) {
 	ctx := context.Background()
-	_ = GetRedisClient().Del(ctx, ExtrasRedisKey)
+	_ = GetStoreClient().Del(ctx, ExtrasStoreKey)
 	e := ExtrasEntry{MediaType: MediaTypeMovie, MediaId: 200, YoutubeId: "t429", ExtraTitle: "X", ExtraType: "Scenes", Status: "rejected", Reason: "HTTP 429 Too Many"}
 	if err := AddOrUpdateExtra(ctx, e); err != nil {
 		t.Fatalf("AddOrUpdateExtra failed: %v", err)
@@ -55,7 +55,7 @@ func TestRemoveAll429RejectionsRemovesEntry(t *testing.T) {
 
 func TestSetAndMarkStatusTransitions(t *testing.T) {
 	ctx := context.Background()
-	_ = GetRedisClient().Del(ctx, ExtrasRedisKey)
+	_ = GetStoreClient().Del(ctx, ExtrasStoreKey)
 	// Set rejected persistently
 	if err := SetExtraRejectedPersistent(MediaTypeMovie, 300, "Trailers", "TT", "tstate", "user"); err != nil {
 		t.Fatalf("SetExtraRejectedPersistent failed: %v", err)

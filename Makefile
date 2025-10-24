@@ -35,14 +35,14 @@ else
 	rm -rf $(BIN_DIR)/*
 endif
 
-# Run the full test suite in a CI-friendly way (skip embedded redis startup)
+# Run the full test suite in a CI-friendly way (skip embedded store startup)
 test:
-	@echo "Running full test suite (embedded redis disabled)"
+	@echo "Running full test suite (embedded store not required; using bbolt storage)"
 	go test ./... -v
 
 # Faster, package-scoped tests for quick cycles
 test-fast:
-	@echo "Running internal package tests (embedded redis disabled)"
+	@echo "Running internal package tests (embedded store not required; using bbolt storage)"
 	go test ./internal -v
 
 # Generate coverage report (coverage/coverage.out)

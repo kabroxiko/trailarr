@@ -28,7 +28,7 @@ func TestProcessNewMediaExtrasEnqueuesTMDBExtras(t *testing.T) {
 	ctx := context.Background()
 
 	// clear download queue
-	_ = GetRedisClient().Del(ctx, DownloadQueue)
+	_ = GetStoreClient().Del(ctx, DownloadQueue)
 
 	// Construct a TMDB-like extra directly (deterministic). Use canonical ExtraType to avoid mapping issues.
 	extras := []Extra{{ID: "vid1", ExtraType: "Trailers", ExtraTitle: "Official Trailer", YoutubeId: "yt-trailer-1"}}
@@ -45,7 +45,7 @@ func TestProcessNewMediaExtrasEnqueuesTMDBExtras(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// verify queue contains the youtube id from the TMDB-like extra
-	vals, err := GetRedisClient().LRange(ctx, DownloadQueue, 0, -1).Result()
+	vals, err := GetStoreClient().LRange(ctx, DownloadQueue, 0, -1)
 	if err != nil {
 		t.Fatalf("failed to read download queue: %v", err)
 	}

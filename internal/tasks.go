@@ -80,7 +80,7 @@ func broadcastTaskStatus(_ map[string]interface{}) {
 
 var GlobalTaskStates TaskStates
 
-// Note: task_times are stored in Redis (TaskTimesRedisKey). Disk file support removed.
+// Note: task_times are stored in the embedded store (TaskTimesStoreKey). Disk file support removed.
 
 // TaskID is a string identifier for a scheduled task
 type TaskID string
@@ -108,10 +108,10 @@ type TaskStates map[TaskID]TaskState
 var tasksMeta map[TaskID]TaskMeta
 
 func init() {
-	// On startup, update any 'running' tasks in Redis queue to 'queued'
-	client := GetRedisClient()
+	// On startup, update any 'running' tasks in the store queue to 'queued'
+	client := GetStoreClient()
 	ctx := context.Background()
-	vals, err := client.LRange(ctx, TaskQueueRedisKey, 0, -1).Result()
+	vals, err := client.LRange(ctx, TaskQueueStoreKey, 0, -1)
 	if err == nil {
 		for i, v := range vals {
 			var qi SyncQueueItem
@@ -120,7 +120,7 @@ func init() {
 					qi.Status = "queued"
 					if b, err := json.Marshal(qi); err == nil {
 						// set the element back at index i
-						_ = client.LSet(ctx, TaskQueueRedisKey, int64(i), b).Err()
+						_ = client.LSet(ctx, TaskQueueStoreKey, int64(i), b)
 					}
 				}
 			}
@@ -143,10 +143,10 @@ func AllTaskIDs() []TaskID {
 }
 
 func LoadTaskStates() (TaskStates, error) {
-	// Redis-backed task states; disk fallback removed
-	client := GetRedisClient()
+	// Store-backed task states; disk fallback removed
+	client := GetStoreClient()
 	ctx := context.Background()
-	vals, err := client.LRange(ctx, TaskTimesRedisKey, 0, -1).Result()
+	vals, err := client.LRange(ctx, TaskTimesStoreKey, 0, -1)
 
 	states := make(TaskStates)
 	if err == nil && len(vals) > 0 {
@@ -164,7 +164,7 @@ func LoadTaskStates() (TaskStates, error) {
 	return states, nil
 }
 
-// parseStatesFromVals parses JSON entries from Redis into TaskStates and marks them idle.
+// parseStatesFromVals parses JSON entries from the store into TaskStates and marks them idle.
 func parseStatesFromVals(vals []string) TaskStates {
 	states := make(TaskStates)
 	for _, v := range vals {
@@ -224,13 +224,13 @@ func saveTaskStates(states TaskStates) error {
 			LastDuration:  t.LastDuration,
 		})
 	}
-	// Persist to Redis as list of task states (overwrite by deleting and RPUSH)
-	client := GetRedisClient()
+	// Persist to the store as list of task states (overwrite by deleting and RPUSH)
+	client := GetStoreClient()
 	ctx := context.Background()
-	_ = client.Del(ctx, TaskTimesRedisKey).Err()
+	_ = client.Del(ctx, TaskTimesStoreKey)
 	for _, s := range arr {
 		if b, err := json.Marshal(s); err == nil {
-			_ = client.RPush(ctx, TaskTimesRedisKey, b).Err()
+			_ = client.RPush(ctx, TaskTimesStoreKey, b)
 		}
 	}
 	return nil
@@ -297,26 +297,26 @@ func sortTaskQueuesByQueuedDesc(queues []TaskStatus) {
 	})
 }
 
-// pushTaskQueueItem appends a sync queue item to Redis list
+// pushTaskQueueItem appends a sync queue item to the store list
 func pushTaskQueueItem(item SyncQueueItem) error {
-	client := GetRedisClient()
+	client := GetStoreClient()
 	ctx := context.Background()
 	b, err := json.Marshal(item)
 	if err != nil {
 		return err
 	}
-	if err := client.RPush(ctx, TaskQueueRedisKey, b).Err(); err != nil {
+	if err := client.RPush(ctx, TaskQueueStoreKey, b); err != nil {
 		return err
 	}
 	// Trim to reasonable max
-	return client.LTrim(ctx, TaskQueueRedisKey, -int64(TaskQueueMaxLen), -1).Err()
+	return client.LTrim(ctx, TaskQueueStoreKey, -int64(TaskQueueMaxLen), -1)
 }
 
 // updateTaskQueueItem searches from the end to find a matching TaskId+Queued and updates it
 func updateTaskQueueItem(taskId string, queued time.Time, update func(*SyncQueueItem)) error {
-	client := GetRedisClient()
+	client := GetStoreClient()
 	ctx := context.Background()
-	vals, err := client.LRange(ctx, TaskQueueRedisKey, 0, -1).Result()
+	vals, err := client.LRange(ctx, TaskQueueStoreKey, 0, -1)
 	if err != nil {
 		return err
 	}
@@ -333,7 +333,7 @@ func updateTaskQueueItem(taskId string, queued time.Time, update func(*SyncQueue
 				return err
 			}
 			// set list element at index i
-			return client.LSet(ctx, TaskQueueRedisKey, int64(i), b).Err()
+			return client.LSet(ctx, TaskQueueStoreKey, int64(i), b)
 		}
 	}
 	return nil
@@ -434,7 +434,7 @@ func StartBackgroundTasks() {
 		}
 		go scheduleTask(t)
 	}
-	TrailarrLog(INFO, "Tasks", "Native Go scheduler started. Jobs will persist last execution times to Redis key %s", TaskTimesRedisKey)
+	TrailarrLog(INFO, "Tasks", "Native Go scheduler started. Jobs will persist last execution times to store key %s", TaskTimesStoreKey)
 }
 
 func buildBgTasks(states TaskStates) []bgTask {
@@ -511,9 +511,9 @@ func processExtras(ctx context.Context) {
 		return
 	}
 	TrailarrLog(INFO, "Tasks", "[TASK] Searching for missing movie extras...")
-	downloadMissingExtrasWithTypeFilter(ctx, extraTypesCfg, MediaTypeMovie, MoviesRedisKey)
+	downloadMissingExtrasWithTypeFilter(ctx, extraTypesCfg, MediaTypeMovie, MoviesStoreKey)
 	TrailarrLog(INFO, "Tasks", "[TASK] Searching for missing series extras...")
-	downloadMissingExtrasWithTypeFilter(ctx, extraTypesCfg, MediaTypeTV, SeriesRedisKey)
+	downloadMissingExtrasWithTypeFilter(ctx, extraTypesCfg, MediaTypeTV, SeriesStoreKey)
 }
 
 func StopExtrasDownloadTask() {
@@ -776,7 +776,7 @@ func GetTaskQueueHandler() gin.HandlerFunc {
 // Centralized queue wrapper for all tasks
 func wrapWithQueue(taskId TaskID, syncFunc func() error) func() {
 	return func() {
-		// Add new queue item to Redis on start
+		// Add new queue item to the persistent store on start
 		queued := time.Now()
 		item := SyncQueueItem{
 			TaskId:  string(taskId),
@@ -796,7 +796,7 @@ func wrapWithQueue(taskId TaskID, syncFunc func() error) func() {
 		} else {
 			TrailarrLog(INFO, "Tasks", "Task %s completed successfully.", taskId)
 		}
-		// Update the last queue item for this task (by TaskId and Queued) in Redis
+		// Update the last queue item for this task (by TaskId and Queued) in the persistent store
 		_ = updateTaskQueueItem(string(taskId), queued, func(qi *SyncQueueItem) {
 			qi.Status = status
 			qi.Started = queued

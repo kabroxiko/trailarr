@@ -12,10 +12,10 @@ import (
 // use centralized DoRequest defined in testhelpers_test.go
 
 func TestHealthAndBasicRoutes(t *testing.T) {
-	// Ensure clean Redis state for extras and queue
+	// Ensure clean store state for extras and queue
 	ctx := context.Background()
-	_ = GetRedisClient().Del(ctx, ExtrasRedisKey)
-	_ = GetRedisClient().Del(ctx, DownloadQueue)
+	_ = GetStoreClient().Del(ctx, ExtrasStoreKey)
+	_ = GetStoreClient().Del(ctx, DownloadQueue)
 
 	r := ginDefaultRouterForTests()
 
@@ -47,15 +47,15 @@ func TestHealthAndBasicRoutes(t *testing.T) {
 }
 
 func TestMoviesListAndExtrasEndpoints(t *testing.T) {
-	// Use real Redis client if available.
+	// Use real store client if available.
 	ctx := context.Background()
 	// clear extras and queue
-	_ = GetRedisClient().Del(ctx, ExtrasRedisKey)
-	_ = GetRedisClient().Del(ctx, DownloadQueue)
+	_ = GetStoreClient().Del(ctx, ExtrasStoreKey)
+	_ = GetStoreClient().Del(ctx, DownloadQueue)
 
-	// seed a movie in Redis
+	// seed a movie in the store
 	movie := map[string]interface{}{"id": 10, "title": "X", "path": "/tmp/m/10"}
-	if err := SaveMediaToRedis(MoviesRedisKey, []map[string]interface{}{movie}); err != nil {
+	if err := SaveMediaToStore(MoviesStoreKey, []map[string]interface{}{movie}); err != nil {
 		t.Fatalf("failed to seed movies: %v", err)
 	}
 

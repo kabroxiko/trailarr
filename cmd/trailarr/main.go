@@ -21,11 +21,13 @@ func main() {
 	gin.DefaultWriter = os.Stdout
 	gin.DefaultErrorWriter = os.Stderr
 
-	// Check Redis connectivity at startup
-	if err := internal.PingRedis(context.Background()); err != nil {
-		// Log and exit if Redis is not available
-		internal.TrailarrLog(internal.FATAL, "Startup", "Could not connect to Redis: %v", err)
-		os.Exit(1)
+	// Check store compatibility layer at startup (now backed by bbolt).
+	// Do not fail startup if the backend is not reachable; fall back to BoltDB in-memory
+	// or on-disk implementations provided by the codebase.
+	if err := internal.PingStore(context.Background()); err != nil {
+		internal.TrailarrLog(internal.WARN, "Startup", "Store backend not reachable; continuing with BoltDB/mem fallback: %v", err)
+	} else {
+		internal.TrailarrLog(internal.INFO, "Startup", "Store compatibility layer ready (using BoltDB)")
 	}
 
 	// Clean up yt-dlp-tmp directories at startup
@@ -49,7 +51,7 @@ func main() {
 	internal.Timings = timings
 	internal.TrailarrLog(internal.INFO, "Startup", "Sync timings: %v", timings)
 
-	// Load last task run times (Redis primary, disk fallback)
+	// Load last task run times (store primary, disk fallback)
 	if _, err := internal.LoadTaskStates(); err != nil {
 		internal.TrailarrLog(internal.WARN, "Startup", "Could not load last task run times: %v", err)
 	}

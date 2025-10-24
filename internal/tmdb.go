@@ -90,9 +90,9 @@ func GetTMDBId(mediaType MediaType, mediaId int) (int, error) {
 	var cachePath string
 	switch mediaType {
 	case MediaTypeMovie:
-		cachePath = MoviesRedisKey
+		cachePath = MoviesStoreKey
 	case MediaTypeTV:
-		cachePath = SeriesRedisKey
+		cachePath = SeriesStoreKey
 	}
 
 	tmdb, err := getCachedTMDBId(cachePath, mediaId)
@@ -111,7 +111,7 @@ func GetTMDBId(mediaType MediaType, mediaId int) (int, error) {
 // and returns the stored tmdbId if present. Returns (tmdbId, found, error).
 func getCachedTMDBId(cachePath string, mediaId int) (int, error) {
 	var items []map[string]interface{}
-	items, err := LoadMediaFromRedis(cachePath)
+	items, err := LoadMediaFromStore(cachePath)
 	if err != nil {
 		return 0, fmt.Errorf("failed to read or decode cache %s: %w", cachePath, err)
 	}

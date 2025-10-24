@@ -7,8 +7,8 @@ import (
 )
 
 // TestMain sets environment needed for tests.
-// It ensures embedded Redis is skipped during the test run; tests that need Redis
-// should rely on a running Redis instance or mock the interface.
+// It ensures embedded store is skipped during the test run; tests that need the external store
+// should rely on a running instance or mock the interface.
 func TestMain(m *testing.M) {
 	// Use the fake runner for yt-dlp to avoid launching external processes in tests
 	oldRunner := ytDlpRunner

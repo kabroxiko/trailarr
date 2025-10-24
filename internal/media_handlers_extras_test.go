@@ -15,8 +15,8 @@ func TestSharedExtrasHandlerMergesPersistentAndTMDB(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	// prepare persistent extras
 	ctx := context.Background()
-	// clear extras key in Redis
-	_ = GetRedisClient().Del(ctx, ExtrasRedisKey)
+	// clear extras key in store
+	_ = GetStoreClient().Del(ctx, ExtrasStoreKey)
 
 	// add a persistent extra
 	pe := ExtrasEntry{MediaType: MediaTypeMovie, MediaId: 5, ExtraType: "Trailer", ExtraTitle: "P1", YoutubeId: "y1", Status: "downloaded"}
@@ -59,7 +59,7 @@ func TestGetMissingExtrasHandlerReturnsMissing(t *testing.T) {
 
 	// ensure extras collection does not have trailers for id 20
 	ctx := context.Background()
-	_ = GetRedisClient().Del(ctx, ExtrasRedisKey)
+	_ = GetStoreClient().Del(ctx, ExtrasStoreKey)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)

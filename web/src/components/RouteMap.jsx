@@ -1,22 +1,13 @@
 import React from "react";
-
-// Helper to load a component dynamically, but only once
-function loadComponent(importFn, ref) {
-  if (!ref.current) {
-    ref.current = React.lazy(importFn);
-  }
-  return ref.current;
-}
-
-const MediaListRef = { current: null };
-const MediaDetailsRef = { current: null };
-const GeneralSettingsRef = { current: null };
-const ExtrasSettingsRef = { current: null };
-const HistoryPageRef = { current: null };
-const LogsPageRef = { current: null };
-const SettingsPageRef = { current: null };
-const TasksRef = { current: null };
-const WantedRef = { current: null };
+import MediaList from "./MediaList";
+import MediaDetails from "./MediaDetails";
+import GeneralSettings from "./GeneralSettings";
+import ExtrasSettings from "./ExtrasSettings";
+import HistoryPage from "./HistoryPage";
+import LogsPage from "./LogsPage";
+import SettingsPage from "./SettingsPage";
+import Tasks from "./Tasks";
+import Wanted from "./Wanted";
 
 export const RouteMap = [
   { pattern: /^\/$/, section: "Movies" },
@@ -55,10 +46,11 @@ export const appRoutes = [
           {search.trim() ? (
             <>
               {(() =>
-                React.createElement(
-                  loadComponent(() => import("./MediaList"), MediaListRef),
-                  { items: titleMatches, darkMode, type: "series" },
-                ))()}
+                React.createElement(MediaList, {
+                  items: titleMatches,
+                  darkMode,
+                  type: "series",
+                }))()}
               <div
                 style={{
                   margin: "1.5em 0 0.5em 1em",
@@ -71,18 +63,15 @@ export const appRoutes = [
               >
                 Other Results
               </div>
-              {(() =>
-                React.createElement(
-                  loadComponent(() => import("./MediaList"), MediaListRef),
-                  { items: overviewMatches, darkMode, type: "series" },
-                ))()}
+                {(() =>
+                React.createElement(MediaList, {
+                  items: overviewMatches,
+                  darkMode,
+                  type: "series",
+                }))()}
             </>
           ) : (
-            (() =>
-              React.createElement(
-                loadComponent(() => import("./MediaList"), MediaListRef),
-                { items: series, darkMode, type: "series" },
-              ))()
+            (() => React.createElement(MediaList, { items: series, darkMode, type: "series" }))()
           )}
           {seriesError && (
             <div style={{ color: "red", marginTop: "1em" }}>{seriesError}</div>
@@ -103,10 +92,7 @@ export const appRoutes = [
           {search.trim() ? (
             <>
               {(() =>
-                React.createElement(
-                  loadComponent(() => import("./MediaList"), MediaListRef),
-                  { items: titleMatches, darkMode, type: "movie" },
-                ))()}
+    React.createElement(MediaList, { items: titleMatches, darkMode, type: "movie" }))()}
               <div
                 style={{
                   margin: "1.5em 0 0.5em 1em",
@@ -119,18 +105,10 @@ export const appRoutes = [
               >
                 Other Results
               </div>
-              {(() =>
-                React.createElement(
-                  loadComponent(() => import("./MediaList"), MediaListRef),
-                  { items: overviewMatches, darkMode, type: "movie" },
-                ))()}
+              {(() => React.createElement(MediaList, { items: overviewMatches, darkMode, type: "movie" }))()}
             </>
           ) : (
-            (() =>
-              React.createElement(
-                loadComponent(() => import("./MediaList"), MediaListRef),
-                { items: movies, darkMode, type: "movie" },
-              ))()
+            (() => React.createElement(MediaList, { items: movies, darkMode, type: "movie" }))()
           )}
           {moviesError && (
             <div style={{ color: "red", marginTop: "1em" }}>{moviesError}</div>
@@ -143,89 +121,69 @@ export const appRoutes = [
     path: "/movies/:id",
     dynamic: true,
     render: (props) =>
-      React.createElement(
-        loadComponent(() => import("./MediaDetails"), MediaDetailsRef),
-        {
+      React.createElement(MediaDetails, {
           mediaItems: props.movies,
           loading: props.moviesLoading,
           mediaType: "movie",
-        },
-      ),
+        }),
   },
   {
     path: "/series/:id",
     dynamic: true,
     render: (props) =>
-      React.createElement(
-        loadComponent(() => import("./MediaDetails"), MediaDetailsRef),
-        {
-          mediaItems: props.series,
-          loading: props.seriesLoading,
-          mediaType: "tv",
-        },
-      ),
+      React.createElement(MediaDetails, {
+        mediaItems: props.series,
+        loading: props.seriesLoading,
+        mediaType: "tv",
+      }),
   },
   // Static routes
   {
     path: "/history",
-    element: React.createElement(
-      loadComponent(() => import("./HistoryPage"), HistoryPageRef),
-    ),
+    element: React.createElement(HistoryPage),
   },
   {
     path: "/wanted/movies",
     dynamic: true,
     render: (props) =>
-      React.createElement(
-        loadComponent(() => import("./Wanted"), WantedRef),
-        { type: "movie", darkMode: props.darkMode, items: props.movies },
-      ),
+      React.createElement(Wanted, {
+        type: "movie",
+        darkMode: props.darkMode,
+        items: props.movies,
+      }),
   },
   {
     path: "/wanted/series",
     dynamic: true,
     render: (props) =>
-      React.createElement(
-        loadComponent(() => import("./Wanted"), WantedRef),
-        { type: "series", darkMode: props.darkMode, items: props.series },
-      ),
+      React.createElement(Wanted, {
+        type: "series",
+        darkMode: props.darkMode,
+        items: props.series,
+      }),
   },
   {
     path: "/settings/radarr",
-    element: React.createElement(
-      loadComponent(() => import("./SettingsPage"), SettingsPageRef),
-      { type: "radarr" },
-    ),
+    element: React.createElement(SettingsPage, { type: "radarr" }),
   },
   {
     path: "/settings/sonarr",
-    element: React.createElement(
-      loadComponent(() => import("./SettingsPage"), SettingsPageRef),
-      { type: "sonarr" },
-    ),
+    element: React.createElement(SettingsPage, { type: "sonarr" }),
   },
   {
     path: "/settings/general",
-    element: React.createElement(
-      loadComponent(() => import("./GeneralSettings"), GeneralSettingsRef),
-    ),
+    element: React.createElement(GeneralSettings),
   },
   {
     path: "/settings/extras",
-    element: React.createElement(
-      loadComponent(() => import("./ExtrasSettings"), ExtrasSettingsRef),
-    ),
+    element: React.createElement(ExtrasSettings),
   },
   {
     path: "/system/tasks",
-    element: React.createElement(
-      loadComponent(() => import("./Tasks"), TasksRef),
-    ),
+    element: React.createElement(Tasks),
   },
   {
     path: "/system/logs",
-    element: React.createElement(
-      loadComponent(() => import("./LogsPage"), LogsPageRef),
-    ),
+    element: React.createElement(LogsPage),
   },
 ];

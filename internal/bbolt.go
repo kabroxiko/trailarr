@@ -13,7 +13,7 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
-// BoltDB-backed simple compatibility layer for the small subset of Redis ops
+// BoltDB-backed simple compatibility layer for the small subset of list/hash operations
 // used in Trailarr. This is intentionally minimal and synchronous.
 
 type BoltClient struct {
@@ -203,7 +203,7 @@ func (c *BoltClient) LRange(ctx context.Context, key string, start, stop int64) 
 	if err != nil {
 		return nil, err
 	}
-	// Apply start/stop like Redis semantics (support -1)
+	// Apply start/stop semantics (support -1)
 	n := int64(len(out))
 	if n == 0 {
 		return []string{}, nil

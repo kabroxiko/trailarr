@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { deleteExtra } from "../api";
 import IconButton from "./IconButton.jsx";
 import PropTypes from "prop-types";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -625,8 +626,7 @@ export default function ExtraCard({
           handleDeleteClick={async (event) => {
             event.stopPropagation();
             if (!globalThis.confirm("Delete this extra?")) return;
-            try {
-              const { deleteExtra } = await import("../api");
+              try {
               const payload = {
                 mediaType,
                 mediaId: media.id,

@@ -11,10 +11,10 @@ import (
 // GetTaskQueueFileHandler returns the queue directly from the file, not memory
 func GetTaskQueueFileHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Load from Redis
-		client := GetRedisClient()
+		// Load from store
+		client := GetStoreClient()
 		ctx := context.Background()
-		vals, err := client.LRange(ctx, TaskQueueRedisKey, 0, -1).Result()
+		vals, err := client.LRange(ctx, TaskQueueStoreKey, 0, -1)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read queue from bbolt", "detail": err.Error()})
 			return

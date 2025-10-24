@@ -23,17 +23,16 @@ func TestShouldDownloadExtraAndFilter(t *testing.T) {
 func TestFilterAndDownloadEnqueues(t *testing.T) {
 	ctx := context.Background()
 	// clear queue
-	_ = GetRedisClient().Del(ctx, DownloadQueue)
+	_ = GetStoreClient().Del(ctx, DownloadQueue)
 
 	extras := []Extra{{ExtraType: "Trailers", ExtraTitle: "T", YoutubeId: "qz", Status: "missing"}}
 	// call with movie type and ensure enqueue
 	filterAndDownloadExtras(MediaTypeMovie, 1, extras, ExtraTypesConfig{Trailers: true})
 
-	// check Redis queue length via LRange (client implementation uses RPush on DownloadQueue)
-	// Use internal GetRedisClient to fetch queue content
-	client := GetRedisClient()
-	res := client.LRange(ctx, DownloadQueue, 0, -1)
-	vals, _ := res.Result()
+	// check store queue length via LRange (client implementation uses RPush on DownloadQueue)
+	// Use internal GetStoreClient to fetch queue content
+	client := GetStoreClient()
+	vals, _ := client.LRange(ctx, DownloadQueue, 0, -1)
 	if len(vals) == 0 {
 		t.Fatalf("expected enqueued items in download queue")
 	}

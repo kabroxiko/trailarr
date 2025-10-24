@@ -1,3 +1,17 @@
+import React, { useState, useEffect, useRef } from "react";
+import MediaInfoLane from "./MediaInfoLane.jsx";
+import ActionLane from "./ActionLane.jsx";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faSearch, faSpinner } from "@fortawesome/free-solid-svg-icons";
+import ExtrasList from "./ExtrasList";
+import YoutubePlayer from "./YoutubePlayer.jsx";
+import Container from "./Container.jsx";
+import Toast from "./Toast.jsx";
+import { useParams } from "react-router-dom";
+import PropTypes from "prop-types";
+import { getExtras } from "../api";
+import { searchYoutubeStream } from "../api.youtube.sse";
+
 YoutubeModal.propTypes = {
   open: PropTypes.bool.isRequired,
   videoId: PropTypes.string.isRequired,
@@ -95,19 +109,6 @@ function updateExtraWithQueueStatus(ex, queue, mediaId, setError) {
   }
   return ex;
 }
-import React, { useState, useEffect, useRef } from "react";
-import MediaInfoLane from "./MediaInfoLane.jsx";
-import ActionLane from "./ActionLane.jsx";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faSearch, faSpinner } from "@fortawesome/free-solid-svg-icons";
-import ExtrasList from "./ExtrasList";
-import YoutubePlayer from "./YoutubePlayer.jsx";
-import Container from "./Container.jsx";
-import Toast from "./Toast.jsx";
-import { useParams } from "react-router-dom";
-
-import PropTypes from "prop-types";
-
 // Helper to convert YouTube search results to extras format for Trailers
 function ytResultsToExtras(ytResults) {
   return ytResults
@@ -337,14 +338,12 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
     if (!media) return;
     setSearchLoading(true);
     setError("");
-    import("../api").then(({ getExtras }) => {
-      getExtras({ mediaType, id: media.id })
-        .then((res) => {
-          setExtras(res.extras || []);
-        })
-        .catch(() => setError("Failed to fetch extras"))
-        .finally(() => setSearchLoading(false));
-    });
+    getExtras({ mediaType, id: media.id })
+      .then((res) => {
+        setExtras(res.extras || []);
+      })
+      .catch(() => setError("Failed to fetch extras"))
+      .finally(() => setSearchLoading(false));
   }, [media, mediaType]);
 
   // WebSocket for real-time extras status
@@ -489,20 +488,18 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
               setError?.("");
               setYtResults([]);
               let results = [];
-              import("../api.youtube.sse").then(({ searchYoutubeStream }) => {
-                searchYoutubeStream({
-                  mediaType,
-                  mediaId: media.id,
-                  onResult: (item) => {
-                    results.push(item);
-                    setYtResults([...results]);
-                  },
-                  onDone: () => setSearchLoading(false),
-                  onError: () => {
-                    setError?.("YouTube search failed");
-                    setSearchLoading(false);
-                  },
-                });
+              searchYoutubeStream({
+                mediaType,
+                mediaId: media.id,
+                onResult: (item) => {
+                  results.push(item);
+                  setYtResults([...results]);
+                },
+                onDone: () => setSearchLoading(false),
+                onError: () => {
+                  setError?.("YouTube search failed");
+                  setSearchLoading(false);
+                },
               });
             },
             disabled: searchLoading,
