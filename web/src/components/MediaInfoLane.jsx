@@ -10,14 +10,11 @@ export default function MediaInfoLane({
   media,
   mediaType,
   darkMode = false,
-  error: _error = "",
   cast = [],
   castLoading = false,
   castError = "",
 }) {
-  // Reference unused prop to satisfy ESLint's no-unused-vars rule without changing behavior
-  // _error is intentionally unused; reference via void to keep linter happy
-  void _error;
+  // The 'error' prop was intentionally omitted from the params to avoid an unused-variable lint warning.
   const [showAlt, setShowAlt] = React.useState(false);
 
   if (!media) return null;
@@ -32,92 +29,29 @@ export default function MediaInfoLane({
   }
 
   return (
-    <div
-      className="media-info-lane-outer"
-      style={{
-        width: "100%",
-        position: "relative",
-        background,
-        minHeight: 420,
-        display: "flex",
-        flexDirection: "row",
-        alignItems: "flex-start",
-        boxSizing: "border-box",
-        padding: "24px 16px 16px 16px",
-        gap: 32,
-        marginTop: window.innerWidth > 900 ? 64 : 28,
-      }}
-    >
-      <div
-        className="media-info-poster"
-        style={{
-          minWidth: 150,
-          zIndex: 2,
-          display: "flex",
-          justifyContent: "flex-start",
-          alignItems: "flex-start",
-          height: "100%",
-          padding: 0,
-          marginTop: 32,
-        }}
-      >
-        <img
+    <div className="media-info-lane-outer" style={{ background }}>
+      <div className="media-info-poster">
+        <img className="media-info-poster-img"
           src={
             mediaType === "tv"
               ? `/mediacover/Series/${media.id}/poster-500.jpg`
               : `/mediacover/Movies/${media.id}/poster-500.jpg`
           }
           alt={`${media?.title ?? "Media"} poster`}
-          style={{
-            height: 370,
-            objectFit: "cover",
-            borderRadius: 4,
-            background: "#222",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.22)",
-          }}
           onError={(e) => {
             e.target.onerror = null;
             e.target.src = "/logo.svg";
           }}
         />
       </div>
-      <div
-        className="media-info-content"
-        style={{ paddingTop: 0, flex: 1, minWidth: 0 }}
-      >
-        <h2
-          style={{
-            color: "#fff",
-            margin: 0,
-            fontSize: 32,
-            fontWeight: 600,
-            textShadow: "0 1px 2px #000",
-            letterSpacing: 0.2,
-            textAlign: "left",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
+      <div className="media-info-content">
+        <h2 className="media-info-title">
           <IconButton
-            icon={
-              <FontAwesomeIcon
-                icon={faBookmark}
-                color="#eee"
-                style={{ marginLeft: -10 }}
-              />
-            }
+            className="media-info-bookmark"
+            icon={<FontAwesomeIcon icon={faBookmark} color="#eee" />}
             disabled
-            style={{
-              background: "none",
-              border: "none",
-              padding: 0,
-              margin: 0,
-            }}
           />
-          <span
-            style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
-          >
+          <span className="media-info-title-group">
             <span>{media.title}</span>
             {(() => {
               const raw = media.alternateTitles || [];
@@ -155,83 +89,43 @@ export default function MediaInfoLane({
               const showIcon = hasAlts || showOriginal;
               if (!showIcon) return null;
               return (
-                <span
-                  style={{
-                    position: "relative",
-                    display: "inline-flex",
-                    alignItems: "center",
-                  }}
-                >
+                <span className="media-info-alt-wrapper">
                   <button
+                    className="media-info-alt-button"
                     aria-label={`${altArr.length} alternate titles`}
                     onMouseEnter={() => setShowAlt(true)}
                     onMouseLeave={() => setShowAlt(false)}
                     onFocus={() => setShowAlt(true)}
                     onBlur={() => setShowAlt(false)}
-                    style={{
-                      background: "transparent",
-                      border: "none",
-                      color: "#fff",
-                      cursor: "default",
-                      padding: 6,
-                      marginLeft: 2,
-                    }}
                   >
                     <FontAwesomeIcon
                       icon={faLanguage}
-                      style={{ fontSize: 18, color: "#eee" }}
+                      className="media-info-alt-icon"
                     />
                   </button>
                   {showAlt && (
                     <div
                       role="tooltip"
-                      style={{
-                        position: "absolute",
-                        top: "110%",
-                        left: 0,
-                        zIndex: 60,
-                        background: darkMode ? "#111" : "#fff",
-                        color: darkMode ? "#e5e7eb" : "#111",
-                        border: darkMode ? "1px solid #333" : "1px solid #ddd",
-                        boxShadow: "0 6px 18px rgba(0,0,0,0.12)",
-                        padding: 8,
-                        borderRadius: 8,
-                        minWidth: 200,
-                        maxWidth: 420,
-                        maxHeight: 220,
-                        overflow: "auto",
-                        fontSize: 13,
-                      }}
+                      className={`media-info-alt-tooltip ${darkMode ? 'dark' : 'light'}`}
                     >
                       {showOriginal && (
-                        <div style={{ marginBottom: 8 }}>
-                          <div style={{ fontWeight: 600, marginBottom: 6 }}>
+                        <div className="media-info-section">
+                          <div className="media-info-section-title">
                             Original title
                           </div>
-                          <ul
-                            style={{
-                              margin: 0,
-                              paddingLeft: 16,
-                              marginBottom: 8,
-                            }}
-                          >
-                            <li style={{ marginBottom: 6, lineHeight: 1.2 }}>
-                              {original}
-                            </li>
+                          <ul className="media-info-list media-info-list-with-gap">
+                            <li className="media-info-list-item">{original}</li>
                           </ul>
                         </div>
                       )}
                       {filteredAlt.length > 0 && (
-                        <div>
-                          <div style={{ fontWeight: 600, marginBottom: 6 }}>
+                        <div className="media-info-section">
+                          <div className="media-info-section-title">
                             Alternate titles
                           </div>
-                          <ul style={{ margin: 0, paddingLeft: 16 }}>
+                          <ul className="media-info-list">
                             {filteredAlt.map((t) => (
-                              <li
-                                key={t}
-                                style={{ marginBottom: 6, lineHeight: 1.2 }}
-                              >
+                              <li key={t} className="media-info-list-item">
                                 {t}
                               </li>
                             ))}
@@ -246,48 +140,24 @@ export default function MediaInfoLane({
           </span>
         </h2>
         {media.overview && (
-          <div
-            style={{
-              color: "#e5e7eb",
-              fontSize: 15,
-              margin: "10px 0 6px 0",
-              textShadow: "0 1px 2px #000",
-              textAlign: "left",
-              lineHeight: 1.5,
-              maxWidth: 700,
-            }}
-          >
-            {media.overview}
-          </div>
+          <div className="media-info-overview">{media.overview}</div>
         )}
-        <div
-          style={{
-            marginBottom: 6,
-            color: "#e5e7eb",
-            textAlign: "left",
-            fontSize: 13,
-            textShadow: "0 1px 2px #000",
-          }}
-        >
+        <div className="media-info-meta">
           {media.year} &bull; {media.path}
         </div>
-        <div style={{ marginBottom: 10, width: "100%" }}>
-          <div style={{ height: 20, marginBottom: 4 }} />
+        <div className="media-info-cast">
+          <div className="media-info-spacer" />
           {castLoading && (
-            <div style={{ fontSize: "0.95em", color: "#bbb" }}>
-              Loading cast...
-            </div>
+            <div className="media-info-muted-text">Loading cast...</div>
           )}
           {castError && (
-            <div style={{ color: "red", fontSize: "0.95em" }}>{castError}</div>
+            <div className="media-info-error-text">{castError}</div>
           )}
           {!castLoading && !castError && cast && cast.length > 0 && (
             <ActorRow actors={cast.slice(0, 10)} />
           )}
           {!castLoading && !castError && (!cast || cast.length === 0) && (
-            <div style={{ fontSize: "0.95em", color: "#bbb" }}>
-              No cast information available.
-            </div>
+            <div className="media-info-muted-text">No cast information available.</div>
           )}
         </div>
       </div>
@@ -299,7 +169,6 @@ MediaInfoLane.propTypes = {
   media: PropTypes.object,
   mediaType: PropTypes.oneOf(["movie", "series", "tv"]),
   darkMode: PropTypes.bool,
-  error: PropTypes.string,
   cast: PropTypes.array,
   castLoading: PropTypes.bool,
   castError: PropTypes.string,
