@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import "./MediaList.mobile.css";
 import { Link } from "react-router-dom";
 import MediaCard from "./MediaCard.jsx";
@@ -12,18 +12,16 @@ export default function MediaList({
   basePath,
   loading,
 }) {
-  // Debug: log items and loading state
-
-  console.debug("[MediaList] items:", items, "loading:", loading);
-
   // Prepare a sorted copy of items by sortTitle (case-insensitive). Fall back to title when sortTitle is missing.
-  const sortedItems = (items || []).slice().sort((a, b) => {
-    const aKey = (a.sortTitle || a.title || "").toString().toLowerCase();
-    const bKey = (b.sortTitle || b.title || "").toString().toLowerCase();
-    if (aKey < bKey) return -1;
-    if (aKey > bKey) return 1;
-    return 0;
-  });
+  const sortedItems = useMemo(() => {
+    return (items || []).slice().sort((a, b) => {
+      const aKey = (a.sortTitle || a.title || "").toString().toLowerCase();
+      const bKey = (b.sortTitle || b.title || "").toString().toLowerCase();
+      if (aKey < bKey) return -1;
+      if (aKey > bKey) return 1;
+      return 0;
+    });
+  }, [items]);
 
   // Only show the empty banner if items is an array and is empty, and not loading
   const showEmptyBanner =

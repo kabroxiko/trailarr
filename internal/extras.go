@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -17,12 +18,13 @@ import (
 const extrasEntryKeyFmt = "%s:%s:%d"
 const perMediaKeyFmt = "trailarr:extras:%s:%d"
 const mkvJSONSuffix = ".mkv.json"
+const rejectedIndexSaveErrFmt = "failed to save rejected index: %v"
 
 // RemoveAll429Rejections removes all extras with status 'rejected' and reason containing '429' from the extras collection
 func RemoveAll429Rejections() error {
 	ctx := context.Background()
-	client := GetRedisClient()
-	vals, err := client.HVals(ctx, ExtrasRedisKey).Result()
+	client := GetStoreClient()
+	vals, err := client.HVals(ctx, ExtrasStoreKey)
 	if err != nil {
 		return err
 	}
@@ -31,24 +33,30 @@ func RemoveAll429Rejections() error {
 		if err := json.Unmarshal([]byte(v), &entry); err == nil {
 			if entry.Status == "rejected" && strings.Contains(entry.Reason, "429") {
 				entryKey := fmt.Sprintf(extrasEntryKeyFmt, entry.YoutubeId, entry.MediaType, entry.MediaId)
-				if err := client.HDel(ctx, ExtrasRedisKey, entryKey).Err(); err != nil {
+				if err := client.HDel(ctx, ExtrasStoreKey, entryKey); err != nil {
 					TrailarrLog(WARN, "Extras", "Failed to remove 429 rejected extra: %v", err)
 				}
 				// Also remove from per-media hash
-				perMediaKey := fmt.Sprintf(extrasEntryKeyFmt, ExtrasRedisKey, entry.MediaType, entry.MediaId)
-				_ = client.HDel(ctx, perMediaKey, entryKey).Err()
+				perMediaKey := fmt.Sprintf(extrasEntryKeyFmt, ExtrasStoreKey, entry.MediaType, entry.MediaId)
+				_ = client.HDel(ctx, perMediaKey, entryKey)
 			}
 		}
 	}
+	// After bulk removals, refresh the rejected-index asynchronously.
+	go func() {
+		if err := SaveRejectedIndex(); err != nil {
+			TrailarrLog(WARN, "RemoveAll429Rejections", rejectedIndexSaveErrFmt, err)
+		}
+	}()
 	return nil
 }
 
 // GetExtrasForMedia efficiently returns all extras for a given mediaType and mediaId
 func GetExtrasForMedia(ctx context.Context, mediaType MediaType, mediaId int) ([]ExtrasEntry, error) {
-	client := GetRedisClient()
+	client := GetStoreClient()
 	perMediaKey := fmt.Sprintf(perMediaKeyFmt, mediaType, mediaId)
 
-	vals, err := client.HVals(ctx, perMediaKey).Result()
+	vals, err := client.HVals(ctx, perMediaKey)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +79,7 @@ func GetExtrasForMedia(ctx context.Context, mediaType MediaType, mediaId int) ([
 	}
 
 	// Fallback: if nothing found, try global (legacy) and filter
-	globalVals, err := client.HVals(ctx, ExtrasRedisKey).Result()
+	globalVals, err := client.HVals(ctx, ExtrasStoreKey)
 	if err != nil {
 		return nil, err
 	}
@@ -134,8 +142,8 @@ func MarkRejectedExtrasInMemory(extras []Extra, rejectedYoutubeIds map[string]st
 
 // AddOrUpdateExtra stores or updates an extra in the unified collection
 func AddOrUpdateExtra(ctx context.Context, entry ExtrasEntry) error {
-	client := GetRedisClient()
-	key := ExtrasRedisKey
+	client := GetStoreClient()
+	key := ExtrasStoreKey
 	// Use YoutubeId+MediaType+MediaId as unique identifier
 	entryKey := fmt.Sprintf(extrasEntryKeyFmt, entry.YoutubeId, entry.MediaType, entry.MediaId)
 	data, err := json.Marshal(entry)
@@ -143,12 +151,12 @@ func AddOrUpdateExtra(ctx context.Context, entry ExtrasEntry) error {
 		return err
 	}
 	// Write to global hash
-	if err := client.HSet(ctx, key, entryKey, data).Err(); err != nil {
+	if err := client.HSet(ctx, key, entryKey, data); err != nil {
 		return err
 	}
 	// Write to per-media hash for fast lookup
 	perMediaKey := fmt.Sprintf(perMediaKeyFmt, entry.MediaType, entry.MediaId)
-	if err := client.HSet(ctx, perMediaKey, entryKey, data).Err(); err != nil {
+	if err := client.HSet(ctx, perMediaKey, entryKey, data); err != nil {
 		return err
 	}
 	return nil
@@ -156,11 +164,10 @@ func AddOrUpdateExtra(ctx context.Context, entry ExtrasEntry) error {
 
 // GetExtraByYoutubeId fetches an extra by YoutubeId, MediaType, and MediaId
 func GetExtraByYoutubeId(ctx context.Context, youtubeId string, mediaType MediaType, mediaId int) (*ExtrasEntry, error) {
-	client := GetRedisClient()
-	key := ExtrasRedisKey
+	client := GetStoreClient()
+	key := ExtrasStoreKey
 	entryKey := fmt.Sprintf(extrasEntryKeyFmt, youtubeId, mediaType, mediaId)
-	valRes := client.HGet(ctx, key, entryKey)
-	val, err := valRes.Result()
+	val, err := client.HGet(ctx, key, entryKey)
 	if err == ErrNotFound {
 		return nil, nil
 	} else if err != nil {
@@ -206,17 +213,17 @@ func fillMediaTitle(entry *ExtrasEntry, movieTitles, seriesTitles map[int]string
 }
 
 func GetAllExtras(ctx context.Context) ([]ExtrasEntry, error) {
-	client := GetRedisClient()
-	key := ExtrasRedisKey
-	vals, err := client.HVals(ctx, key).Result()
+	client := GetStoreClient()
+	key := ExtrasStoreKey
+	vals, err := client.HVals(ctx, key)
 	if err != nil {
 		return nil, err
 	}
 	var result []ExtrasEntry
 
 	// Load movie and series title maps once
-	movieTitles := loadTitles(MoviesRedisKey)
-	seriesTitles := loadTitles(SeriesRedisKey)
+	movieTitles := loadTitles(MoviesStoreKey)
+	seriesTitles := loadTitles(SeriesStoreKey)
 
 	for _, v := range vals {
 		var entry ExtrasEntry
@@ -231,14 +238,14 @@ func GetAllExtras(ctx context.Context) ([]ExtrasEntry, error) {
 
 // RemoveExtra removes an extra from the collection
 func RemoveExtra(ctx context.Context, youtubeId string, mediaType MediaType, mediaId int) error {
-	client := GetRedisClient()
-	key := ExtrasRedisKey
+	client := GetStoreClient()
+	key := ExtrasStoreKey
 	entryKey := fmt.Sprintf(extrasEntryKeyFmt, youtubeId, mediaType, mediaId)
 	// Remove from the global extras hash
-	errGlobal := client.HDel(ctx, key, entryKey).Err()
+	errGlobal := client.HDel(ctx, key, entryKey)
 	// Also remove from the per-media hash for fast lookup
 	perMediaKey := fmt.Sprintf(perMediaKeyFmt, mediaType, mediaId)
-	errPerMedia := client.HDel(ctx, perMediaKey, entryKey).Err()
+	errPerMedia := client.HDel(ctx, perMediaKey, entryKey)
 
 	if errGlobal != nil {
 		// If per-media deletion also failed, combine errors
@@ -259,7 +266,7 @@ type Extra struct {
 	Reason     string
 }
 
-// GetRejectedExtrasForMedia returns rejected extras for a given media type and id, using Redis cache
+// GetRejectedExtrasForMedia returns rejected extras for a given media type and id, using the store cache
 func GetRejectedExtrasForMedia(mediaType MediaType, id int) []RejectedExtra {
 	ctx := context.Background()
 	extras, err := GetAllExtras(ctx)
@@ -282,7 +289,7 @@ func GetRejectedExtrasForMedia(mediaType MediaType, id int) []RejectedExtra {
 	return rejected
 }
 
-// SetExtraRejectedPersistent sets the Status of an extra to "rejected" in Redis, adding it if not present (persistent)
+// SetExtraRejectedPersistent sets the Status of an extra to "rejected" in the store, adding it if not present (persistent)
 func SetExtraRejectedPersistent(mediaType MediaType, mediaId int, extraType, extraTitle, youtubeId, reason string) error {
 	TrailarrLog(INFO, "SetExtraRejectedPersistent", "Attempting to mark rejected: mediaType=%s, mediaId=%d, extraType=%s, extraTitle=%s, youtubeId=%s, reason=%s", mediaType, mediaId, extraType, extraTitle, youtubeId, reason)
 	ctx := context.Background()
@@ -295,16 +302,34 @@ func SetExtraRejectedPersistent(mediaType MediaType, mediaId int, extraType, ext
 		Status:     "rejected",
 		Reason:     reason,
 	}
-	return AddOrUpdateExtra(ctx, entry)
+	if err := AddOrUpdateExtra(ctx, entry); err != nil {
+		return err
+	}
+	// Update rejected-index async to avoid blocking the caller.
+	go func() {
+		if err := SaveRejectedIndex(); err != nil {
+			TrailarrLog(WARN, "SetExtraRejectedPersistent", rejectedIndexSaveErrFmt, err)
+		}
+	}()
+	return nil
 }
 
-// UnmarkExtraRejected clears the Status of an extra if it is "rejected" in Redis, but keeps the extra in the array
+// UnmarkExtraRejected clears the Status of an extra if it is "rejected" in the store, but keeps the extra in the array
 func UnmarkExtraRejected(mediaType MediaType, mediaId int, extraType, extraTitle, youtubeId string) error {
 	ctx := context.Background()
-	return RemoveExtra(ctx, youtubeId, mediaType, mediaId)
+	if err := RemoveExtra(ctx, youtubeId, mediaType, mediaId); err != nil {
+		return err
+	}
+	// Update rejected-index async
+	go func() {
+		if err := SaveRejectedIndex(); err != nil {
+			TrailarrLog(WARN, "UnmarkExtraRejected", rejectedIndexSaveErrFmt, err)
+		}
+	}()
+	return nil
 }
 
-// MarkExtraDownloaded sets the Status of an extra to "downloaded" in Redis, if present
+// MarkExtraDownloaded sets the Status of an extra to "downloaded" in the store, if present
 func MarkExtraDownloaded(mediaType MediaType, mediaId int, extraType, extraTitle, youtubeId string) error {
 	ctx := context.Background()
 	entry := ExtrasEntry{
@@ -315,10 +340,19 @@ func MarkExtraDownloaded(mediaType MediaType, mediaId int, extraType, extraTitle
 		YoutubeId:  youtubeId,
 		Status:     "downloaded",
 	}
-	return AddOrUpdateExtra(ctx, entry)
+	if err := AddOrUpdateExtra(ctx, entry); err != nil {
+		return err
+	}
+	// Update rejected-index async in case this cleared a rejected flag
+	go func() {
+		if err := SaveRejectedIndex(); err != nil {
+			TrailarrLog(WARN, "MarkExtraDownloaded", rejectedIndexSaveErrFmt, err)
+		}
+	}()
+	return nil
 }
 
-// MarkExtraDeleted sets the Status of an extra to "deleted" in Redis, if present (does not remove)
+// MarkExtraDeleted sets the Status of an extra to "deleted" in the store, if present (does not remove)
 func MarkExtraDeleted(mediaType MediaType, mediaId int, extraType, extraTitle, youtubeId string) error {
 	ctx := context.Background()
 	entry := ExtrasEntry{
@@ -329,7 +363,16 @@ func MarkExtraDeleted(mediaType MediaType, mediaId int, extraType, extraTitle, y
 		YoutubeId:  youtubeId,
 		Status:     "deleted",
 	}
-	return AddOrUpdateExtra(ctx, entry)
+	if err := AddOrUpdateExtra(ctx, entry); err != nil {
+		return err
+	}
+	// Update rejected-index async in case this cleared a rejected flag
+	go func() {
+		if err := SaveRejectedIndex(); err != nil {
+			TrailarrLog(WARN, "MarkExtraDeleted", rejectedIndexSaveErrFmt, err)
+		}
+	}()
+	return nil
 }
 
 // Handler to delete an extra and record history
@@ -361,9 +404,9 @@ func deleteExtraHandler(c *gin.Context) {
 	// Try to delete files, but do not fail if missing
 	_ = deleteExtraFiles(mediaPath, entry.ExtraType, entry.ExtraTitle)
 
-	// Remove from the unified collection in Redis
+	// Remove from the unified collection in the store
 	if err := RemoveExtra(ctx, req.YoutubeId, req.MediaType, req.MediaId); err != nil {
-		TrailarrLog(WARN, "Extras", "Failed to remove extra from Redis: %v", err)
+		TrailarrLog(WARN, "Extras", "Failed to remove extra from store: %v", err)
 	}
 
 	recordDeleteHistory(req.MediaType, req.MediaId, entry.ExtraType, entry.ExtraTitle)
@@ -373,9 +416,9 @@ func deleteExtraHandler(c *gin.Context) {
 func resolveCachePath(mediaType MediaType) (string, error) {
 	switch mediaType {
 	case MediaTypeMovie:
-		return MoviesRedisKey, nil
+		return MoviesStoreKey, nil
 	case MediaTypeTV:
-		return SeriesRedisKey, nil
+		return SeriesStoreKey, nil
 	}
 	return "", fmt.Errorf("unknown media type: %v", mediaType)
 }
@@ -568,12 +611,8 @@ func downloadExtraHandler(c *gin.Context) {
 				YoutubeId:  req.YoutubeId,
 				Status:     "queued",
 			}
-			if f, err := os.Create(metaFile); err == nil {
-				enc := json.NewEncoder(f)
-				enc.SetIndent("", "  ")
-				_ = enc.Encode(meta)
-				f.Close()
-			}
+			// Use shared helper to write JSON with indentation
+			_ = WriteJSONFile(metaFile, meta)
 		}
 	}
 	respondJSON(c, http.StatusOK, gin.H{"status": "queued"})
@@ -789,9 +828,90 @@ func scanExtrasInfo(mediaPath string) map[string][]map[string]interface{} {
 	return extrasInfo
 }
 
+// In-memory cache for the rejected extras index to avoid store reads under load.
+var rejectedIndexMu sync.RWMutex
+var rejectedIndexMem []ExtrasEntry
+
+func loadRejectedIndexFromMemory() []ExtrasEntry {
+	rejectedIndexMu.RLock()
+	defer rejectedIndexMu.RUnlock()
+	if rejectedIndexMem == nil {
+		return nil
+	}
+	out := make([]ExtrasEntry, len(rejectedIndexMem))
+	copy(out, rejectedIndexMem)
+	return out
+}
+
+func storeRejectedIndexInMemory(items []ExtrasEntry) {
+	rejectedIndexMu.Lock()
+	defer rejectedIndexMu.Unlock()
+	out := make([]ExtrasEntry, len(items))
+	copy(out, items)
+	rejectedIndexMem = out
+}
+
+// SaveRejectedIndex builds a lightweight list of rejected extras and persists it
+// to the store so the blacklist handler can serve it quickly.
+func SaveRejectedIndex() error {
+	ctx := context.Background()
+	extras, err := GetAllExtras(ctx)
+	if err != nil {
+		return err
+	}
+	var rejected []ExtrasEntry
+	for _, e := range extras {
+		if e.Status == "rejected" {
+			rejected = append(rejected, e)
+		}
+	}
+	data, err := json.Marshal(rejected)
+	if err != nil {
+		return err
+	}
+	client := GetStoreClient()
+	if err := client.Set(ctx, RejectedExtrasStoreKey, data); err != nil {
+		return err
+	}
+	storeRejectedIndexInMemory(rejected)
+	return nil
+}
+
+// LoadRejectedIndex attempts to load the rejected extras index from the
+// in-memory cache first, then the store. Returns ErrNotFound-style errors as
+// returned by the underlying store Get.
+func LoadRejectedIndex() ([]ExtrasEntry, error) {
+	if items := loadRejectedIndexFromMemory(); items != nil {
+		return items, nil
+	}
+	client := GetStoreClient()
+	ctx := context.Background()
+	val, err := client.Get(ctx, RejectedExtrasStoreKey)
+	if err != nil {
+		return nil, err
+	}
+	var items []ExtrasEntry
+	if err := json.Unmarshal([]byte(val), &items); err != nil {
+		return nil, err
+	}
+	storeRejectedIndexInMemory(items)
+	return items, nil
+}
+
 // Handler for serving the rejected extras blacklist
-// BlacklistExtrasHandler aggregates all rejected extras from Redis for both movies and series
+// BlacklistExtrasHandler aggregates all rejected extras from the persistent store for both movies and series
 func BlacklistExtrasHandler(c *gin.Context) {
+	// Fast-path: try to load a precomputed rejected-index from the store or
+	// in-memory cache. If it's available, return it immediately to avoid
+	// scanning and unmarshalling the entire extras collection on every
+	// request. Fall back to full scan if the index is missing or errors.
+	if idx, err := LoadRejectedIndex(); err == nil {
+		TrailarrLog(DEBUG, "BlacklistExtrasHandler", "served %d items from rejected index", len(idx))
+		respondJSON(c, http.StatusOK, idx)
+		return
+	}
+
+	// Fallback to full scan when index is not available
 	ctx := context.Background()
 	extras, err := GetAllExtras(ctx)
 	if err != nil {
@@ -833,9 +953,10 @@ func RemoveBlacklistExtraHandler(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, "Invalid mediaType")
 		return
 	}
-	ctx := context.Background()
-	err := RemoveExtra(ctx, req.YoutubeId, mt, req.MediaId)
-	if err != nil {
+	// Use UnmarkExtraRejected which removes the extra and triggers an
+	// asynchronous SaveRejectedIndex to keep the lightweight rejected index
+	// in sync with the unified extras collection.
+	if err := UnmarkExtraRejected(mt, req.MediaId, req.ExtraType, req.ExtraTitle, req.YoutubeId); err != nil {
 		respondError(c, http.StatusInternalServerError, "Could not remove extra from collection: "+err.Error())
 		return
 	}

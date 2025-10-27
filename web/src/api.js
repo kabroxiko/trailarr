@@ -28,6 +28,13 @@ export async function getMovies() {
   return { movies: data.items || [] };
 }
 
+export async function getMoviesWanted() {
+  const res = await fetch("/api/movies/wanted");
+  if (!res.ok) throw new Error("Failed to fetch Radarr wanted list");
+  const data = await res.json();
+  return { items: data.items || [] };
+}
+
 // API functions for Gin backend
 
 export async function getRadarrSettings() {
@@ -49,6 +56,13 @@ export async function getExtras({ mediaType, id }) {
   const res = await fetch(url);
   if (!res.ok) throw new Error("Failed to fetch extras");
   return await res.json();
+}
+
+export async function getSeriesWanted() {
+  const res = await fetch("/api/series/wanted");
+  if (!res.ok) throw new Error("Failed to fetch Sonarr wanted list");
+  const data = await res.json();
+  return { items: data.items || [] };
 }
 
 export async function downloadExtra({ moviePath, extraType, extraTitle, url }) {

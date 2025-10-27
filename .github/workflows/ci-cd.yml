@@ -61,17 +61,21 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.25.x'
+      - name: Set job GOMODCACHE
+        run: |
+          echo "GOMODCACHE=$HOME/.cache/go-mod" >> $GITHUB_ENV
 
       - name: Cache Go modules
         uses: actions/cache@v4
         with:
           path: |
             ~/.cache/go-build
+            $HOME/.cache/go-mod
             **/vendor
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-1.25-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-
+            ${{ runner.os }}-go-1.25-
 
       - name: Install dependencies
         run: |
@@ -220,7 +224,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21.x'
+          go-version: '1.25.x'
       - name: Download dist folder
         uses: actions/download-artifact@v4
         with:

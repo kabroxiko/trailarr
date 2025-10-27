@@ -1,4 +1,4 @@
-import React, { useEffect, useState, Suspense } from "react";
+import React, { useEffect, useState } from "react";
 import PropTypes from "prop-types";
 import Select from "react-select";
 import axios from "axios";
@@ -9,9 +9,7 @@ import { faSave, faSpinner } from "@fortawesome/free-solid-svg-icons";
 import SectionHeader from "./SectionHeader.jsx";
 import Toast from "./Toast.jsx";
 
-const ExtrasTypeMappingConfig = React.lazy(
-  () => import("./ExtrasTypeMappingConfig.jsx"),
-);
+import ExtrasTypeMappingConfig from "./ExtrasTypeMappingConfig.jsx";
 
 const EXTRA_TYPES = [
   { key: "trailers", label: "Trailers" },
@@ -347,15 +345,13 @@ export default function ExtrasSettings({ darkMode }) {
           />
         </div>
         {/* Mapping config UI integration */}
-        <Suspense fallback={<div>Loading mapping config...</div>}>
-          <ExtrasTypeMappingConfig
-            isDark={isDark}
-            mapping={mapping}
-            onMappingChange={handleMappingChange}
-            tmdbTypes={tmdbTypes}
-            plexTypes={plexTypes}
-          />
-        </Suspense>
+        <ExtrasTypeMappingConfig
+          isDark={isDark}
+          mapping={mapping}
+          onMappingChange={handleMappingChange}
+          tmdbTypes={tmdbTypes}
+          plexTypes={plexTypes}
+        />
         <hr
           style={{ margin: "2em 0", borderColor: isDark ? "#444" : "#eee" }}
         />

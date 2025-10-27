@@ -57,7 +57,7 @@ func TestSettingsPOSTHandlers(t *testing.T) {
 func TestExtrasDeleteAndExisting(t *testing.T) {
 	tmp := CreateTempConfig(t)
 
-	// seed an extra in Redis persistent store (persistent collection uses ExtrasEntry)
+	// seed an extra in the persistent store (persistent collection uses ExtrasEntry)
 	entry := ExtrasEntry{
 		MediaType:  MediaTypeMovie,
 		MediaId:    900,
@@ -81,8 +81,8 @@ func TestExtrasDeleteAndExisting(t *testing.T) {
 	meta := `{"extraType":"Trailers","extraTitle":"X","fileName":"X.mkv","youtubeId":"y9","status":"downloaded"}`
 	_ = os.WriteFile(filepath.Join(mediaPath, "Trailers", "X.mkv.json"), []byte(meta), 0644)
 	movie := map[string]interface{}{"id": 900, "title": "M900", "path": mediaPath}
-	if err := SaveMediaToRedis(MoviesRedisKey, []map[string]interface{}{movie}); err != nil {
-		t.Fatalf("failed to save media to redis: %v", err)
+	if err := SaveMediaToStore(MoviesStoreKey, []map[string]interface{}{movie}); err != nil {
+		t.Fatalf("failed to save media to store: %v", err)
 	}
 
 	// GET existing extras for this moviePath
@@ -117,5 +117,5 @@ func TestExtrasDeleteAndExisting(t *testing.T) {
 	}
 
 	// cleanup
-	_ = GetRedisClient().Del(context.Background(), ExtrasRedisKey)
+	_ = GetStoreClient().Del(context.Background(), ExtrasStoreKey)
 }

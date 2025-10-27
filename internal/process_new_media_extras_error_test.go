@@ -25,12 +25,12 @@ func TestProcessNewMediaExtrasHandlesTMDBError(t *testing.T) {
 	Config = map[string]interface{}{"general": map[string]interface{}{"tmdbKey": "dummy"}}
 	mediaPath := t.TempDir()
 	items := []map[string]interface{}{{"id": 7, "tmdbId": 2001, "path": mediaPath}}
-	if err := SaveMediaToRedis(MoviesRedisKey, items); err != nil {
+	if err := SaveMediaToStore(MoviesStoreKey, items); err != nil {
 		t.Fatalf("failed to seed movies cache: %v", err)
 	}
 
 	ctx := context.Background()
-	_ = GetRedisClient().Del(ctx, DownloadQueue)
+	_ = GetStoreClient().Del(ctx, DownloadQueue)
 
 	// run process
 	cfg := ExtraTypesConfig{Trailers: true}
@@ -39,7 +39,7 @@ func TestProcessNewMediaExtrasHandlesTMDBError(t *testing.T) {
 	// small sleep to allow any enqueues (should not happen)
 	time.Sleep(100 * time.Millisecond)
 
-	vals, err := GetRedisClient().LRange(ctx, DownloadQueue, 0, -1).Result()
+	vals, err := GetStoreClient().LRange(ctx, DownloadQueue, 0, -1)
 	if err != nil {
 		t.Fatalf("failed to read download queue: %v", err)
 	}

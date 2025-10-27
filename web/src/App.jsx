@@ -1,34 +1,30 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, lazy, Suspense } from "react";
+import BlacklistPage from "./components/BlacklistPage";
+import MediaRouteComponent from "./MediaRouteComponent";
+import Toast from "./components/Toast";
+import { Routes, Route, useLocation } from "react-router-dom";
+// Lazy-load heavy pages to reduce initial bundle while keeping vendor_react grouping
+const MediaDetails = lazy(() => import("./components/MediaDetails"));
+import Header from "./components/Header";
+import Sidebar from "./components/Sidebar";
+import GeneralSettings from "./components/GeneralSettings";
+import Tasks from "./components/Tasks";
+import HistoryPage from "./components/HistoryPage";
+import Wanted from "./components/Wanted";
+import SettingsPage from "./components/SettingsPage";
+const ExtrasSettings = lazy(() => import("./components/ExtrasSettings"));
+import LogsPage from "./components/LogsPage";
+import { getSeries, getMovies, getRadarrSettings, getMoviesWanted, getSeriesWanted } from "./api";
+import LoadingMediaSkeleton from "./components/LoadingMediaSkeleton";
+import ErrorBoundary from "./components/ErrorBoundary";
+
 // Helper functions to avoid deep nesting
 function filterAndSortMedia(items) {
   return (items || [])
     .filter((item) => item?.title)
     .sort((a, b) => a.title.localeCompare(b.title));
 }
-import BlacklistPage from "./components/BlacklistPage";
-import MediaRouteComponent from "./MediaRouteComponent";
-import Toast from "./components/Toast";
-import { Routes, Route, useLocation } from "react-router-dom";
-
-// Helper to load a component dynamically, but only once
-function loadComponent(importFn, ref) {
-  if (!ref.current) {
-    ref.current = React.lazy(importFn);
-  }
-  return ref.current;
-}
-
-const MediaListRef = { current: null };
-const MediaDetailsRef = { current: null };
-const HeaderRef = { current: null };
-const SidebarRef = { current: null };
-const GeneralSettingsRef = { current: null };
-const TasksRef = { current: null };
-const HistoryPageRef = { current: null };
-const WantedRef = { current: null };
-const SettingsPageRef = { current: null };
-const ExtrasSettingsRef = { current: null };
-const LogsPageRef = { current: null };
+// Static imports are used instead of dynamic loading
 
 function App() {
   const location = useLocation();
@@ -99,11 +95,9 @@ function App() {
     }
   }, [location.pathname]);
 
-  // Sonarr series fetch from backend
   useEffect(() => {
     setSeriesLoading(true);
-    import("./api").then(({ getSeries }) => {
-      getSeries()
+    getSeries()
         .then((data) => {
           setSeries(filterAndSortMedia(data.series));
           setSeriesLoading(false);
@@ -114,7 +108,41 @@ function App() {
           setSeriesLoading(false);
           setSeriesError(e.message || "Sonarr series API not available");
         });
-    });
+  }, []);
+
+  // Prefetch wanted lists so Wanted page behaves like Movies/Series (no separate loading)
+  const [moviesWanted, setMoviesWanted] = useState([]);
+  const [moviesWantedLoading, setMoviesWantedLoading] = useState(true);
+  const [moviesWantedError, setMoviesWantedError] = useState("");
+
+  const [seriesWanted, setSeriesWanted] = useState([]);
+  const [seriesWantedLoading, setSeriesWantedLoading] = useState(true);
+  const [seriesWantedError, setSeriesWantedError] = useState("");
+
+  useEffect(() => {
+    setMoviesWantedLoading(true);
+    getMoviesWanted()
+      .then((res) => {
+        setMoviesWanted(filterAndSortMedia(res.items || []));
+        setMoviesWantedLoading(false);
+      })
+      .catch((e) => {
+        setMoviesWanted([]);
+        setMoviesWantedLoading(false);
+        setMoviesWantedError(e.message || "Failed to fetch wanted movies");
+      });
+
+    setSeriesWantedLoading(true);
+    getSeriesWanted()
+      .then((res) => {
+        setSeriesWanted(filterAndSortMedia(res.items || []));
+        setSeriesWantedLoading(false);
+      })
+      .catch((e) => {
+        setSeriesWanted([]);
+        setSeriesWantedLoading(false);
+        setSeriesWantedError(e.message || "Failed to fetch wanted series");
+      });
   }, []);
 
   const [movies, setMovies] = useState([]);
@@ -122,8 +150,7 @@ function App() {
   const [moviesLoading, setMoviesLoading] = useState(true);
 
   useEffect(() => {
-    import("./api").then(({ getRadarrSettings }) => {
-      getRadarrSettings()
+    getRadarrSettings()
         .then((res) => {
           localStorage.setItem("radarrUrl", res.url || "");
           localStorage.setItem("radarrApiKey", res.apiKey || "");
@@ -132,7 +159,6 @@ function App() {
           localStorage.setItem("radarrUrl", "");
           localStorage.setItem("radarrApiKey", "");
         });
-    });
     // Sonarr settings fetch fallback
     async function getSonarrSettings() {
       try {
@@ -156,8 +182,7 @@ function App() {
 
   useEffect(() => {
     setMoviesLoading(true);
-    import("./api").then(({ getMovies }) => {
-      getMovies()
+    getMovies()
         .then((res) => {
           setMovies(filterAndSortMedia(res.movies));
           setMoviesLoading(false);
@@ -166,7 +191,6 @@ function App() {
           setMoviesError(e.message);
           setMoviesLoading(false);
         });
-    });
   }, []);
 
   // Separate search results into title and overview matches
@@ -201,39 +225,7 @@ function App() {
     }
   }, [pageTitle]);
 
-  // Dynamically load components
-  // Removed unused MediaList variable assignment per SonarLint
-  const MediaDetails = loadComponent(
-    () => import("./components/MediaDetails"),
-    MediaDetailsRef,
-  );
-  const Header = loadComponent(() => import("./components/Header"), HeaderRef);
-  const Sidebar = loadComponent(
-    () => import("./components/Sidebar"),
-    SidebarRef,
-  );
-  const GeneralSettings = loadComponent(
-    () => import("./components/GeneralSettings"),
-    GeneralSettingsRef,
-  );
-  const Tasks = loadComponent(() => import("./components/Tasks"), TasksRef);
-  const HistoryPage = loadComponent(
-    () => import("./components/HistoryPage"),
-    HistoryPageRef,
-  );
-  const Wanted = loadComponent(() => import("./components/Wanted"), WantedRef);
-  const SettingsPage = loadComponent(
-    () => import("./components/SettingsPage"),
-    SettingsPageRef,
-  );
-  const ExtrasSettings = loadComponent(
-    () => import("./components/ExtrasSettings"),
-    ExtrasSettingsRef,
-  );
-  const LogsPage = loadComponent(
-    () => import("./components/LogsPage"),
-    LogsPageRef,
-  );
+  // Components are statically imported at module top
 
   // Mobile detection
   const [isMobile, setIsMobile] = useState(window.innerWidth < 900);
@@ -315,7 +307,6 @@ function App() {
               marginTop: 64,
             }}
           >
-            <React.Suspense fallback={null}>
               <Routes>
                 <Route
                   path="/series"
@@ -348,71 +339,107 @@ function App() {
                 <Route
                   path="/movies/:id"
                   element={
-                    <MediaDetails
-                      mediaItems={movies}
-                      loading={moviesLoading}
-                      mediaType="movie"
-                    />
+                    <Suspense fallback={<LoadingMediaSkeleton />}>
+                      <ErrorBoundary>
+                        <MediaDetails
+                          mediaItems={movies}
+                          loading={moviesLoading}
+                          mediaType="movie"
+                        />
+                      </ErrorBoundary>
+                    </Suspense>
                   }
                 />
                 <Route
                   path="/series/:id"
                   element={
-                    <MediaDetails
-                      mediaItems={series}
-                      loading={seriesLoading}
-                      mediaType="tv"
-                    />
+                    <Suspense fallback={<LoadingMediaSkeleton />}>
+                      <ErrorBoundary>
+                        <MediaDetails
+                          mediaItems={series}
+                          loading={seriesLoading}
+                          mediaType="tv"
+                        />
+                      </ErrorBoundary>
+                    </Suspense>
                   }
                 />
                 <Route
                   path="/wanted/movies/:id"
                   element={
-                    <MediaDetails
-                      mediaItems={movies}
-                      loading={moviesLoading}
-                      mediaType="movie"
-                    />
+                    <Suspense fallback={<LoadingMediaSkeleton />}>
+                      <ErrorBoundary>
+                        <MediaDetails
+                          mediaItems={movies}
+                          loading={moviesLoading}
+                          mediaType="movie"
+                        />
+                      </ErrorBoundary>
+                    </Suspense>
                   }
                 />
                 <Route
                   path="/wanted/series/:id"
                   element={
-                    <MediaDetails
-                      mediaItems={series}
-                      loading={seriesLoading}
-                      mediaType="tv"
-                    />
+                    <Suspense fallback={<LoadingMediaSkeleton />}>
+                      <ErrorBoundary>
+                        <MediaDetails
+                          mediaItems={series}
+                          loading={seriesLoading}
+                          mediaType="tv"
+                        />
+                      </ErrorBoundary>
+                    </Suspense>
                   }
                 />
                 <Route
                   path="/history/movies/:id"
                   element={
-                    <MediaDetails
-                      mediaItems={movies}
-                      loading={moviesLoading}
-                      mediaType="movie"
-                    />
+                    <Suspense fallback={<LoadingMediaSkeleton />}>
+                      <ErrorBoundary>
+                        <MediaDetails
+                          mediaItems={movies}
+                          loading={moviesLoading}
+                          mediaType="movie"
+                        />
+                      </ErrorBoundary>
+                    </Suspense>
                   }
                 />
                 <Route
                   path="/history/series/:id"
                   element={
-                    <MediaDetails
-                      mediaItems={series}
-                      loading={seriesLoading}
-                      mediaType="tv"
-                    />
+                    <Suspense fallback={<LoadingMediaSkeleton />}>
+                      <ErrorBoundary>
+                        <MediaDetails
+                          mediaItems={series}
+                          loading={seriesLoading}
+                          mediaType="tv"
+                        />
+                      </ErrorBoundary>
+                    </Suspense>
                   }
                 />
                 <Route path="/history" element={<HistoryPage />} />
                 <Route
                   path="/wanted/movies"
-                  element={<Wanted darkMode={darkMode} type="movie" />}
+                  element={<Wanted
+                    darkMode={darkMode}
+                    type="movie"
+                    items={moviesWanted}
+                    loading={moviesWantedLoading}
+                    error={moviesWantedError}
+                  />}
                 />
                 <Route
                   path="/wanted/series"
-                  element={<Wanted darkMode={darkMode} type="series" />}
+                  element={<Wanted
+                    darkMode={darkMode}
+                    type="series"
+                    items={seriesWanted}
+                    loading={seriesWantedLoading}
+                    error={seriesWantedError}
+                  />}
                 />
                 <Route
                   path="/settings/radarr"
@@ -425,13 +452,16 @@ function App() {
                 <Route path="/settings/general" element={<GeneralSettings />} />
                 <Route
                   path="/settings/extras"
-                  element={<ExtrasSettings darkMode={darkMode} />}
+                  element={
+                    <Suspense fallback={<div>Loading settings...</div>}>
+                      <ExtrasSettings darkMode={darkMode} />
+                    </Suspense>
+                  }
                 />
                 <Route path="/system/tasks" element={<Tasks />} />
                 <Route path="/system/logs" element={<LogsPage />} />
                 <Route path="/blacklist" element={<BlacklistPage />} />
               </Routes>
-            </React.Suspense>
           </div>
         </main>
       </div>

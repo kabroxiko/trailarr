@@ -80,7 +80,7 @@ func broadcastTaskStatus(_ map[string]interface{}) {
 
 var GlobalTaskStates TaskStates
 
-// Note: task_times are stored in Redis (TaskTimesRedisKey). Disk file support removed.
+// Note: task_times are stored in the embedded store (TaskTimesStoreKey). Disk file support removed.
 
 // TaskID is a string identifier for a scheduled task
 type TaskID string
@@ -108,10 +108,10 @@ type TaskStates map[TaskID]TaskState
 var tasksMeta map[TaskID]TaskMeta
 
 func init() {
-	// On startup, update any 'running' tasks in Redis queue to 'queued'
-	client := GetRedisClient()
+	// On startup, update any 'running' tasks in the store queue to 'queued'
+	client := GetStoreClient()
 	ctx := context.Background()
-	vals, err := client.LRange(ctx, TaskQueueRedisKey, 0, -1).Result()
+	vals, err := client.LRange(ctx, TaskQueueStoreKey, 0, -1)
 	if err == nil {
 		for i, v := range vals {
 			var qi SyncQueueItem
@@ -120,7 +120,7 @@ func init() {
 					qi.Status = "queued"
 					if b, err := json.Marshal(qi); err == nil {
 						// set the element back at index i
-						_ = client.LSet(ctx, TaskQueueRedisKey, int64(i), b).Err()
+						_ = client.LSet(ctx, TaskQueueStoreKey, int64(i), b)
 					}
 				}
 			}
@@ -143,10 +143,10 @@ func AllTaskIDs() []TaskID {
 }
 
 func LoadTaskStates() (TaskStates, error) {
-	// Redis-backed task states; disk fallback removed
-	client := GetRedisClient()
+	// Store-backed task states; disk fallback removed
+	client := GetStoreClient()
 	ctx := context.Background()
-	vals, err := client.LRange(ctx, TaskTimesRedisKey, 0, -1).Result()
+	vals, err := client.LRange(ctx, TaskTimesStoreKey, 0, -1)
 
 	states := make(TaskStates)
 	if err == nil && len(vals) > 0 {
@@ -164,7 +164,7 @@ func LoadTaskStates() (TaskStates, error) {
 	return states, nil
 }
 
-// parseStatesFromVals parses JSON entries from Redis into TaskStates and marks them idle.
+// parseStatesFromVals parses JSON entries from the store into TaskStates and marks them idle.
 func parseStatesFromVals(vals []string) TaskStates {
 	states := make(TaskStates)
 	for _, v := range vals {
@@ -224,13 +224,13 @@ func saveTaskStates(states TaskStates) error {
 			LastDuration:  t.LastDuration,
 		})
 	}
-	// Persist to Redis as list of task states (overwrite by deleting and RPUSH)
-	client := GetRedisClient()
+	// Persist to the store as list of task states (overwrite by deleting and RPUSH)
+	client := GetStoreClient()
 	ctx := context.Background()
-	_ = client.Del(ctx, TaskTimesRedisKey).Err()
+	_ = client.Del(ctx, TaskTimesStoreKey)
 	for _, s := range arr {
 		if b, err := json.Marshal(s); err == nil {
-			_ = client.RPush(ctx, TaskTimesRedisKey, b).Err()
+			_ = client.RPush(ctx, TaskTimesStoreKey, b)
 		}
 	}
 	return nil
@@ -288,7 +288,35 @@ func buildSchedules(states TaskStates) []TaskSchedule {
 }
 
 func buildTaskQueues() []TaskStatus {
-	return GlobalSyncQueue
+	// Read queue from the persistent store so callers get the same data
+	// as the file-based API handler.
+	client := GetStoreClient()
+	ctx := context.Background()
+	vals, err := client.LRange(ctx, TaskQueueStoreKey, 0, -1)
+	if err != nil {
+		return []TaskStatus{}
+	}
+	queues := make([]TaskStatus, 0, len(vals))
+	for _, v := range vals {
+		var qi SyncQueueItem
+		if err := json.Unmarshal([]byte(v), &qi); err != nil {
+			continue
+		}
+		queues = append(queues, TaskStatus{
+			TaskId:   qi.TaskId,
+			Queued:   qi.Queued,
+			Started:  qi.Started,
+			Ended:    qi.Ended,
+			Duration: qi.Duration.Seconds(),
+			Status:   qi.Status,
+			Error:    qi.Error,
+		})
+	}
+	sortTaskQueuesByQueuedDesc(queues)
+	if len(queues) > 100 {
+		queues = queues[:100]
+	}
+	return queues
 }
 
 func sortTaskQueuesByQueuedDesc(queues []TaskStatus) {
@@ -297,30 +325,52 @@ func sortTaskQueuesByQueuedDesc(queues []TaskStatus) {
 	})
 }
 
-// pushTaskQueueItem appends a sync queue item to Redis list
+// pushTaskQueueItem appends a sync queue item to the store list
 func pushTaskQueueItem(item SyncQueueItem) error {
-	client := GetRedisClient()
+	client := GetStoreClient()
 	ctx := context.Background()
 	b, err := json.Marshal(item)
 	if err != nil {
 		return err
 	}
-	if err := client.RPush(ctx, TaskQueueRedisKey, b).Err(); err != nil {
+	if err := client.RPush(ctx, TaskQueueStoreKey, b); err != nil {
+		TrailarrLog(WARN, "Tasks", "Failed to RPush queue item TaskId=%s Queued=%s: %v", item.TaskId, item.Queued, err)
 		return err
 	}
+	TrailarrLog(INFO, "Tasks", "Pushed queue item TaskId=%s Queued=%s Status=%s", item.TaskId, item.Queued, item.Status)
+	// Diagnostic: log current list length after push
+	if valsAfterPush, err := client.LRange(ctx, TaskQueueStoreKey, 0, -1); err == nil {
+		TrailarrLog(DEBUG, "Tasks", "Queue length after RPush: %d", len(valsAfterPush))
+	}
+
 	// Trim to reasonable max
-	return client.LTrim(ctx, TaskQueueRedisKey, -int64(TaskQueueMaxLen), -1).Err()
+	if err := client.LTrim(ctx, TaskQueueStoreKey, -int64(TaskQueueMaxLen), -1); err != nil {
+		TrailarrLog(WARN, "Tasks", "Failed to LTrim queue key %s: %v", TaskQueueStoreKey, err)
+		return err
+	}
+	// Diagnostic: log current list length after trim
+	if valsAfterTrim, err := client.LRange(ctx, TaskQueueStoreKey, 0, -1); err == nil {
+		TrailarrLog(DEBUG, "Tasks", "Trimmed queue key %s to max len %d; current length=%d", TaskQueueStoreKey, TaskQueueMaxLen, len(valsAfterTrim))
+	} else {
+		TrailarrLog(DEBUG, "Tasks", "Trimmed queue key %s to max len %d", TaskQueueStoreKey, TaskQueueMaxLen)
+	}
+	return nil
 }
 
-// updateTaskQueueItem searches from the end to find a matching TaskId+Queued and updates it
+// updateTaskQueueItem searches from the end to find a matching TaskId+Queued and updates it.
+// NOTE: This function will only update an item when both TaskId and Queued match exactly.
+// The previous behavior attempted a fallback update of the most recent 'running' item for
+// the same TaskId which could overwrite unrelated entries; that fallback has been removed
+// so updates are strictly exact-match only.
 func updateTaskQueueItem(taskId string, queued time.Time, update func(*SyncQueueItem)) error {
-	client := GetRedisClient()
+	client := GetStoreClient()
 	ctx := context.Background()
-	vals, err := client.LRange(ctx, TaskQueueRedisKey, 0, -1).Result()
+	vals, err := client.LRange(ctx, TaskQueueStoreKey, 0, -1)
 	if err != nil {
 		return err
 	}
-	// search from the back
+
+	// search from the back for an exact match on TaskId + Queued
 	for i := len(vals) - 1; i >= 0; i-- {
 		var qi SyncQueueItem
 		if err := json.Unmarshal([]byte(vals[i]), &qi); err != nil {
@@ -330,12 +380,32 @@ func updateTaskQueueItem(taskId string, queued time.Time, update func(*SyncQueue
 			update(&qi)
 			b, err := json.Marshal(qi)
 			if err != nil {
+				TrailarrLog(WARN, "Tasks", "Failed to marshal updated queue item TaskId=%s Queued=%s: %v", qi.TaskId, qi.Queued, err)
 				return err
 			}
-			// set list element at index i
-			return client.LSet(ctx, TaskQueueRedisKey, int64(i), b).Err()
+			TrailarrLog(DEBUG, "Tasks", "Updating queue key=%s index=%d total=%d TaskId=%s Queued=%s", TaskQueueStoreKey, i, len(vals), qi.TaskId, qi.Queued)
+			if err := client.LSet(ctx, TaskQueueStoreKey, int64(i), b); err != nil {
+				TrailarrLog(WARN, "Tasks", "Failed to LSet queue item at index %d TaskId=%s Queued=%s: %v", i, qi.TaskId, qi.Queued, err)
+				return err
+			}
+			TrailarrLog(INFO, "Tasks", "Updated queue item TaskId=%s Queued=%s Status=%s", qi.TaskId, qi.Queued, qi.Status)
+			return nil
 		}
 	}
+
+	TrailarrLog(DEBUG, "Tasks", "No exact-matching queue item found to update for TaskId=%s Queued=%s; appending new entry", taskId, queued)
+
+	// No exact match found: create a new entry with the provided queued timestamp
+	// and apply the update callback, then append it so history still records the run.
+	var newItem SyncQueueItem
+	newItem.TaskId = taskId
+	newItem.Queued = queued
+	update(&newItem)
+	if err := pushTaskQueueItem(newItem); err != nil {
+		TrailarrLog(WARN, "Tasks", "Failed to push fallback-new queue item TaskId=%s Queued=%s: %v", newItem.TaskId, newItem.Queued, err)
+		return err
+	}
+	TrailarrLog(INFO, "Tasks", "Appended new queue item TaskId=%s Queued=%s Status=%s", newItem.TaskId, newItem.Queued, newItem.Status)
 	return nil
 }
 
@@ -434,7 +504,7 @@ func StartBackgroundTasks() {
 		}
 		go scheduleTask(t)
 	}
-	TrailarrLog(INFO, "Tasks", "Native Go scheduler started. Jobs will persist last execution times to Redis key %s", TaskTimesRedisKey)
+	TrailarrLog(INFO, "Tasks", "Native Go scheduler started. Jobs will persist last execution times to store key %s", TaskTimesStoreKey)
 }
 
 func buildBgTasks(states TaskStates) []bgTask {
@@ -511,9 +581,9 @@ func processExtras(ctx context.Context) {
 		return
 	}
 	TrailarrLog(INFO, "Tasks", "[TASK] Searching for missing movie extras...")
-	downloadMissingExtrasWithTypeFilter(ctx, extraTypesCfg, MediaTypeMovie, MoviesRedisKey)
+	downloadMissingExtrasWithTypeFilter(ctx, extraTypesCfg, MediaTypeMovie, MoviesStoreKey)
 	TrailarrLog(INFO, "Tasks", "[TASK] Searching for missing series extras...")
-	downloadMissingExtrasWithTypeFilter(ctx, extraTypesCfg, MediaTypeTV, SeriesRedisKey)
+	downloadMissingExtrasWithTypeFilter(ctx, extraTypesCfg, MediaTypeTV, SeriesStoreKey)
 }
 
 func StopExtrasDownloadTask() {
@@ -544,14 +614,12 @@ func downloadMissingExtrasWithTypeFilter(ctx context.Context, cfg ExtraTypesConf
 	// Filter items using the same wanted logic as GetMissingExtrasHandler
 	wantedItems := make([]map[string]interface{}, 0, len(items))
 	for _, item := range items {
-		id := item["id"]
-		var mediaId int
-		switch v := id.(type) {
-		case float64:
-			mediaId = int(v)
-		case int:
-			mediaId = v
-		default:
+		mediaId, ok := parseMediaID(item["id"])
+		if !ok {
+			continue
+		}
+		// Only consider items explicitly marked wanted==true for the extras task.
+		if !isMediaWanted(item) {
 			continue
 		}
 		if !HasAnyEnabledExtras(mediaType, mediaId, enabledTypes) {
@@ -612,7 +680,7 @@ func processWantedItem(ctx context.Context, cfg ExtraTypesConfig, mediaType Medi
 			TrailarrLog(INFO, "Tasks", "Extras download cancelled before processing extra.")
 			break
 		}
-		processExtraDownload(ctx, cfg, mediaType, mediaId, extra, usedTMDB)
+		processExtraDownload(cfg, mediaType, mediaId, extra, usedTMDB)
 	}
 }
 
@@ -638,7 +706,7 @@ func fetchExtrasOrTMDB(mediaType MediaType, mediaId int, title string, enabledTy
 }
 
 // processExtraDownload handles the per-extra checks and enqueues downloads when appropriate.
-func processExtraDownload(ctx context.Context, cfg ExtraTypesConfig, mediaType MediaType, mediaId int, extra Extra, usedTMDB bool) {
+func processExtraDownload(cfg ExtraTypesConfig, mediaType MediaType, mediaId int, extra Extra, usedTMDB bool) {
 	typ := canonicalizeExtraType(extra.ExtraType)
 	if !isExtraTypeEnabled(cfg, typ) {
 		return
@@ -666,6 +734,9 @@ func handleTypeFilteredExtraDownload(mediaType MediaType, mediaId int, extra Ext
 		YouTubeID:  extra.YoutubeId,
 		QueuedAt:   time.Now(),
 	}
+	// Wait for any currently queued download items to drain before enqueuing
+	// to avoid flooding the queue when many extras are discovered by the task.
+	waitForDownloadQueueDrain(mediaId, extra.YoutubeId)
 	AddToDownloadQueue(item, "task")
 	TrailarrLog(INFO, "QUEUE", "[handleTypeFilteredExtraDownload] Enqueued extra: mediaType=%v, mediaId=%v, type=%s, title=%s, youtubeId=%s", mediaType, mediaId, extra.ExtraType, extra.ExtraTitle, extra.YoutubeId)
 
@@ -673,6 +744,38 @@ func handleTypeFilteredExtraDownload(mediaType MediaType, mediaId int, extra Ext
 	// the final "download" event when the download completes.
 	_, _ = resolveCachePath(mediaType) // keep functionality that may require cache resolution
 	return nil
+}
+
+// waitForDownloadQueueDrain polls the persistent download queue until there are
+// no items with status 'queued'. It logs and sleeps between attempts.
+func waitForDownloadQueueDrain(mediaId int, youtubeId string) {
+	for {
+		if !isDownloadQueueQueuedPresent() {
+			return
+		}
+		TrailarrLog(INFO, "Tasks", "Waiting for download queue to drain before enqueuing extra: mediaId=%d youtubeId=%s", mediaId, youtubeId)
+		time.Sleep(DownloadQueueWatcherInterval)
+	}
+}
+
+// isDownloadQueueQueuedPresent returns true if the persistent download queue
+// contains any items with Status == "queued".
+func isDownloadQueueQueuedPresent() bool {
+	ctx := context.Background()
+	client := GetStoreClient()
+	vals, err := client.LRange(ctx, DownloadQueue, 0, -1)
+	if err != nil {
+		return false
+	}
+	for _, v := range vals {
+		var q DownloadQueueItem
+		if err := json.Unmarshal([]byte(v), &q); err == nil {
+			if q.Status == "queued" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Helper: check if extra type is enabled in config
@@ -776,7 +879,7 @@ func GetTaskQueueHandler() gin.HandlerFunc {
 // Centralized queue wrapper for all tasks
 func wrapWithQueue(taskId TaskID, syncFunc func() error) func() {
 	return func() {
-		// Add new queue item to Redis on start
+		// Add new queue item to the persistent store on start
 		queued := time.Now()
 		item := SyncQueueItem{
 			TaskId:  string(taskId),
@@ -796,7 +899,7 @@ func wrapWithQueue(taskId TaskID, syncFunc func() error) func() {
 		} else {
 			TrailarrLog(INFO, "Tasks", "Task %s completed successfully.", taskId)
 		}
-		// Update the last queue item for this task (by TaskId and Queued) in Redis
+		// Update the last queue item for this task (by TaskId and Queued) in the persistent store
 		_ = updateTaskQueueItem(string(taskId), queued, func(qi *SyncQueueItem) {
 			qi.Status = status
 			qi.Started = queued

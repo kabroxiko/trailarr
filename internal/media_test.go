@@ -13,19 +13,27 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func TestDetectImageExtAndTrim(t *testing.T) {
-	if detectImageExt("image/jpeg") != ".jpg" {
-		t.Fatalf("expected .jpg for jpeg")
-	}
-	if detectImageExt("image/png") != ".png" {
-		t.Fatalf("expected .png for png")
-	}
+const (
+	mimeJPEG = "image/jpeg"
+	mimePNG  = "image/png"
+)
+
+// Tests for various helpers in media.go. They are intentionally focused on
+// pure helpers and small I/O behaviors that are safe to run in unit tests.
+
+func TestTrimTrailingSlashAndDetectImageExt(t *testing.T) {
 	const ex = "http://example"
 	if trimTrailingSlash(ex+"/") != ex {
 		t.Fatalf("expected trimmed slash")
 	}
 	if trimTrailingSlash(ex) != ex {
 		t.Fatalf("expected unchanged")
+	}
+	if detectImageExt(mimeJPEG) != ".jpg" {
+		t.Fatalf("expected .jpg for jpeg")
+	}
+	if detectImageExt(mimePNG) != ".png" {
+		t.Fatalf("expected .png for png")
 	}
 }
 
@@ -41,6 +49,46 @@ func TestParseMediaID(t *testing.T) {
 	}
 	if _, ok := parseMediaID([]int{1}); ok {
 		t.Fatalf("unexpected success for invalid type")
+	}
+}
+
+func TestHasTrailerFiles(t *testing.T) {
+	// empty path -> false
+	if hasTrailerFiles("") {
+		t.Fatalf("expected no trailers for empty path")
+	}
+
+	tmp := t.TempDir()
+	// case 1: no Trailers dir
+	if hasTrailerFiles(tmp) {
+		t.Fatalf("expected no trailers when Trailers dir absent")
+	}
+
+	// create Trailers with a non-mkv file
+	trailers := filepath.Join(tmp, "Trailers")
+	if err := os.MkdirAll(trailers, 0755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	_ = os.WriteFile(filepath.Join(trailers, "preview.mp4"), []byte("x"), 0644)
+	if hasTrailerFiles(tmp) {
+		t.Fatalf("expected no trailers when only non-mkv present")
+	}
+
+	// add an mkv file
+	_ = os.WriteFile(filepath.Join(trailers, "trailer.MKV"), []byte("x"), 0644)
+	if !hasTrailerFiles(tmp) {
+		t.Fatalf("expected trailer detection to find .mkv file")
+	}
+
+	// also ensure 'Trailer' (singular) name is checked
+	tmp2 := t.TempDir()
+	single := filepath.Join(tmp2, "Trailer")
+	if err := os.MkdirAll(single, 0755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	_ = os.WriteFile(filepath.Join(single, "video.mkv"), []byte("x"), 0644)
+	if !hasTrailerFiles(tmp2) {
+		t.Fatalf("expected trailer detection to find .mkv in 'Trailer' dir")
 	}
 }
 
@@ -163,12 +211,13 @@ func TestDetectMediaTypeAndTitleAndPathUpdate(t *testing.T) {
 	if mt != MediaTypeMovie {
 		t.Fatalf("expected movie type")
 	}
-	// getTitleMap: write main cache and ensure mapping
-	tmp := t.TempDir()
-	main := filepath.Join(tmp, "main.json")
+	// getTitleMap: write main cache (store-backed) and ensure mapping
+	main := MoviesStoreKey
 	items := []map[string]interface{}{{"id": 1, "title": "X"}}
-	_ = WriteJSONFile(main, items)
-	titleMap := getTitleMap(main, filepath.Join(tmp, "other.json"))
+	if err := SaveMediaToStore(main, items); err != nil {
+		t.Fatalf("failed to save main cache to store: %v", err)
+	}
+	titleMap := getTitleMap(main, "/some/other.json")
 	if titleMap["1"] != "X" {
 		t.Fatalf("title map missing")
 	}

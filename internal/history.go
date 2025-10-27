@@ -33,23 +33,23 @@ func historyHandler(c *gin.Context) {
 }
 
 func AppendHistoryEvent(event HistoryEvent) error {
-	client := GetRedisClient()
+	client := GetStoreClient()
 	ctx := context.Background()
 	b, err := json.Marshal(event)
 	if err != nil {
 		return err
 	}
-	if err := client.RPush(ctx, HistoryRedisKey, b).Err(); err != nil {
+	if err := client.RPush(ctx, HistoryStoreKey, b); err != nil {
 		return err
 	}
 	// Trim list to maximum length
-	return client.LTrim(ctx, HistoryRedisKey, -HistoryMaxLen, -1).Err()
+	return client.LTrim(ctx, HistoryStoreKey, -HistoryMaxLen, -1)
 }
 
 func LoadHistoryEvents() ([]HistoryEvent, error) {
-	client := GetRedisClient()
+	client := GetStoreClient()
 	ctx := context.Background()
-	vals, err := client.LRange(ctx, HistoryRedisKey, 0, -1).Result()
+	vals, err := client.LRange(ctx, HistoryStoreKey, 0, -1)
 	if err != nil {
 		return nil, err
 	}

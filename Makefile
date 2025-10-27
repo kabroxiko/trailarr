@@ -35,20 +35,26 @@ else
 	rm -rf $(BIN_DIR)/*
 endif
 
-# Run the full test suite in a CI-friendly way (skip embedded redis startup)
+# Run the full test suite in a CI-friendly way (skip embedded store startup)
 test:
-	@echo "Running full test suite (embedded redis disabled)"
+	@echo "Running full test suite (embedded store not required; using bbolt storage)"
 	go test ./... -v
 
 # Faster, package-scoped tests for quick cycles
 test-fast:
-	@echo "Running internal package tests (embedded redis disabled)"
+	@echo "Running internal package tests (embedded store not required; using bbolt storage)"
 	go test ./internal -v
 
 # Generate coverage report (coverage/coverage.out)
 coverage:
 	@echo "Generating coverage report (coverage/coverage.out)"
 	@mkdir -p coverage
+	# Ensure covdata tool (used by Go toolchain for coverage handling) is installed.
+	# Installing is a no-op if already present in module cache/bin.
+	@echo "Ensuring covdata tool is available..."
+	@which covdata >/dev/null 2>&1 || (echo "Attempting to install covdata (non-fatal)..." && \
+		go install golang.org/x/tools/cmd/covdata@latest >/dev/null 2>&1 || \
+		echo "covdata install failed or package not available; continuing without it.")
 	go test ./... -coverprofile=coverage/coverage.out
 
 # Generate HTML coverage (coverage/coverage.html)

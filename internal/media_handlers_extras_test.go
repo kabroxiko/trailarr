@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -15,8 +14,8 @@ func TestSharedExtrasHandlerMergesPersistentAndTMDB(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	// prepare persistent extras
 	ctx := context.Background()
-	// clear extras key in Redis
-	_ = GetRedisClient().Del(ctx, ExtrasRedisKey)
+	// clear extras key in store
+	_ = GetStoreClient().Del(ctx, ExtrasStoreKey)
 
 	// add a persistent extra
 	pe := ExtrasEntry{MediaType: MediaTypeMovie, MediaId: 5, ExtraType: "Trailer", ExtraTitle: "P1", YoutubeId: "y1", Status: "downloaded"}
@@ -52,14 +51,15 @@ func TestSharedExtrasHandlerMergesPersistentAndTMDB(t *testing.T) {
 
 func TestGetMissingExtrasHandlerReturnsMissing(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	tmp := t.TempDir()
-	cache := filepath.Join(tmp, "wanted.json")
-	// item with id 20
-	_ = WriteJSONFile(cache, []map[string]interface{}{{"id": 20}})
+	cache := MoviesStoreKey
+	// item with id 20 and explicitly wanted
+	if err := SaveMediaToStore(cache, []map[string]interface{}{{"id": 20, "wanted": true}}); err != nil {
+		t.Fatalf("failed to save wanted cache to store: %v", err)
+	}
 
 	// ensure extras collection does not have trailers for id 20
 	ctx := context.Background()
-	_ = GetRedisClient().Del(ctx, ExtrasRedisKey)
+	_ = GetStoreClient().Del(ctx, ExtrasStoreKey)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)

@@ -72,9 +72,9 @@ func SendCurrentDownloadQueue(conn *websocket.Conn) {
 
 func GetCurrentDownloadQueue() []DownloadQueueItem {
 	ctx := context.Background()
-	client := GetRedisClient()
+	client := GetStoreClient()
 	var queue []DownloadQueueItem
-	items, err := client.LRange(ctx, DownloadQueue, 0, -1).Result()
+	items, err := client.LRange(ctx, DownloadQueue, 0, -1)
 	if err == nil {
 		for _, itemStr := range items {
 			var item DownloadQueueItem

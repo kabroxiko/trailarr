@@ -11,19 +11,24 @@ import (
 	yamlv3 "gopkg.in/yaml.v3"
 )
 
-// Note: embedded Redis server startup was removed. Redis must be running as a
-// separate service and reachable via REDIS_ADDR before starting Trailarr.
+// Trailarr uses a BoltDB-backed storage layer that exposes a store-compatible
+// API to the rest of the codebase. An external store is no longer required —
+// the code retains some legacy key names for compatibility but the default
+// runtime storage is bbolt (on-disk) with an in-memory fallback used for tests.
 
 const (
 	ApiReturnedStatusFmt     = "API returned status %d"
-	MoviesRedisKey           = "trailarr:movies"
-	SeriesRedisKey           = "trailarr:series"
-	ExtrasRedisKey           = "trailarr:extras"
+	MoviesStoreKey           = "trailarr:movies"
+	SeriesStoreKey           = "trailarr:series"
+	MoviesWantedStoreKey     = "trailarr:movies:wanted"
+	SeriesWantedStoreKey     = "trailarr:series:wanted"
+	ExtrasStoreKey           = "trailarr:extras"
+	RejectedExtrasStoreKey   = "trailarr:extras:rejected"
 	DownloadQueue            = "trailarr:download_queue"
-	TaskTimesRedisKey        = "trailarr:task_times"
-	HistoryRedisKey          = "trailarr:history"
+	TaskTimesStoreKey        = "trailarr:task_times"
+	HistoryStoreKey          = "trailarr:history"
 	HistoryMaxLen            = 1000
-	TaskQueueRedisKey        = "trailarr:task_queue"
+	TaskQueueStoreKey        = "trailarr:task_queue"
 	TaskQueueMaxLen          = 1000
 	RemoteMediaCoverPath     = "/MediaCover/"
 	HeaderApiKey             = "X-Api-Key"
@@ -31,6 +36,8 @@ const (
 	ErrInvalidSonarrSettings = "Invalid Sonarr settings"
 	ErrInvalidRequest        = "invalid request"
 )
+
+// NOTE: store keys are defined below as the primary constants (use these names).
 
 // Path and runtime-configurable variables. Tests may override these.
 var (

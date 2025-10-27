@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Container from "./Container";
+import { getHistory } from "../api";
 import { FaDownload, FaTrash } from "react-icons/fa";
 
 function formatDate(date) {
@@ -45,17 +46,15 @@ const HistoryPage = () => {
 
   useEffect(() => {
     setLoading(true);
-    import("../api").then(({ getHistory }) => {
-      getHistory()
-        .then((data) => {
-          setHistory(data);
-          setLoading(false);
-        })
-        .catch((err) => {
-          setError(err.message || "Failed to load history");
-          setLoading(false);
-        });
-    });
+    getHistory()
+      .then((data) => {
+        setHistory(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err.message || "Failed to load history");
+        setLoading(false);
+      });
   }, []);
 
   let content;
@@ -90,7 +89,62 @@ const HistoryPage = () => {
     color: "var(--history-table-cell-text, #222)",
   };
   if (loading) {
-    content = <div>Loading...</div>;
+    // Lightweight skeleton table to improve perceived performance while loading
+    const skeletonRows = new Array(8).fill(0);
+    content = (
+      <div
+        style={{
+          overflowX: "auto",
+          boxShadow: "0 2px 12px rgba(0,0,0,0.08)",
+          background: "var(--history-table-bg, #fff)",
+        }}
+      >
+        <table className="history-table" style={{ ...tableStyles }}>
+          <colgroup>
+            <col style={{ width: "20px" }} />
+            <col style={{ width: "20px" }} />
+            <col style={{ width: "220px" }} />
+            <col style={{ width: "140px" }} />
+            <col style={{ width: "180px" }} />
+            <col style={{ width: "120px" }} />
+          </colgroup>
+          <thead>
+            <tr>
+              <th style={{ ...thStyles, textAlign: "center", width: "20px" }}></th>
+              <th style={{ ...thStyles, textAlign: "center", width: "20px" }}>Media Type</th>
+              <th style={{ ...thStyles, width: "220px" }}>Title</th>
+              <th style={{ ...thStyles, width: "140px" }}>Extra Type</th>
+              <th style={{ ...thStyles, width: "180px" }}>Extra Title</th>
+              <th style={{ ...thStyles, width: "120px" }}>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {skeletonRows.map((_, idx) => (
+              <tr key={"skeleton-" + idx} style={trStyles(idx)}>
+                <td style={{ ...tdStyles, textAlign: "center" }}>
+                  <div style={{ width: 18, height: 18, borderRadius: 4, background: "var(--skeleton-bg, #eee)" }} />
+                </td>
+                <td style={{ ...tdStyles, textAlign: "center" }}>
+                  <div style={{ width: 36, height: 12, borderRadius: 6, background: "var(--skeleton-bg, #eee)", margin: "0 auto" }} />
+                </td>
+                <td style={{ ...tdStyles }}>
+                  <div style={{ width: "70%", height: 14, borderRadius: 6, background: "var(--skeleton-bg, #eee)" }} />
+                </td>
+                <td style={{ ...tdStyles }}>
+                  <div style={{ width: "60%", height: 12, borderRadius: 6, background: "var(--skeleton-bg, #eee)" }} />
+                </td>
+                <td style={{ ...tdStyles }}>
+                  <div style={{ width: "80%", height: 12, borderRadius: 6, background: "var(--skeleton-bg, #eee)" }} />
+                </td>
+                <td style={{ ...tdStyles }}>
+                  <div style={{ width: 80, height: 12, borderRadius: 6, background: "var(--skeleton-bg, #eee)" }} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
   } else if (error) {
     content = <div style={{ color: "red" }}>{error}</div>;
   } else {

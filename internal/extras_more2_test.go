@@ -39,7 +39,7 @@ func TestShouldDownloadExtra(t *testing.T) {
 func TestHandleExtraDownloadEnqueues(t *testing.T) {
 	ctx := context.Background()
 	// purge queue
-	_ = GetRedisClient().Del(ctx, DownloadQueue)
+	_ = GetStoreClient().Del(ctx, DownloadQueue)
 	e := Extra{Status: "missing", YoutubeId: "q1", ExtraType: "Trailers", ExtraTitle: "T"}
 	// call handleExtraDownload - should enqueue via AddToDownloadQueue
 	if err := handleExtraDownload(MediaTypeMovie, 1, e); err != nil {

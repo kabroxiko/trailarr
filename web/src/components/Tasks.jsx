@@ -1,3 +1,8 @@
+import React, { useEffect, useState, useRef } from "react";
+import { useLocation } from "react-router-dom";
+import { FaArrowsRotate, FaClock } from "react-icons/fa6";
+import "./Tasks.css";
+
 function formatTimeDiff({ from, to, suffix = "", roundType = "ceil" }) {
   if (!from || !to) return "-";
   let diff = Math.max(0, to - from);
@@ -58,10 +63,6 @@ function formatDuration(duration) {
     (hours * 3600 + minutes * 60 + Math.floor(secondsFloat)) * 1000,
   );
 }
-import React, { useEffect, useState, useRef } from "react";
-import { useLocation } from "react-router-dom";
-import { FaArrowsRotate, FaClock } from "react-icons/fa6";
-import "./Tasks.css";
 
 // Inline style to remove focus outline from the force icon
 const iconNoOutline = {

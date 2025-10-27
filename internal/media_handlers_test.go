@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -12,11 +11,10 @@ import (
 
 func TestGetMediaHandlerListAndFilter(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	tmp := t.TempDir()
-	cache := filepath.Join(tmp, "cache.json")
+	cache := MoviesStoreKey
 	items := []map[string]interface{}{{"id": 1, "title": "A"}, {"id": 2, "title": "B"}}
-	if err := WriteJSONFile(cache, items); err != nil {
-		t.Fatalf("failed to write cache: %v", err)
+	if err := SaveMediaToStore(cache, items); err != nil {
+		t.Fatalf("failed to save cache to store: %v", err)
 	}
 
 	// GET all
@@ -57,11 +55,10 @@ func TestGetMediaHandlerListAndFilter(t *testing.T) {
 
 func TestGetMediaByIdHandlerFoundAndNotFound(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	tmp := t.TempDir()
-	cache := filepath.Join(tmp, "cache2.json")
+	cache := MoviesStoreKey
 	items := []map[string]interface{}{{"id": 10, "title": "X"}}
-	if err := WriteJSONFile(cache, items); err != nil {
-		t.Fatalf("failed to write cache: %v", err)
+	if err := SaveMediaToStore(cache, items); err != nil {
+		t.Fatalf("failed to save cache to store: %v", err)
 	}
 
 	handler := GetMediaByIdHandler(cache, "id")

@@ -34,25 +34,52 @@ function MediaCard({ media, mediaType, darkMode = false }) {
           }
         }
       `}</style>
-      <img
-        className="media-card-poster"
-        src={poster}
-        loading="lazy"
-        style={{
-          width: "100%",
-          height: "auto",
-          objectFit: "cover",
-          borderRadius: 8,
-          display: "block",
-          aspectRatio: "2/3",
-          maxWidth: "220px",
-        }}
-        onError={(e) => {
-          e.target.onerror = null;
-          e.target.src = "/logo.svg";
-        }}
-        alt={media.title}
-      />
+      <style>{`
+        .media-card-poster-wrap {
+          width: 100%;
+          max-width: 220px;
+          aspect-ratio: 2/3;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .media-card-poster {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          border-radius: 8px;
+          display: block;
+        }
+        .media-card-poster.fallback {
+          width: 60% !important;
+          height: auto !important;
+          object-fit: contain !important;
+          background: transparent !important;
+        }
+        @media (max-width: 900px) {
+          .media-card-poster-wrap {
+            width: 100vw !important;
+            width: calc(100vw / 3 - 1rem) !important;
+            height: calc((100vw / 3 - 1rem) * 1.5) !important;
+            aspect-ratio: 2/3 !important;
+            margin: 0 !important;
+          }
+        }
+      `}</style>
+
+      <div className="media-card-poster-wrap">
+        <img
+          className="media-card-poster"
+          src={poster}
+          loading="lazy"
+          onError={(e) => {
+            e.target.onerror = null;
+            e.target.classList.add("fallback");
+            e.target.src = "/logo.svg";
+          }}
+          alt={media.title}
+        />
+      </div>
       {/* Desktop: show title/year/frame/box as before */}
       <div
         className="media-card-details"

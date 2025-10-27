@@ -333,6 +333,8 @@ func registerHealthAndTaskRoutes(r *gin.Engine) {
 	// API endpoint for scheduled/queue status
 	r.GET("/api/tasks/status", GetAllTasksStatus())
 	r.GET("/api/tasks/queue", GetTaskQueueFileHandler())
+	// Debug endpoint: raw store contents and count
+	r.GET("/api/tasks/queue/debug", GetTaskQueueDebugHandler())
 	r.POST("/api/tasks/force", TaskHandler())
 }
 
@@ -411,18 +413,20 @@ func registerMediaAndSettingsRoutes(r *gin.Engine) {
 	// Helper for default media path
 	// Group movies/series endpoints
 	for _, media := range []struct {
-		section      string
-		cacheFile    string
-		fallbackPath string
-		extrasType   MediaType
+		section        string
+		cacheStoreKey  string
+		wantedStoreKey string
+		fallbackPath   string
+		extrasType     MediaType
 	}{
-		{"movies", MoviesRedisKey,
-			"/Movies", MediaTypeMovie},
-		{"series", SeriesRedisKey, "/Series", MediaTypeTV},
+		{"movies", MoviesStoreKey, MoviesWantedStoreKey, "/Movies", MediaTypeMovie},
+		{"series", SeriesStoreKey, SeriesWantedStoreKey, "/Series", MediaTypeTV},
 	} {
-		r.GET("/api/"+media.section, GetMediaHandler(media.cacheFile, "id"))
-		r.GET("/api/"+media.section+"/wanted", GetMissingExtrasHandler(media.cacheFile))
-		r.GET("/api/"+media.section+"/:id", GetMediaByIdHandler(media.cacheFile, "id"))
+		r.GET("/api/"+media.section, GetMediaHandler(media.cacheStoreKey, "id"))
+		// Use the dedicated wanted-store key for fast-path reads; handler will
+		// map back to the main cache when it needs to rebuild the index.
+		r.GET("/api/"+media.section+"/wanted", GetMissingExtrasHandler(media.wantedStoreKey))
+		r.GET("/api/"+media.section+"/:id", GetMediaByIdHandler(media.cacheStoreKey, "id"))
 		r.GET("/api/"+media.section+"/:id/extras", sharedExtrasHandler(media.extrasType))
 	}
 	// Group settings endpoints for Radarr/Sonarr

@@ -63,7 +63,7 @@ sonarr:
 	// seed a movie entry with a path
 	movie := map[string]interface{}{"id": 55, "title": "Z", "path": filepath.Join(tmp, "m55")}
 	_ = os.MkdirAll(movie["path"].(string), 0755)
-	_ = SaveMediaToRedis(MoviesRedisKey, []map[string]interface{}{movie})
+	_ = SaveMediaToStore(MoviesStoreKey, []map[string]interface{}{movie})
 
 	payload := `{"mediaType":"movie","mediaId":55,"extraType":"Trailers","extraTitle":"ET","youtubeId":"ytx"}`
 	w = DoRequest(r, "POST", "/api/extras/download", []byte(payload))
@@ -78,7 +78,7 @@ sonarr:
 	}
 
 	// Cleanup queue
-	_ = GetRedisClient().Del(context.Background(), DownloadQueue)
+	_ = GetStoreClient().Del(context.Background(), DownloadQueue)
 }
 
 func TestLogsListHandler(t *testing.T) {

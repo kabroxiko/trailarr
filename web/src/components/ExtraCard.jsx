@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useMemo, useCallback } from "react";
+import { deleteExtra } from "../api";
 import IconButton from "./IconButton.jsx";
 import PropTypes from "prop-types";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -379,29 +380,30 @@ function handleRemoveBan({
   })
     .then(() => {
       if (typeof setExtras === "function") {
-        setExtras((prev) =>
-          prev.map((ex) =>
-            ex.YoutubeId === extra.YoutubeId &&
-            ex.ExtraType === baseType &&
-            ex.ExtraTitle === baseTitle
-              ? { ...ex, Status: "" }
-              : ex,
-          ),
-        );
-      }
-      if (typeof setExtras === "function" && media !== undefined && media.id) {
-        fetch(
-          `/api/${mediaType === "movie" ? "movies" : "series"}/${media.id}/extras`,
-        )
-          .then((res) => (res.ok ? res.json() : null))
-          .then((data) => {
-            if (Array.isArray(data)) {
-              setExtras(data);
-            } else if (data && Array.isArray(data.extras)) {
-              setExtras(data.extras);
-            }
-          })
-          .catch(() => {});
+        setExtras((prev) => {
+          // Only operate on array states; otherwise leave as-is
+          if (!Array.isArray(prev)) return prev;
+          // Normalize matching for both blacklist (lowercase keys) and media extras (PascalCase keys)
+          const next = prev
+            .map((ex) => {
+              const y = ex.YoutubeId || ex.youtubeId || "";
+              const t = ex.ExtraType || ex.extraType || "";
+              const ti = ex.ExtraTitle || ex.extraTitle || "";
+              if (y === extra.YoutubeId && t === baseType && ti === baseTitle) {
+                // If this array looks like the blacklist (lowercase keys), remove the item.
+                // Otherwise, clear the Status fields for media extras lists.
+                if (ex.youtubeId !== undefined || ex.mediaId !== undefined || ex.mediaTitle !== undefined) {
+                  // blacklist-style item -> remove from list
+                  return null;
+                }
+                // media extras-style item -> clear status
+                return { ...ex, Status: "", status: "" };
+              }
+              return ex;
+            })
+            .filter(Boolean);
+          return next;
+        });
       }
     })
     .catch(() => {
@@ -411,7 +413,7 @@ function handleRemoveBan({
     });
 }
 
-export default function ExtraCard({
+function ExtraCard({
   extra,
   idx,
   typeExtras,
@@ -427,18 +429,26 @@ export default function ExtraCard({
   const [isFallback, setIsFallback] = useState(false);
   const baseTitle = extra.ExtraTitle || "";
   const baseType = extra.ExtraType || "";
-  const displayTitle = getDisplayTitle(typeExtras, baseTitle, idx);
-  let posterUrl = extra.YoutubeId
-    ? `/api/proxy/youtube-image/${extra.YoutubeId}`
-    : null;
+  // Memoize frequently computed values to avoid per-render recomputation
+  const displayTitle = useMemo(
+    () => getDisplayTitle(typeExtras, baseTitle, idx),
+    [typeExtras, baseTitle, idx],
+  );
+
+  const posterUrl = useMemo(
+    () => (extra.YoutubeId ? `/api/proxy/youtube-image/${extra.YoutubeId}` : null),
+    [extra.YoutubeId],
+  );
   React.useEffect(() => {
     // Reset states when posterUrl changes
     setImgError(false);
     setIsFallback(false);
   }, [posterUrl]);
-  let titleFontSize = 16;
-  if (displayTitle.length > 22) titleFontSize = 14;
-  if (displayTitle.length > 32) titleFontSize = 12;
+  const titleFontSize = useMemo(() => {
+    if (displayTitle.length > 32) return 12;
+    if (displayTitle.length > 22) return 14;
+    return 16;
+  }, [displayTitle]);
   const downloaded = extra.Status === "downloaded";
   const isDownloading = extra.Status === "downloading";
   const isQueued = extra.Status === "queued";
@@ -482,8 +492,44 @@ export default function ExtraCard({
     revertStatus();
   }
 
-  const handleDownloadClick = async () => {
+  const handleDownloadClick = useCallback(async () => {
     if (downloaded || downloading) return;
+    // Optimistic UI: mark as queued immediately so the icon updates right away.
+    // Update existing extra if present, otherwise append a queued entry.
+    let didOptimisticallyAdd = false;
+    if (typeof setExtras === "function" && !downloaded && !isDownloading && !exists) {
+      setExtras((prev) => {
+        let found = false;
+        const updated = prev.map((ex) => {
+          if (
+            ex.YoutubeId === extra.YoutubeId &&
+            ex.ExtraType === baseType &&
+            ex.ExtraTitle === baseTitle
+          ) {
+            found = true;
+            // If already queued, leave as-is
+            if (ex.Status === "queued") return ex;
+            didOptimisticallyAdd = true;
+            return { ...ex, Status: "queued", Reason: "" };
+          }
+          return ex;
+        });
+        if (found) return updated;
+        didOptimisticallyAdd = true;
+        return [
+          ...prev,
+          {
+            ...extra,
+            Status: "queued",
+            Reason: "",
+            ExtraType: baseType,
+            ExtraTitle: baseTitle,
+            YoutubeId: extra.YoutubeId,
+          },
+        ];
+      });
+    }
+
     setDownloading(true);
     try {
       const res = await fetch(`/api/extras/download`, {
@@ -497,49 +543,71 @@ export default function ExtraCard({
           youtubeId: extra.YoutubeId,
         }),
       });
-      if (res.ok) {
-        // Only add a new backend-style extra if not already present (by YoutubeId, ExtraType, and ExtraTitle)
-        if (
-          typeof setExtras === "function" &&
-          !downloaded &&
-          !isQueued &&
-          !isDownloading &&
-          !exists
-        ) {
-          setExtras((prev) => {
-            if (
-              prev.some(
-                (ex) =>
-                  ex.YoutubeId === extra.YoutubeId &&
-                  ex.ExtraType === baseType &&
-                  ex.ExtraTitle === baseTitle,
-              )
-            )
-              return prev;
-            return [
-              ...prev,
-              {
-                ...extra,
-                Status: "queued",
-                Reason: "",
-                ExtraType: baseType,
-                ExtraTitle: baseTitle,
-                YoutubeId: extra.YoutubeId,
-                // Add any other backend fields as needed
-              },
-            ];
-          });
+      if (!res.ok) {
+        // Backend failed: revert optimistic change and show error
+        if (didOptimisticallyAdd && typeof setExtras === "function") {
+          setExtras((prev) => prev.filter((ex) => !(ex.YoutubeId === extra.YoutubeId && ex.ExtraType === baseType && ex.ExtraTitle === baseTitle)));
         }
-      } else {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         handleError(data?.error || "Download failed");
       }
+      // On success: backend will broadcast queue changes and the store will reflect queued state;
+      // we keep the optimistic queued state until updates arrive from server.
     } catch (error) {
+      if (didOptimisticallyAdd && typeof setExtras === "function") {
+        setExtras((prev) => prev.filter((ex) => !(ex.YoutubeId === extra.YoutubeId && ex.ExtraType === baseType && ex.ExtraTitle === baseTitle)));
+      }
       handleError(error.message || error);
     } finally {
       setDownloading(false);
     }
-  };
+  }, [downloaded, downloading, extra, setExtras, media, baseType, baseTitle]);
+
+  const handleDeleteClick = useCallback(async (event) => {
+    event.stopPropagation();
+    if (!globalThis.confirm("Delete this extra?")) return;
+    // Optimistic UI: mark as deleting so the card does not render as 'downloaded' (green)
+    const prevStatus = extra.Status;
+    if (typeof setExtras === "function") {
+      setExtras((prev) =>
+        prev.map((ex) =>
+          ex.ExtraTitle === baseTitle && ex.ExtraType === baseType
+            ? { ...ex, Status: "deleting" }
+            : ex,
+        ),
+      );
+    }
+    try {
+      const payload = {
+        mediaType,
+        mediaId: media.id,
+        youtubeId: extra.YoutubeId,
+      };
+      await deleteExtra(payload);
+      // On success set to missing so UI reflects absence
+      setExtras((prev) =>
+        prev.map((ex) =>
+          ex.ExtraTitle === baseTitle && ex.ExtraType === baseType
+            ? { ...ex, Status: "missing" }
+            : ex,
+        ),
+      );
+    } catch (error) {
+      // Revert optimistic state on failure
+      if (typeof setExtras === "function") {
+        setExtras((prev) =>
+          prev.map((ex) =>
+            ex.ExtraTitle === baseTitle && ex.ExtraType === baseType
+              ? { ...ex, Status: prevStatus }
+              : ex,
+          ),
+        );
+      }
+      let msg = error?.message || error;
+      if (error?.detail) msg += `\n${error.detail}`;
+      if (typeof showToast === "function") showToast(msg || "Delete failed");
+    }
+  }, [extra, baseTitle, baseType, media, setExtras, showToast]);
 
   const borderColor = getBorderColor({ rejected, failed, downloaded, exists });
   return (
@@ -622,32 +690,7 @@ export default function ExtraCard({
           mediaType={mediaType}
           media={media}
           handleDownloadClick={handleDownloadClick}
-          handleDeleteClick={async (event) => {
-            event.stopPropagation();
-            if (!globalThis.confirm("Delete this extra?")) return;
-            try {
-              const { deleteExtra } = await import("../api");
-              const payload = {
-                mediaType,
-                mediaId: media.id,
-                youtubeId: extra.YoutubeId,
-              };
-              await deleteExtra(payload);
-              setExtras((prev) =>
-                prev.map((ex) =>
-                  ex.ExtraTitle === baseTitle && ex.ExtraType === baseType
-                    ? { ...ex, Status: "missing" }
-                    : ex,
-                ),
-              );
-            } catch (error) {
-              let msg = error?.message || error;
-              if (error?.detail) msg += `\n${error.detail}`;
-              // showErrorModal is removed, use showToast
-              if (typeof showToast === "function")
-                showToast(msg || "Delete failed");
-            }
-          }}
+          handleDeleteClick={handleDeleteClick}
           displayTitle={displayTitle}
         />
       </div>
@@ -754,4 +797,22 @@ ExtraCardActions.propTypes = {
 };
 
 // Export PosterImage at the end for SonarLint compliance
+// Avoid re-renders of individual cards when unrelated props change.
+function areEqual(prevProps, nextProps) {
+  const prev = prevProps.extra || {};
+  const next = nextProps.extra || {};
+  if (prev.YoutubeId !== next.YoutubeId) return false;
+  if (prev.Status !== next.Status) return false;
+  if (prev.Reason !== next.Reason) return false;
+  if (prevProps.rejected !== nextProps.rejected) return false;
+  if (prevProps.darkMode !== nextProps.darkMode) return false;
+  if (prevProps.idx !== nextProps.idx) return false;
+  const prevMediaId = prevProps.media?.id;
+  const nextMediaId = nextProps.media?.id;
+  if (prevMediaId !== nextMediaId) return false;
+  return true;
+}
+
+export default React.memo(ExtraCard, areEqual);
+
 export { PosterImage };

@@ -1,4 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
+import PropTypes from "prop-types";
+import "./BlacklistPage.mobile.css";
+import ExtraCard from "./ExtraCard.jsx";
+import YoutubePlayer from "./YoutubePlayer.jsx";
+import Container from "./Container.jsx";
+import SectionHeader from "./SectionHeader.jsx";
+
 // Helper to normalize reason string for grouping (moved to outer scope)
 function normalizeReason(reason) {
   if (!reason) return "Other";
@@ -18,10 +25,10 @@ function normalizeReason(reason) {
   // 3. Age-restricted video
   if (
     reason.includes(
-      "Sign in to confirm your age. This video may be inappropriate for some users.",
+      "Sign in to confirm your age.",
     )
   ) {
-    return "Sign in to confirm your age. This video may be inappropriate for some users.";
+    return "Sign in to confirm your age.";
   }
   // 4. Did not get any data blocks
   if (reason.includes("Did not get any data blocks")) {
@@ -35,12 +42,6 @@ function normalizeReason(reason) {
     .replace(/ERROR: \[youtube\] [\w-]+:/, "ERROR: [youtube] <id>:")
     .trim();
 }
-import PropTypes from "prop-types";
-import "./BlacklistPage.mobile.css";
-import ExtraCard from "./ExtraCard.jsx";
-import YoutubePlayer from "./YoutubePlayer.jsx";
-import Container from "./Container.jsx";
-import SectionHeader from "./SectionHeader.jsx";
 
 // Subcomponent to render a single group item (reduces nesting in main render)
 function BlacklistGroupItem({
@@ -75,19 +76,20 @@ function BlacklistGroupItem({
     reason: item.reason || item.message || "",
     Status: item.Status || item.status || "",
   };
+  // Ensure `media` matches the shape expected by ExtraCard (media.id)
   const media = {
-    mediaId: item.mediaId || "",
-    mediaTitle: item.mediaTitle || "",
+    id: item.mediaId ? Number(item.mediaId) : 0,
+    title: item.mediaTitle || "",
   };
   const mediaType = item.mediaType || "";
   // Use a more stable unique key for this card
-  const uniqueKey = `${extra.YoutubeId || ""}-${media.mediaId || ""}-${mediaType}`;
+  const uniqueKey = `${extra.YoutubeId || ""}-${media.id || ""}-${mediaType}`;
   // Extract href logic for clarity
   let mediaHref = "";
   if (mediaType === "movie") {
-    mediaHref = `/movies/${media.mediaId}`;
+    mediaHref = `/movies/${media.id}`;
   } else if (mediaType === "tv") {
-    mediaHref = `/series/${media.mediaId}`;
+    mediaHref = `/series/${media.id}`;
   }
   const handleDownloaded = () => {
     setBlacklist((prev) => markBlacklistItemDownloaded(prev, extra.YoutubeId));
@@ -108,7 +110,9 @@ function BlacklistGroupItem({
         darkMode={darkMode}
         media={media}
         mediaType={mediaType}
-        setExtras={null}
+        // Pass the page-level setter so ExtraCard's unban handler can refresh
+        // the blacklist state after removing an item.
+        setExtras={setBlacklist}
         setModalMsg={() => {}}
         setShowModal={() => {}}
         YoutubeEmbed={null}
@@ -116,8 +120,8 @@ function BlacklistGroupItem({
         onPlay={(videoId) => setYoutubeModal({ open: true, videoId })}
         onDownloaded={handleDownloaded}
       />
-      {media.mediaTitle &&
-        media.mediaId &&
+      {media.title &&
+        !!media.id &&
         (mediaHref ? (
           <a
             href={mediaHref}
@@ -132,7 +136,7 @@ function BlacklistGroupItem({
               fontWeight: 500,
             }}
           >
-            {media.mediaTitle}
+            {media.title}
           </a>
         ) : (
           <button
@@ -153,7 +157,7 @@ function BlacklistGroupItem({
               opacity: 0.7,
             }}
           >
-            {media.mediaTitle}
+            {media.title}
           </button>
         ))}
     </div>
@@ -221,16 +225,21 @@ function BlacklistPage({ darkMode }) {
         if (!res.ok) throw new Error("Failed to fetch blacklist");
         return res.json();
       })
-      .then(async (data) => {
+      .then((data) => {
         setBlacklist(data);
-        // Collect all image URLs from blacklist items (adjust property as needed)
-        let items = Array.isArray(data) ? data : Object.values(data).flat();
-        // Try to get thumbnail, poster, or other image field
+        // Collect image URLs but do NOT block rendering on them. Preload in
+        // background to improve perceived load time — waiting for all images
+        // to finish makes the page feel slow when some external thumbnails
+        // are slow or 404.
+        const items = Array.isArray(data) ? data : Object.values(data).flat();
         const urls = items
           .map((item) => item.thumbnail || item.poster || item.image || null)
           .filter(Boolean);
+        // Kick off background preloads but don't await them. Limit to a small
+        // number to avoid hammering external hosts on large blacklists.
         if (urls.length > 0) {
-          await preloadImages(urls);
+          const MAX_PRELOAD = 40;
+          preloadImages(urls.slice(0, MAX_PRELOAD)).catch(() => {});
         }
         setLoading(false);
       })
@@ -276,7 +285,54 @@ function BlacklistPage({ darkMode }) {
     };
   }, []);
 
-  if (loading) return <div style={{ padding: 32 }}>Loading blacklist...</div>;
+  if (loading) {
+    const skeletonKeys = Array.from({ length: 8 }).map(
+      () => `skeleton-${Math.random().toString(36).slice(2, 9)}`,
+    );
+    return (
+      <div style={{ padding: 32 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, 220px)",
+            gap: 24,
+            padding: 0,
+            margin: 0,
+            width: "100%",
+            boxSizing: "border-box",
+          }}
+        >
+          {skeletonKeys.map((key) => (
+            <div
+              key={key}
+              style={{
+                width: 220,
+                minHeight: 280,
+                borderRadius: 12,
+                background: darkMode ? "#23232a" : "#f3f4f6",
+                padding: 12,
+                boxSizing: "border-box",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
+              <div
+                style={{
+                  height: 140,
+                  borderRadius: 8,
+                  background: darkMode ? "#1f2937" : "#e5e7eb",
+                }}
+              />
+              <div style={{ height: 14, width: "70%", borderRadius: 6, background: darkMode ? "#111827" : "#e9ecef" }} />
+              <div style={{ height: 12, width: "50%", borderRadius: 6, background: darkMode ? "#111827" : "#e9ecef" }} />
+              <div style={{ flex: 1 }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
   if (error) return <div style={{ color: "red", padding: 32 }}>{error}</div>;
   if (!blacklist || (Array.isArray(blacklist) && blacklist.length === 0))
     return <div style={{ padding: 32 }}>No blacklisted extras found.</div>;
