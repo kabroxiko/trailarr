@@ -1,8 +1,27 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 
 export default function LoadingMediaSkeleton() {
-  const dark = globalThis.window?.matchMedia?.("(prefers-color-scheme: dark)")?.matches;
-  const isMobile = globalThis.window?.matchMedia?.("(max-width: 900px)")?.matches;
+  // use state + listener to avoid render-time mismatch that can show both layouts
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia
+      ? window.matchMedia("(max-width: 900px)").matches
+      : false,
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(max-width: 900px)");
+    const handler = (e) => setIsMobile(e.matches);
+    // prefer modern API but fall back for older browsers
+    if (mq.addEventListener) mq.addEventListener("change", handler);
+    else mq.addListener(handler);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", handler);
+      else mq.removeListener(handler);
+    };
+  }, []);
+
+  const dark = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
 
   const containerStyle = {
     padding: isMobile ? 16 : 88,
@@ -24,7 +43,17 @@ export default function LoadingMediaSkeleton() {
 
   return (
     <div style={containerStyle}>
-      {!isMobile ? (
+      {isMobile ? (
+        // Mobile: no poster layout, simplified stacked skeleton
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {line("80%", 28, 8)}
+          {line("50%", 18, 12)}
+          <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ width: 96, height: 34, borderRadius: 8, background: dark ? "#202124" : "#e8e8e8" }} />
+            <div style={{ width: 96, height: 34, borderRadius: 8, background: dark ? "#202124" : "#e8e8e8" }} />
+          </div>
+        </div>
+      ) : (
         <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
           <div style={posterStyle} />
           <div style={{ flex: 1 }}>
@@ -34,16 +63,6 @@ export default function LoadingMediaSkeleton() {
               <div style={{ width: 120, height: 36, borderRadius: 8, background: dark ? "#202124" : "#e8e8e8" }} />
               <div style={{ width: 120, height: 36, borderRadius: 8, background: dark ? "#202124" : "#e8e8e8" }} />
             </div>
-          </div>
-        </div>
-      ) : (
-        // Mobile: no poster layout, simplified stacked skeleton
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {line("80%", 28, 8)}
-          {line("50%", 18, 12)}
-          <div style={{ display: "flex", gap: 8 }}>
-            <div style={{ width: 96, height: 34, borderRadius: 8, background: dark ? "#202124" : "#e8e8e8" }} />
-            <div style={{ width: 96, height: 34, borderRadius: 8, background: dark ? "#202124" : "#e8e8e8" }} />
           </div>
         </div>
       )}
