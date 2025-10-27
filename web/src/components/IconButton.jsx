@@ -1,4 +1,5 @@
 import React from "react";
+import PropTypes from "prop-types";
 
 export default function IconButton({
   icon,
@@ -41,3 +42,11 @@ export default function IconButton({
     </button>
   );
 }
+
+IconButton.propTypes = {
+  icon: PropTypes.node.isRequired,
+  onClick: PropTypes.func.isRequired,
+  title: PropTypes.string,
+  disabled: PropTypes.bool,
+  style: PropTypes.object,
+};

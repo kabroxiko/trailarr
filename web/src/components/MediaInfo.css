@@ -30,6 +30,7 @@
 }
 
 .media-info-content {
+  padding-top: 0;
   flex: 1;
   z-index: 2;
   display: flex;
@@ -71,12 +72,6 @@
   border-radius: 4px;
   background: #222;
   box-shadow: 0 2px 8px rgba(0,0,0,0.22);
-}
-
-.media-info-content {
-  padding-top: 0;
-  flex: 1;
-  min-width: 0;
 }
 
 .media-info-title {

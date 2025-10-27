@@ -1,4 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from "react";
+import PropTypes from "prop-types";
 import BlacklistPage from "./components/BlacklistPage";
 import MediaRouteComponent from "./MediaRouteComponent";
 import Toast from "./components/Toast";
@@ -17,6 +18,18 @@ import LogsPage from "./components/LogsPage";
 import { getSeries, getMovies, getRadarrSettings, getMoviesWanted, getSeriesWanted } from "./api";
 import LoadingMediaSkeleton from "./components/LoadingMediaSkeleton";
 import ErrorBoundary from "./components/ErrorBoundary";
+
+// Small helper element to avoid repeating Suspense + ErrorBoundary
+// Use a minimal fallback (null) so the inner component's own skeleton
+// is the visible placeholder when `loading` is true. This prevents
+// showing two skeletons (Suspense fallback + internal skeleton).
+const MediaDetailsElement = ({ items, loading, mediaType }) => (
+  <Suspense fallback={null}>
+    <ErrorBoundary>
+      <MediaDetails mediaItems={items} loading={loading} mediaType={mediaType} />
+    </ErrorBoundary>
+  </Suspense>
+);
 
 // Helper functions to avoid deep nesting
 function filterAndSortMedia(items) {
@@ -336,90 +349,15 @@ function App() {
                     />
                   }
                 />
-                <Route
-                  path="/movies/:id"
-                  element={
-                    <Suspense fallback={<LoadingMediaSkeleton />}>
-                      <ErrorBoundary>
-                        <MediaDetails
-                          mediaItems={movies}
-                          loading={moviesLoading}
-                          mediaType="movie"
-                        />
-                      </ErrorBoundary>
-                    </Suspense>
-                  }
-                />
-                <Route
-                  path="/series/:id"
-                  element={
-                    <Suspense fallback={<LoadingMediaSkeleton />}>
-                      <ErrorBoundary>
-                        <MediaDetails
-                          mediaItems={series}
-                          loading={seriesLoading}
-                          mediaType="tv"
-                        />
-                      </ErrorBoundary>
-                    </Suspense>
-                  }
-                />
-                <Route
-                  path="/wanted/movies/:id"
-                  element={
-                    <Suspense fallback={<LoadingMediaSkeleton />}>
-                      <ErrorBoundary>
-                        <MediaDetails
-                          mediaItems={movies}
-                          loading={moviesLoading}
-                          mediaType="movie"
-                        />
-                      </ErrorBoundary>
-                    </Suspense>
-                  }
-                />
-                <Route
-                  path="/wanted/series/:id"
-                  element={
-                    <Suspense fallback={<LoadingMediaSkeleton />}>
-                      <ErrorBoundary>
-                        <MediaDetails
-                          mediaItems={series}
-                          loading={seriesLoading}
-                          mediaType="tv"
-                        />
-                      </ErrorBoundary>
-                    </Suspense>
-                  }
-                />
-                <Route
-                  path="/history/movies/:id"
-                  element={
-                    <Suspense fallback={<LoadingMediaSkeleton />}>
-                      <ErrorBoundary>
-                        <MediaDetails
-                          mediaItems={movies}
-                          loading={moviesLoading}
-                          mediaType="movie"
-                        />
-                      </ErrorBoundary>
-                    </Suspense>
-                  }
-                />
-                <Route
-                  path="/history/series/:id"
-                  element={
-                    <Suspense fallback={<LoadingMediaSkeleton />}>
-                      <ErrorBoundary>
-                        <MediaDetails
-                          mediaItems={series}
-                          loading={seriesLoading}
-                          mediaType="tv"
-                        />
-                      </ErrorBoundary>
-                    </Suspense>
-                  }
-                />
+
+                {/* Media details routes use a small shared element to avoid repeating Suspense + ErrorBoundary */}
+                <Route path="/movies/:id" element={<MediaDetailsElement items={movies} loading={moviesLoading} mediaType="movie" />} />
+                <Route path="/series/:id" element={<MediaDetailsElement items={series} loading={seriesLoading} mediaType="tv" />} />
+                <Route path="/wanted/movies/:id" element={<MediaDetailsElement items={movies} loading={moviesLoading} mediaType="movie" />} />
+                <Route path="/wanted/series/:id" element={<MediaDetailsElement items={series} loading={seriesLoading} mediaType="tv" />} />
+                <Route path="/history/movies/:id" element={<MediaDetailsElement items={movies} loading={moviesLoading} mediaType="movie" />} />
+                <Route path="/history/series/:id" element={<MediaDetailsElement items={series} loading={seriesLoading} mediaType="tv" />} />
+
                 <Route path="/history" element={<HistoryPage />} />
                 <Route
                   path="/wanted/movies"
@@ -475,5 +413,11 @@ function App() {
     </div>
   );
 }
+
+MediaDetailsElement.propTypes = {
+  items: PropTypes.array,
+  loading: PropTypes.bool,
+  mediaType: PropTypes.string,
+};
 
 export default App;

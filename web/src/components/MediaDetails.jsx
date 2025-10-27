@@ -7,6 +7,7 @@ import ExtrasList from "./ExtrasList";
 import YoutubePlayer from "./YoutubePlayer.jsx";
 import Container from "./Container.jsx";
 import Toast from "./Toast.jsx";
+import "./MediaDetails.css";
 import { useParams } from "react-router-dom";
 import PropTypes from "prop-types";
 import { getExtras } from "../api";
@@ -32,53 +33,9 @@ function handleExtrasQueueUpdate(msg, mediaId, setExtras, setError) {
 function YoutubeModal({ open, videoId, onClose }) {
   if (!open || !videoId) return null;
   return (
-    <dialog
-      open
-      aria-modal="true"
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        width: "100vw",
-        height: "100vh",
-        background: "rgba(0,0,0,0.7)",
-        zIndex: 99999,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        border: "none",
-        padding: 0,
-      }}
-    >
-      <div
-        style={{
-          position: "relative",
-          background: "#18181b",
-          borderRadius: 16,
-          boxShadow: "0 2px 24px #000",
-          padding: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          overflow: "visible",
-        }}
-        aria-label="YouTube modal dialog"
-      >
-        <button
-          onClick={onClose}
-          style={{
-            position: "absolute",
-            top: 8,
-            right: 12,
-            zIndex: 2,
-            fontSize: 28,
-            color: "#fff",
-            background: "transparent",
-            border: "none",
-            cursor: "pointer",
-          }}
-          aria-label="Close"
-        >
+    <dialog open aria-modal="true" className="md-youtube-modal-backdrop">
+      <div className="md-youtube-modal-content" aria-label="YouTube modal dialog">
+        <button onClick={onClose} className="md-youtube-modal-close" aria-label="Close">
           ×
         </button>
         <YoutubePlayer videoId={videoId} />
@@ -134,21 +91,7 @@ function ytResultsToExtras(ytResults) {
 
 function Spinner() {
   return (
-    <div
-      style={{
-        position: "absolute",
-        top: "50%",
-        left: "50%",
-        transform: "translate(-50%, -50%)",
-        zIndex: 10,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "rgba(0,0,0,0.2)",
-        borderRadius: 8,
-        padding: 16,
-      }}
-    >
+    <div className="md-spinner-overlay">
       <svg
         width="48"
         height="48"
@@ -185,16 +128,7 @@ function YoutubeEmbed({ videoId }) {
     };
   }, [videoId]);
   return (
-    <div
-      style={{
-        width: "100%",
-        height: "100%",
-        position: "relative",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
+    <div className="md-youtube-embed">
       {loading && <Spinner />}
       <iframe
         src={`https://www.youtube.com/embed/${videoId}`}
@@ -203,15 +137,7 @@ function YoutubeEmbed({ videoId }) {
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
         allowFullScreen
         loading="lazy"
-        style={{
-          borderRadius: 8,
-          background: "#000",
-          width: "100%",
-          height: "100%",
-          position: "absolute",
-          top: 0,
-          left: 0,
-        }}
+        className="md-youtube-iframe"
         onLoad={() => setLoading(false)}
       />
     </div>
@@ -224,6 +150,14 @@ YoutubeEmbed.propTypes = {
 export default function MediaDetails({ mediaItems, loading, mediaType }) {
   const { id } = useParams();
   const media = mediaItems.find((m) => String(m.id) === id);
+
+  // Mobile detection local to this component (affects skeleton layout)
+  const [isMobile, setIsMobile] = useState(globalThis.window ? window.innerWidth < 900 : false);
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 900);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   // --- Cast state and fetch logic moved from MediaInfoLane ---
   const [cast, setCast] = useState([]);
@@ -378,69 +312,41 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
     };
   }, [media]);
 
-  useEffect(() => {
-    if (showModal && modalMsg) {
-      const timer = setTimeout(() => {
-        setShowModal(false);
-        setModalMsg("");
-      }, 3500);
-      return () => clearTimeout(timer);
-    }
-  }, [showModal, modalMsg]);
-
-  // Lightweight skeleton for media details while loading to improve perceived performance
   const renderSkeleton = () => {
-    return (
-      <Container
-        style={{
-          minHeight: "100vh",
-          background: darkMode ? "#18181b" : "#f7f8fa",
-          fontFamily: "Roboto, Arial, sans-serif",
-          padding: "24px",
-          // push skeleton lower so it sits under header/action area
-          paddingTop: 88,
-        }}
-      >
-        <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
-          <div
-            style={{
-              width: 360,
-              height: 360,
-              background: darkMode ? "#111" : "#eaeaea",
-              borderRadius: 12,
-              flexShrink: 0,
-            }}
-          />
-          <div style={{ flex: 1 }}>
-            <div style={{ width: "60%", height: 28, borderRadius: 6, background: darkMode ? "#202124" : "#e8e8e8", marginBottom: 12 }} />
-            <div style={{ width: "40%", height: 18, borderRadius: 6, background: darkMode ? "#202124" : "#e8e8e8", marginBottom: 18 }} />
-            <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
-              <div style={{ width: 120, height: 36, borderRadius: 8, background: darkMode ? "#202124" : "#e8e8e8" }} />
-              <div style={{ width: 120, height: 36, borderRadius: 8, background: darkMode ? "#202124" : "#e8e8e8" }} />
-            </div>
-            <div style={{ height: 12 }} />
-            <div style={{ width: "100%", height: 14, borderRadius: 6, background: darkMode ? "#202124" : "#e8e8e8", marginBottom: 8 }} />
-            <div style={{ width: "90%", height: 14, borderRadius: 6, background: darkMode ? "#202124" : "#e8e8e8", marginBottom: 8 }} />
-            <div style={{ width: "80%", height: 14, borderRadius: 6, background: darkMode ? "#202124" : "#e8e8e8", marginBottom: 18 }} />
-          </div>
-        </div>
-
-        {/* Extras skeleton */}
-        <div style={{ marginTop: 28 }}>
-          {["group-a", "group-b", "group-c"].map((gKey) => (
-            <div key={gKey} style={{ marginBottom: 18 }}>
-              <div style={{ width: "30%", height: 18, borderRadius: 6, background: darkMode ? "#202124" : "#e8e8e8", marginBottom: 12 }} />
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                {["s1", "s2", "s3", "s4"].map((sKey) => (
-                  <div key={sKey} style={{ width: 220, height: 260, borderRadius: 12, background: darkMode ? "#111" : "#f0f0f0" }} />
-                ))}
+      return (
+        <Container className={`md-skeleton-container ${darkMode ? "md-dark" : ""} ${isMobile ? "md-mobile" : ""}`}>
+          <div className={`md-skeleton-main ${darkMode ? "md-dark" : ""} ${isMobile ? "md-mobile" : ""}`}>
+            {!isMobile && <div className={`md-skel-poster ${darkMode ? "md-dark" : ""}`} />}
+            <div className="md-skel-info" style={{ flex: 1 }}>
+              <div className="md-skel-title" />
+              <div className="md-skel-sub" />
+              <div className="md-skel-actions">
+                <div className="md-skel-action" />
+                <div className="md-skel-action" />
               </div>
+              <div className="md-skel-line" />
+              <div className="md-skel-paragraph" />
+              <div className="md-skel-paragraph" style={{ width: "90%" }} />
+              <div className="md-skel-paragraph" style={{ width: "80%" }} />
             </div>
-          ))}
-        </div>
-      </Container>
-    );
-  };
+          </div>
+
+          {/* Extras skeleton */}
+          <div className="md-extras-skeleton">
+            {["group-a", "group-b", "group-c"].map((gKey) => (
+              <div key={gKey} className="md-extras-group">
+                <div className="md-extras-group-title" />
+                <div className="md-extras-cards">
+                  {["s1", "s2", "s3", "s4"].map((sKey) => (
+                    <div key={sKey} className="md-extras-card-skel" />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Container>
+      );
+    };
 
   if (loading) return renderSkeleton();
   if (!media) {
