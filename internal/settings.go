@@ -26,6 +26,7 @@ const (
 	RejectedExtrasStoreKey   = "trailarr:extras:rejected"
 	DownloadQueue            = "trailarr:download_queue"
 	TaskTimesStoreKey        = "trailarr:task_times"
+	HealthIssuesStoreKey     = "trailarr:health_issues"
 	HistoryStoreKey          = "trailarr:history"
 	HistoryMaxLen            = 1000
 	TaskQueueStoreKey        = "trailarr:task_queue"
@@ -731,9 +732,10 @@ func SaveExtraTypesConfigHandler(c *gin.Context) {
 // EnsureSyncTimingsConfig creates config.yml with sync timings if not present, or loads timings if present
 func EnsureSyncTimingsConfig() (map[string]int, error) {
 	defaultTimings := map[string]int{
-		"radarr": 15,
-		"sonarr": 15,
-		"extras": 360,
+		"healthcheck": 360,
+		"radarr":      15,
+		"sonarr":      15,
+		"extras":      360,
 	}
 
 	// If the file doesn't exist create it with defaults
@@ -761,6 +763,17 @@ func EnsureSyncTimingsConfig() (map[string]int, error) {
 	// Ensure extras key exists
 	if _, hasExtras := timings["extras"]; !hasExtras {
 		timings["extras"] = 360
+		cfg["syncTimings"] = timings
+		out, err := yamlv3.Marshal(cfg)
+		if err == nil {
+			_ = os.WriteFile(ConfigPath, out, 0644)
+		}
+	}
+
+	// Ensure healthcheck key exists (6 hours). If missing, persist it so the
+	// default schedule is present in config.yml.
+	if _, hasHealth := timings["healthcheck"]; !hasHealth {
+		timings["healthcheck"] = 360
 		cfg["syncTimings"] = timings
 		out, err := yamlv3.Marshal(cfg)
 		if err == nil {
@@ -1023,7 +1036,7 @@ func mergeFoldersIntoMappings(pathMappings []map[string]interface{}, mappings []
 func SaveSettingsHandler(section string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			ProviderURL  string `json:"url" yaml:"url"`
+			ProviderURL  string `json:"providerURL" yaml:"url"`
 			APIKey       string `json:"apiKey" yaml:"apiKey"`
 			PathMappings []struct {
 				From string `json:"from" yaml:"from"`
@@ -1044,19 +1057,33 @@ func SaveSettingsHandler(section string) gin.HandlerFunc {
 			"pathMappings": req.PathMappings,
 		}
 		config[section] = sectionData
-		err = writeConfigFile(config)
-		if err == nil {
-			// Update in-memory config
-			if Config != nil {
-				Config[section] = sectionData
-			}
-		}
-		if err != nil {
+
+		// Persist config
+		if err := writeConfigFile(config); err != nil {
 			respondError(c, http.StatusInternalServerError, err.Error())
 			return
 		}
+
+		// Update in-memory config
+		if Config != nil {
+			Config[section] = sectionData
+		}
+
+		// Trigger an immediate healthcheck task run so UI reflects new provider settings
+		triggerHealthcheckTaskAsync()
+
 		respondJSON(c, http.StatusOK, gin.H{"status": "saved"})
 	}
+}
+
+// triggerHealthcheckTaskAsync runs the healthcheck task in the background if available.
+func triggerHealthcheckTaskAsync() {
+	go func() {
+		if meta, ok := tasksMeta["healthcheck"]; ok && meta.Function != nil {
+			// Run via runTaskAsync to get proper status updates persisted
+			go runTaskAsync(meta.ID, meta.Function)
+		}
+	}()
 }
 
 func getGeneralSettingsHandler(c *gin.Context) {

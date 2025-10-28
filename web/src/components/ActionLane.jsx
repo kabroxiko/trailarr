@@ -1,22 +1,21 @@
 import React from "react";
 import PropTypes from "prop-types";
 import "./ActionLane.mobile.css";
+import { isDark } from "../utils/isDark";
 
 /**
  * ActionLane: A parametric lane for consistent action bar UI.
  * @param {Array} buttons - Array of button configs: { icon, label, onClick, disabled, loading, showLabel, key }
- * @param {boolean} darkMode - Use dark mode styles
  * @param {string} error - Optional error message
  * @param {React.ReactNode} children - Optional extra content
  */
 export default function ActionLane({
   buttons = [],
-  darkMode = false,
   error,
   children,
 }) {
-  const laneBg = darkMode ? "#23232a" : "var(--save-lane-bg, #f3f4f6)";
-  const laneText = darkMode ? "#e5e7eb" : "var(--save-lane-text, #222)";
+  const laneBg = isDark ? "#23232a" : "var(--save-lane-bg, #f3f4f6)";
+  const laneText = isDark ? "#e5e7eb" : "var(--save-lane-text, #222)";
   return (
     <div
       className="media-action-lane"
@@ -33,8 +32,8 @@ export default function ActionLane({
         alignItems: "flex-start",
         gap: "0.7rem",
         zIndex: 100,
-        boxShadow: darkMode ? "0 2px 8px #0008" : "0 2px 8px #0001",
-        borderBottom: darkMode ? "1.5px solid #444" : "1.5px solid #e5e7eb",
+        boxShadow: isDark ? "0 2px 8px #0008" : "0 2px 8px #0001",
+        borderBottom: isDark ? "1.5px solid #444" : "1.5px solid #e5e7eb",
         transition: "background 0.2s, color 0.2s",
       }}
     >
@@ -115,7 +114,6 @@ ActionLane.propTypes = {
       key: PropTypes.string,
     }),
   ),
-  darkMode: PropTypes.bool,
   error: PropTypes.string,
   children: PropTypes.node,
 };

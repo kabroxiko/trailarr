@@ -12,12 +12,19 @@ import GeneralSettings from "./components/GeneralSettings";
 import Tasks from "./components/Tasks";
 import HistoryPage from "./components/HistoryPage";
 import Wanted from "./components/Wanted";
-import SettingsPage from "./components/SettingsPage";
+import ProviderSettingsPage from "./components/ProviderSettingsPage";
 const ExtrasSettings = lazy(() => import("./components/ExtrasSettings"));
 import LogsPage from "./components/LogsPage";
-import { getSeries, getMovies, getRadarrSettings, getMoviesWanted, getSeriesWanted } from "./api";
-import LoadingMediaSkeleton from "./components/LoadingMediaSkeleton";
+import StatusPage from "./components/StatusPage";
+import {
+  getSeries,
+  getMovies,
+  getRadarrSettings,
+  getMoviesWanted,
+  getSeriesWanted,
+} from "./api";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { isDark, addDarkModeListener } from "./utils/isDark";
 
 // Small helper element to avoid repeating Suspense + ErrorBoundary
 // Use a minimal fallback (null) so the inner component's own skeleton
@@ -26,7 +33,11 @@ import ErrorBoundary from "./components/ErrorBoundary";
 const MediaDetailsElement = ({ items, loading, mediaType }) => (
   <Suspense fallback={null}>
     <ErrorBoundary>
-      <MediaDetails mediaItems={items} loading={loading} mediaType={mediaType} />
+      <MediaDetails
+        mediaItems={items}
+        loading={loading}
+        mediaType={mediaType}
+      />
     </ErrorBoundary>
   </Suspense>
 );
@@ -42,22 +53,8 @@ function filterAndSortMedia(items) {
 function App() {
   const location = useLocation();
   const [search, setSearch] = useState("");
-  const prefersDark = globalThis.matchMedia?.(
-    "(prefers-color-scheme: dark)",
-  ).matches;
-  const [darkMode, setDarkMode] = useState(prefersDark);
-  useEffect(() => {
-    const listener = (e) => setDarkMode(e.matches);
-    globalThis
-      .matchMedia("(prefers-color-scheme: dark)")
-      .addEventListener("change", listener);
-    return () =>
-      globalThis
-        .matchMedia("(prefers-color-scheme: dark)")
-        .removeEventListener("change", listener);
-  }, []);
   const [selectedSection, setSelectedSection] = useState("Movies");
-  const [selectedSystemSub, setSelectedSystemSub] = useState("Tasks");
+  const [selectedSystemSub, setSelectedSystemSub] = useState("Status");
 
   // Toast state
   const [toastMessage, setToastMessage] = useState("");
@@ -99,6 +96,9 @@ function App() {
       setSelectedSection("Series");
     } else if (path.startsWith("/history")) {
       setSelectedSection("History");
+    } else if (path.startsWith("/system/status")) {
+      setSelectedSection("System");
+      setSelectedSystemSub("Status");
     } else if (path.startsWith("/system/tasks")) {
       setSelectedSection("System");
       setSelectedSystemSub("Tasks");
@@ -111,16 +111,16 @@ function App() {
   useEffect(() => {
     setSeriesLoading(true);
     getSeries()
-        .then((data) => {
-          setSeries(filterAndSortMedia(data.series));
-          setSeriesLoading(false);
-          setSeriesError("");
-        })
-        .catch((e) => {
-          setSeries([]);
-          setSeriesLoading(false);
-          setSeriesError(e.message || "Sonarr series API not available");
-        });
+      .then((data) => {
+        setSeries(filterAndSortMedia(data.series));
+        setSeriesLoading(false);
+        setSeriesError("");
+      })
+      .catch((e) => {
+        setSeries([]);
+        setSeriesLoading(false);
+        setSeriesError(e.message || "Sonarr series API not available");
+      });
   }, []);
 
   // Prefetch wanted lists so Wanted page behaves like Movies/Series (no separate loading)
@@ -164,14 +164,14 @@ function App() {
 
   useEffect(() => {
     getRadarrSettings()
-        .then((res) => {
-          localStorage.setItem("radarrUrl", res.url || "");
-          localStorage.setItem("radarrApiKey", res.apiKey || "");
-        })
-        .catch(() => {
-          localStorage.setItem("radarrUrl", "");
-          localStorage.setItem("radarrApiKey", "");
-        });
+      .then((res) => {
+        localStorage.setItem("radarrUrl", res.url || "");
+        localStorage.setItem("radarrApiKey", res.apiKey || "");
+      })
+      .catch(() => {
+        localStorage.setItem("radarrUrl", "");
+        localStorage.setItem("radarrApiKey", "");
+      });
     // Sonarr settings fetch fallback
     async function getSonarrSettings() {
       try {
@@ -196,14 +196,14 @@ function App() {
   useEffect(() => {
     setMoviesLoading(true);
     getMovies()
-        .then((res) => {
-          setMovies(filterAndSortMedia(res.movies));
-          setMoviesLoading(false);
-        })
-        .catch((e) => {
-          setMoviesError(e.message);
-          setMoviesLoading(false);
-        });
+      .then((res) => {
+        setMovies(filterAndSortMedia(res.movies));
+        setMoviesLoading(false);
+      })
+      .catch((e) => {
+        setMoviesError(e.message);
+        setMoviesLoading(false);
+      });
   }, []);
 
   // Separate search results into title and overview matches
@@ -258,8 +258,8 @@ function App() {
       className="app-container"
       style={{ width: "100vw", minHeight: "100vh", overflowX: "hidden" }}
     >
+
       <Header
-        darkMode={darkMode}
         search={search}
         setSearch={setSearch}
         pageTitle={pageTitle}
@@ -280,7 +280,6 @@ function App() {
           setSelectedSection={setSelectedSection}
           selectedSettingsSub={selectedSettingsSub}
           setSelectedSettingsSub={setSelectedSettingsSub}
-          darkMode={darkMode}
           selectedSystemSub={selectedSystemSub}
           setSelectedSystemSub={setSelectedSystemSub}
           mobile={isMobile}
@@ -301,105 +300,160 @@ function App() {
             alignItems: "flex-start",
             justifyContent: "stretch",
             maxWidth: "100vw",
-            background: darkMode ? "#18181b" : "#fff",
-            color: darkMode ? "#e5e7eb" : "#222",
+            background: isDark ? "#18181b" : "#fff",
+            color: isDark ? "#e5e7eb" : "#222",
           }}
         >
           <div
             style={{
-              background: darkMode ? "#23232a" : "#fff",
-              boxShadow: darkMode ? "0 1px 4px #222" : "0 1px 4px #e5e7eb",
+              background: isDark ? "#23232a" : "#fff",
+              boxShadow: isDark ? "0 1px 4px #222" : "0 1px 4px #e5e7eb",
               padding: "0em",
               width: `calc(100% - ${window.innerWidth > 900 ? 220 : 0}px)`,
               maxWidth: `calc(100% - ${window.innerWidth > 900 ? 220 : 0}px)`,
               flex: 1,
               overflowY: "auto",
               overflowX: "hidden",
-              color: darkMode ? "#e5e7eb" : "#222",
+              color: isDark ? "#e5e7eb" : "#222",
               marginLeft: window.innerWidth > 900 ? 220 : 0,
               marginTop: 64,
             }}
           >
-              <Routes>
-                <Route
-                  path="/series"
-                  element={
-                    <MediaRouteComponent
-                      items={series}
-                      search={search}
-                      darkMode={darkMode}
-                      error={seriesError}
-                      getSearchSections={getSearchSections}
-                      type="series"
-                      loading={seriesLoading}
-                    />
-                  }
-                />
-                <Route
-                  path="/"
-                  element={
-                    <MediaRouteComponent
-                      items={movies}
-                      search={search}
-                      darkMode={darkMode}
-                      error={moviesError}
-                      getSearchSections={getSearchSections}
-                      type="movie"
-                      loading={moviesLoading}
-                    />
-                  }
-                />
+            <Routes>
+              <Route
+                path="/series"
+                element={
+                  <MediaRouteComponent
+                    items={series}
+                    search={search}
+                    error={seriesError}
+                    getSearchSections={getSearchSections}
+                    type="series"
+                    loading={seriesLoading}
+                  />
+                }
+              />
+              <Route
+                path="/"
+                element={
+                  <MediaRouteComponent
+                    items={movies}
+                    search={search}
+                    error={moviesError}
+                    getSearchSections={getSearchSections}
+                    type="movie"
+                    loading={moviesLoading}
+                  />
+                }
+              />
 
-                {/* Media details routes use a small shared element to avoid repeating Suspense + ErrorBoundary */}
-                <Route path="/movies/:id" element={<MediaDetailsElement items={movies} loading={moviesLoading} mediaType="movie" />} />
-                <Route path="/series/:id" element={<MediaDetailsElement items={series} loading={seriesLoading} mediaType="tv" />} />
-                <Route path="/wanted/movies/:id" element={<MediaDetailsElement items={movies} loading={moviesLoading} mediaType="movie" />} />
-                <Route path="/wanted/series/:id" element={<MediaDetailsElement items={series} loading={seriesLoading} mediaType="tv" />} />
-                <Route path="/history/movies/:id" element={<MediaDetailsElement items={movies} loading={moviesLoading} mediaType="movie" />} />
-                <Route path="/history/series/:id" element={<MediaDetailsElement items={series} loading={seriesLoading} mediaType="tv" />} />
+              {/* Media details routes use a small shared element to avoid repeating Suspense + ErrorBoundary */}
+              <Route
+                path="/movies/:id"
+                element={
+                  <MediaDetailsElement
+                    items={movies}
+                    loading={moviesLoading}
+                    mediaType="movie"
+                  />
+                }
+              />
+              <Route
+                path="/series/:id"
+                element={
+                  <MediaDetailsElement
+                    items={series}
+                    loading={seriesLoading}
+                    mediaType="tv"
+                  />
+                }
+              />
+              <Route
+                path="/wanted/movies/:id"
+                element={
+                  <MediaDetailsElement
+                    items={movies}
+                    loading={moviesLoading}
+                    mediaType="movie"
+                  />
+                }
+              />
+              <Route
+                path="/wanted/series/:id"
+                element={
+                  <MediaDetailsElement
+                    items={series}
+                    loading={seriesLoading}
+                    mediaType="tv"
+                  />
+                }
+              />
+              <Route
+                path="/history/movies/:id"
+                element={
+                  <MediaDetailsElement
+                    items={movies}
+                    loading={moviesLoading}
+                    mediaType="movie"
+                  />
+                }
+              />
+              <Route
+                path="/history/series/:id"
+                element={
+                  <MediaDetailsElement
+                    items={series}
+                    loading={seriesLoading}
+                    mediaType="tv"
+                  />
+                }
+              />
 
-                <Route path="/history" element={<HistoryPage />} />
-                <Route
-                  path="/wanted/movies"
-                  element={<Wanted
-                    darkMode={darkMode}
+              <Route path="/history" element={<HistoryPage />} />
+              <Route
+                path="/wanted/movies"
+                element={
+                  <Wanted
                     type="movie"
                     items={moviesWanted}
                     loading={moviesWantedLoading}
                     error={moviesWantedError}
-                  />}
-                />
-                <Route
-                  path="/wanted/series"
-                  element={<Wanted
-                    darkMode={darkMode}
+                  />
+                }
+              />
+              <Route
+                path="/wanted/series"
+                element={
+                  <Wanted
                     type="series"
                     items={seriesWanted}
                     loading={seriesWantedLoading}
                     error={seriesWantedError}
-                  />}
-                />
-                <Route
-                  path="/settings/radarr"
-                  element={<SettingsPage type="radarr" />}
-                />
-                <Route
-                  path="/settings/sonarr"
-                  element={<SettingsPage type="sonarr" />}
-                />
-                <Route path="/settings/general" element={<GeneralSettings />} />
-                <Route
-                  path="/settings/extras"
-                  element={
-                    <Suspense fallback={<div>Loading settings...</div>}>
-                      <ExtrasSettings darkMode={darkMode} />
-                    </Suspense>
-                  }
-                />
-                <Route path="/system/tasks" element={<Tasks />} />
-                <Route path="/system/logs" element={<LogsPage />} />
-                <Route path="/blacklist" element={<BlacklistPage />} />
-              </Routes>
+                  />
+                }
+              />
+              <Route
+                path="/settings/radarr"
+                element={<ProviderSettingsPage type="radarr" />}
+              />
+              <Route
+                path="/settings/sonarr"
+                element={<ProviderSettingsPage type="sonarr" />}
+              />
+              <Route path="/settings/general" element={<GeneralSettings />} />
+              <Route
+                path="/settings/extras"
+                element={
+                  <Suspense fallback={<div>Loading settings...</div>}>
+                    <ExtrasSettings />
+                  </Suspense>
+                }
+              />
+              <Route path="/system/tasks" element={<Tasks />} />
+              <Route path="/system/status" element={<StatusPage />} />
+              <Route path="/system/logs" element={<LogsPage />} />
+              <Route path="/blacklist" element={<BlacklistPage />} />
+            </Routes>
           </div>
         </main>
       </div>
@@ -408,7 +462,6 @@ function App() {
       <Toast
         message={toastMessage}
         onClose={() => setToastMessage("")}
-        darkMode={darkMode}
       />
     </div>
   );

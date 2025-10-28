@@ -1,9 +1,8 @@
 import React from "react";
+import PropTypes from "prop-types";
+import { isDark } from "../utils/isDark";
 
 export default function SectionHeader({ children, style = {}, ...props }) {
-  const isDark =
-    window.matchMedia &&
-    window.matchMedia("(prefers-color-scheme: dark)").matches;
   const headerColor = isDark ? "#eee" : "#222";
   const defaultStyle = {
     fontWeight: 600,
@@ -20,3 +19,8 @@ export default function SectionHeader({ children, style = {}, ...props }) {
     </h3>
   );
 }
+
+SectionHeader.propTypes = {
+  children: PropTypes.node,
+  style: PropTypes.object,
+};

@@ -5,7 +5,6 @@ import MediaList from "./components/MediaList";
 function MediaRouteComponent({
   items,
   search,
-  darkMode,
   error,
   getSearchSections,
   type,
@@ -18,7 +17,6 @@ function MediaRouteComponent({
         <>
           <MediaList
             items={titleMatches}
-            darkMode={darkMode}
             type={type}
             loading={loading}
           />
@@ -36,7 +34,6 @@ function MediaRouteComponent({
           </div>
           <MediaList
             items={overviewMatches}
-            darkMode={darkMode}
             type={type}
             loading={loading}
           />
@@ -44,7 +41,6 @@ function MediaRouteComponent({
       ) : (
         <MediaList
           items={items}
-          darkMode={darkMode}
           type={type}
           loading={loading}
         />
@@ -59,7 +55,6 @@ export default MediaRouteComponent;
 MediaRouteComponent.propTypes = {
   items: PropTypes.array.isRequired,
   search: PropTypes.string.isRequired,
-  darkMode: PropTypes.bool.isRequired,
   error: PropTypes.string,
   getSearchSections: PropTypes.func.isRequired,
   type: PropTypes.string.isRequired,

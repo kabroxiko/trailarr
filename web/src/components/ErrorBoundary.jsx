@@ -12,7 +12,7 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, info) {
-    // eslint-disable-next-line no-console
+     
     console.error("ErrorBoundary caught error:", error, info);
   }
 
@@ -21,7 +21,9 @@ class ErrorBoundary extends React.Component {
       const msg = this.props.message || "Failed to load component";
       return (
         <div style={{ padding: 48 }}>
-          <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>{msg}</div>
+          <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
+            {msg}
+          </div>
           <div>
             <button
               onClick={() => globalThis.location.reload()}

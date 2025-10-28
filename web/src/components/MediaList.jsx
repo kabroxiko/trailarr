@@ -3,15 +3,10 @@ import "./MediaList.mobile.css";
 import { Link } from "react-router-dom";
 import MediaCard from "./MediaCard.jsx";
 import PropTypes from "prop-types";
+import { isDark } from "../utils/isDark";
 
 // basePath: e.g. '/wanted/movies' or '/movies'
-export default function MediaList({
-  items,
-  darkMode,
-  type,
-  basePath,
-  loading,
-}) {
+export default function MediaList({ items, type, basePath, loading }) {
   // Prepare a sorted copy of items by sortTitle (case-insensitive). Fall back to title when sortTitle is missing.
   const sortedItems = useMemo(() => {
     return (items || []).slice().sort((a, b) => {
@@ -57,16 +52,16 @@ export default function MediaList({
             <div
               key={item.id + "-" + type}
               style={{
-                background: darkMode ? "#23232a" : "#fff",
+                background: isDark ? "#23232a" : "#fff",
                 borderRadius: 12,
-                boxShadow: darkMode ? "0 2px 8px #18181b" : "0 2px 8px #e5e7eb",
+                boxShadow: isDark ? "0 2px 8px #18181b" : "0 2px 8px #e5e7eb",
                 padding: "0.85rem",
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
                 height: 410,
                 transition: "box-shadow 0.2s",
-                border: darkMode ? "1px solid #333" : "1px solid #eee",
+                border: isDark ? "1px solid #333" : "1px solid #eee",
                 overflow: "hidden",
                 boxSizing: "border-box",
               }}
@@ -91,11 +86,7 @@ export default function MediaList({
                     height: "100%",
                   }}
                 >
-                  <MediaCard
-                    media={item}
-                    mediaType={type}
-                    darkMode={darkMode}
-                  />
+                  <MediaCard media={item} mediaType={type} />
                   <div style={{ flex: 1 }} />
                 </div>
               </Link>
@@ -121,9 +112,9 @@ export default function MediaList({
           <div
             style={{
               textAlign: "center",
-              color: darkMode ? "#ddd" : "#333",
-              background: darkMode ? "#121214" : "#fbfbfb",
-              border: darkMode ? "1px solid #222" : "1px solid #eee",
+              color: isDark ? "#ddd" : "#333",
+              background: isDark ? "#121214" : "#fbfbfb",
+              border: isDark ? "1px solid #222" : "1px solid #eee",
               padding: "1.25rem 1.5rem",
               borderRadius: 10,
               maxWidth: 800,
@@ -149,7 +140,6 @@ export default function MediaList({
 
 MediaList.propTypes = {
   items: PropTypes.arrayOf(PropTypes.object),
-  darkMode: PropTypes.bool,
   type: PropTypes.string,
   basePath: PropTypes.string,
   loading: PropTypes.bool,
@@ -157,7 +147,6 @@ MediaList.propTypes = {
 
 MediaList.defaultProps = {
   items: [],
-  darkMode: false,
   type: "movies",
   basePath: "",
   loading: false,

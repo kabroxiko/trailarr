@@ -3,11 +3,12 @@ import PropTypes from "prop-types";
 import { Box, Paper } from "@mui/material";
 import { DndProvider, useDrag, useDrop } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
+import { isDark } from "../utils/isDark";
 import SectionHeader from "./SectionHeader";
 
 const ItemTypes = { CHIP: "chip" };
 
-function TmdbChip({ tmdbType, plexType, onMove, isDark }) {
+function TmdbChip({ tmdbType, plexType, onMove }) {
   const [{ isDragging }, drag] = useDrag({
     type: ItemTypes.CHIP,
     item: { tmdbType, plexType },
@@ -60,7 +61,6 @@ ExtrasTypeMappingConfig.propTypes = {
   onMappingChange: PropTypes.func,
   tmdbTypes: PropTypes.array,
   plexTypes: PropTypes.array,
-  isDark: PropTypes.bool,
 };
 
 ExtrasTypeMappingConfig.defaultProps = {
@@ -68,10 +68,9 @@ ExtrasTypeMappingConfig.defaultProps = {
   onMappingChange: null,
   tmdbTypes: [],
   plexTypes: [],
-  isDark: false,
 };
 
-function PlexTypeBox({ plexType, onDropChip, children, isDark }) {
+function PlexTypeBox({ plexType, onDropChip, children }) {
   const [{ isOver, canDrop }, drop] = useDrop({
     accept: ItemTypes.CHIP,
     drop: (item) => onDropChip(item.tmdbType, plexType),
@@ -111,13 +110,11 @@ PlexTypeBox.propTypes = {
     .isRequired,
   onDropChip: PropTypes.func,
   children: PropTypes.node,
-  isDark: PropTypes.bool,
 };
 
 PlexTypeBox.defaultProps = {
   onDropChip: () => {},
   children: null,
-  isDark: false,
 };
 
 export default function ExtrasTypeMappingConfig({
@@ -125,7 +122,6 @@ export default function ExtrasTypeMappingConfig({
   onMappingChange,
   tmdbTypes,
   plexTypes,
-  isDark = false,
 }) {
   const handleMoveChip = (tmdbType, newPlexType) => {
     if (onMappingChange) {
@@ -160,7 +156,7 @@ export default function ExtrasTypeMappingConfig({
             return (
               <Box key={plexKey} display="flex" alignItems="center" mb={1}>
                 <Box
-                  minWidth={120}
+                  minWidth={140}
                   fontWeight={500}
                   fontSize={14}
                   textAlign="left"
@@ -176,7 +172,6 @@ export default function ExtrasTypeMappingConfig({
                     onDropChip={(tmdbType) =>
                       handleMoveChip(tmdbType, plexLabel)
                     }
-                    isDark={isDark}
                   >
                     {assignedTmdbTypes.map((tmdbType) => (
                       <TmdbChip
@@ -184,7 +179,6 @@ export default function ExtrasTypeMappingConfig({
                         tmdbType={tmdbType}
                         plexType={plexLabel}
                         onMove={handleMoveChip}
-                        isDark={isDark}
                       />
                     ))}
                   </PlexTypeBox>
@@ -202,10 +196,7 @@ TmdbChip.propTypes = {
   tmdbType: PropTypes.string.isRequired,
   plexType: PropTypes.string,
   onMove: PropTypes.func.isRequired,
-  isDark: PropTypes.bool,
 };
 
 TmdbChip.defaultProps = {
-  plexType: "",
-  isDark: false,
-};
+  plexType: "",};

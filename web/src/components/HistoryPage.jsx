@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { isDark, addDarkModeListener } from "../utils/isDark";
 import { Link } from "react-router-dom";
 import Container from "./Container";
 import { getHistory } from "../api";
@@ -110,8 +111,12 @@ const HistoryPage = () => {
           </colgroup>
           <thead>
             <tr>
-              <th style={{ ...thStyles, textAlign: "center", width: "20px" }}></th>
-              <th style={{ ...thStyles, textAlign: "center", width: "20px" }}>Media Type</th>
+              <th
+                style={{ ...thStyles, textAlign: "center", width: "20px" }}
+              ></th>
+              <th style={{ ...thStyles, textAlign: "center", width: "20px" }}>
+                Media Type
+              </th>
               <th style={{ ...thStyles, width: "220px" }}>Title</th>
               <th style={{ ...thStyles, width: "140px" }}>Extra Type</th>
               <th style={{ ...thStyles, width: "180px" }}>Extra Title</th>
@@ -122,22 +127,65 @@ const HistoryPage = () => {
             {skeletonRows.map((_, idx) => (
               <tr key={"skeleton-" + idx} style={trStyles(idx)}>
                 <td style={{ ...tdStyles, textAlign: "center" }}>
-                  <div style={{ width: 18, height: 18, borderRadius: 4, background: "var(--skeleton-bg, #eee)" }} />
+                  <div
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 4,
+                      background: "var(--skeleton-bg, #eee)",
+                    }}
+                  />
                 </td>
                 <td style={{ ...tdStyles, textAlign: "center" }}>
-                  <div style={{ width: 36, height: 12, borderRadius: 6, background: "var(--skeleton-bg, #eee)", margin: "0 auto" }} />
+                  <div
+                    style={{
+                      width: 36,
+                      height: 12,
+                      borderRadius: 6,
+                      background: "var(--skeleton-bg, #eee)",
+                      margin: "0 auto",
+                    }}
+                  />
                 </td>
                 <td style={{ ...tdStyles }}>
-                  <div style={{ width: "70%", height: 14, borderRadius: 6, background: "var(--skeleton-bg, #eee)" }} />
+                  <div
+                    style={{
+                      width: "70%",
+                      height: 14,
+                      borderRadius: 6,
+                      background: "var(--skeleton-bg, #eee)",
+                    }}
+                  />
                 </td>
                 <td style={{ ...tdStyles }}>
-                  <div style={{ width: "60%", height: 12, borderRadius: 6, background: "var(--skeleton-bg, #eee)" }} />
+                  <div
+                    style={{
+                      width: "60%",
+                      height: 12,
+                      borderRadius: 6,
+                      background: "var(--skeleton-bg, #eee)",
+                    }}
+                  />
                 </td>
                 <td style={{ ...tdStyles }}>
-                  <div style={{ width: "80%", height: 12, borderRadius: 6, background: "var(--skeleton-bg, #eee)" }} />
+                  <div
+                    style={{
+                      width: "80%",
+                      height: 12,
+                      borderRadius: 6,
+                      background: "var(--skeleton-bg, #eee)",
+                    }}
+                  />
                 </td>
                 <td style={{ ...tdStyles }}>
-                  <div style={{ width: 80, height: 12, borderRadius: 6, background: "var(--skeleton-bg, #eee)" }} />
+                  <div
+                    style={{
+                      width: 80,
+                      height: 12,
+                      borderRadius: 6,
+                      background: "var(--skeleton-bg, #eee)",
+                    }}
+                  />
                 </td>
               </tr>
             ))}
@@ -328,9 +376,6 @@ const HistoryPage = () => {
   // Set icon color variable for dark/light mode
   useEffect(() => {
     const setTableColors = () => {
-      const isDark = globalThis.matchMedia(
-        "(prefers-color-scheme: dark)",
-      ).matches;
       document.documentElement.style.setProperty(
         "--history-table-bg",
         isDark ? "#18181b" : "#fff",
@@ -389,14 +434,8 @@ const HistoryPage = () => {
       );
     };
     setTableColors();
-    globalThis
-      .matchMedia("(prefers-color-scheme: dark)")
-      .addEventListener("change", setTableColors);
-    return () => {
-      globalThis
-        .matchMedia("(prefers-color-scheme: dark)")
-        .removeEventListener("change", setTableColors);
-    };
+    const remove = addDarkModeListener(setTableColors);
+    return remove;
   }, []);
   // Page background style for dark mode
   const pageBgStyle = {

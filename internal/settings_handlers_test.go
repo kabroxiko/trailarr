@@ -40,7 +40,7 @@ func TestSaveSettingsHandlerWritesFileAndUpdatesConfig(t *testing.T) {
 	r.POST(radarrSettingsPath, SaveSettingsHandler("radarr"))
 
 	payload := map[string]interface{}{
-		"url":          radarrBaseURL,
+		"providerURL":  radarrBaseURL,
 		"apiKey":       "RKEY",
 		"pathMappings": []map[string]string{{"from": "/from", "to": "/to"}},
 	}

@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import PropTypes from "prop-types";
 import Select from "react-select";
 import axios from "axios";
 import Container from "./Container.jsx";
@@ -8,6 +7,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faSave, faSpinner } from "@fortawesome/free-solid-svg-icons";
 import SectionHeader from "./SectionHeader.jsx";
 import Toast from "./Toast.jsx";
+import { isDark, addDarkModeListener } from "../utils/isDark";
 
 import ExtrasTypeMappingConfig from "./ExtrasTypeMappingConfig.jsx";
 
@@ -39,11 +39,9 @@ const YTDLP_FLAGS = [
   { key: "maxSleepInterval", label: "Max Sleep Interval (s)", type: "number" },
 ];
 
-export default function ExtrasSettings({ darkMode }) {
-  const isDark =
-    typeof globalThis.matchMedia === "function"
-      ? globalThis.matchMedia("(prefers-color-scheme: dark)").matches
-      : false;
+export default function ExtrasSettings() {
+  // Read the current preference at render-time. For runtime change handling
+  // we register a listener below which will re-apply CSS variables.
   useEffect(() => {
     const setColors = () => {
       document.documentElement.style.setProperty(
@@ -88,15 +86,9 @@ export default function ExtrasSettings({ darkMode }) {
       );
     };
     setColors();
-    if (typeof globalThis.matchMedia === "function") {
-      const mq = globalThis.matchMedia("(prefers-color-scheme: dark)");
-      mq.addEventListener("change", setColors);
-      return () => {
-        mq.removeEventListener("change", setColors);
-      };
-    }
-    return undefined;
-  }, [darkMode, isDark]);
+    const remove = addDarkModeListener(() => setColors());
+    return remove;
+  }, [isDark]);
   const [settings, setSettings] = useState({});
   const [ytFlags, setYtFlags] = useState({});
   const [saving, setSaving] = useState(false);
@@ -146,7 +138,7 @@ export default function ExtrasSettings({ darkMode }) {
       .catch(() => {
         setError("Failed to load settings");
       });
-  }, [darkMode, isDark]);
+  }, [isDark]);
 
   const handleMappingChange = (newMapping) => {
     setMapping(newMapping);
@@ -223,12 +215,10 @@ export default function ExtrasSettings({ darkMode }) {
           },
         ]}
         error={error}
-        darkMode={darkMode}
       />
       <Toast
         message={toast}
         onClose={() => setToast("")}
-        darkMode={darkMode}
         success={toastSuccess}
       />
       <div
@@ -346,7 +336,6 @@ export default function ExtrasSettings({ darkMode }) {
         </div>
         {/* Mapping config UI integration */}
         <ExtrasTypeMappingConfig
-          isDark={isDark}
           mapping={mapping}
           onMappingChange={handleMappingChange}
           tmdbTypes={tmdbTypes}
@@ -438,11 +427,3 @@ export default function ExtrasSettings({ darkMode }) {
     </Container>
   );
 }
-
-ExtrasSettings.propTypes = {
-  darkMode: PropTypes.bool,
-};
-
-ExtrasSettings.defaultProps = {
-  darkMode: false,
-};

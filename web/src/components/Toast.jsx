@@ -1,10 +1,10 @@
 import React, { useEffect } from "react";
 import PropTypes from "prop-types";
+import { isDark } from "../utils/isDark";
 
 function ToastModal({
   message,
   onClose,
-  darkMode,
   borderColor,
   iconBg,
   closeBtnColor,
@@ -15,8 +15,6 @@ function ToastModal({
   toastBoxShadow,
   success,
 }) {
-  // darkMode is passed for theme decisions at the wrapper level; reference it to satisfy linter
-  void darkMode;
   const handleMouseOverOrFocus = (e) => {
     e.target.style.backgroundColor = closeBtnHoverBg;
     e.target.style.color = closeBtnHoverColor;
@@ -129,13 +127,11 @@ function ToastModal({
 function Toast({
   message,
   onClose,
-  darkMode,
   autoClose = true,
   duration = 4000,
   success = false,
 }) {
-  // darkMode is used indirectly by passed props in ToastModal; reference to satisfy linter
-  void darkMode;
+  // isDark is used indirectly by passed props in ToastModal; reference to satisfy linter
   useEffect(() => {
     if (message && autoClose) {
       const timer = setTimeout(() => {
@@ -147,41 +143,35 @@ function Toast({
 
   if (!message) return null;
 
-  let borderColor;
-  if (success) {
-    borderColor = darkMode ? "#22c55e" : "#16a34a";
-  } else {
-    borderColor = darkMode ? "#ef4444" : "#dc2626";
-  }
+  const successBorderColor = isDark ? "#22c55e" : "#16a34a";
+  const errorBorderColor = isDark ? "#ef4444" : "#dc2626";
+  const borderColor = success ? successBorderColor : errorBorderColor;
 
-  let iconBg;
-  if (success) {
-    iconBg = darkMode ? "#22c55e" : "#16a34a";
-  } else {
-    iconBg = "#ef4444";
-  }
-  const closeBtnColor = darkMode ? "#9ca3af" : "#6b7280";
-  const closeBtnHoverBg = darkMode ? "#374151" : "#f3f4f6";
-  const closeBtnHoverColor = darkMode ? "#e5e7eb" : "#1f2937";
-  const toastBg = darkMode ? "#1f1f23" : "#ffffff";
-  const toastColor = darkMode ? "#e5e7eb" : "#1f2937";
-  const toastBoxShadow = darkMode
-    ? "0 10px 25px rgba(0, 0, 0, 0.5), 0 4px 10px rgba(0, 0, 0, 0.3)"
-    : "0 10px 25px rgba(0, 0, 0, 0.15), 0 4px 10px rgba(0, 0, 0, 0.1)";
+  const palette = {
+    borderColor: borderColor,
+    iconBg: borderColor,
+    closeBtnColor: isDark ? "#9ca3af" : "#6b7280",
+    closeBtnHoverBg: isDark ? "#374151" : "#f3f4f6",
+    closeBtnHoverColor: isDark ? "#e5e7eb" : "#1f2937",
+    toastBg: isDark ? "#1f1f23" : "#ffffff",
+    toastColor: isDark ? "#e5e7eb" : "#1f2937",
+    toastBoxShadow: isDark
+      ? "0 10px 25px rgba(0, 0, 0, 0.5), 0 4px 10px rgba(0, 0, 0, 0.3)"
+      : "0 10px 25px rgba(0, 0, 0, 0.15), 0 4px 10px rgba(0, 0, 0, 0.1)",
+  };
 
   return (
     <ToastModal
       message={message}
       onClose={onClose}
-      darkMode={darkMode}
-      borderColor={borderColor}
-      iconBg={iconBg}
-      closeBtnColor={closeBtnColor}
-      closeBtnHoverBg={closeBtnHoverBg}
-      closeBtnHoverColor={closeBtnHoverColor}
-      toastBg={toastBg}
-      toastColor={toastColor}
-      toastBoxShadow={toastBoxShadow}
+      borderColor={palette.borderColor}
+      iconBg={palette.iconBg}
+      closeBtnColor={palette.closeBtnColor}
+      closeBtnHoverBg={palette.closeBtnHoverBg}
+      closeBtnHoverColor={palette.closeBtnHoverColor}
+      toastBg={palette.toastBg}
+      toastColor={palette.toastColor}
+      toastBoxShadow={palette.toastBoxShadow}
       success={success}
     />
   );
@@ -190,9 +180,22 @@ function Toast({
 Toast.propTypes = {
   message: PropTypes.string,
   onClose: PropTypes.func.isRequired,
-  darkMode: PropTypes.bool,
   autoClose: PropTypes.bool,
   duration: PropTypes.number,
+  success: PropTypes.bool,
+};
+
+ToastModal.propTypes = {
+  message: PropTypes.string.isRequired,
+  onClose: PropTypes.func.isRequired,
+  borderColor: PropTypes.string.isRequired,
+  iconBg: PropTypes.string.isRequired,
+  closeBtnColor: PropTypes.string.isRequired,
+  closeBtnHoverBg: PropTypes.string.isRequired,
+  closeBtnHoverColor: PropTypes.string.isRequired,
+  toastBg: PropTypes.string.isRequired,
+  toastColor: PropTypes.string.isRequired,
+  toastBoxShadow: PropTypes.string.isRequired,
   success: PropTypes.bool,
 };
 

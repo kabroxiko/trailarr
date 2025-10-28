@@ -1,31 +1,33 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { isDark } from "../utils/isDark";
+
+function formatLogDate(dateStr) {
+  const d = new Date(dateStr);
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday = d.toDateString() === yesterday.toDateString();
+  if (isToday) {
+    return d.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  } else if (isYesterday) {
+    return "Yesterday";
+  } else {
+    return d.toLocaleDateString([], {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  }
+}
 
 export default function LogsPage() {
   // Helper to format date
-  function formatLogDate(dateStr) {
-    const d = new Date(dateStr);
-    const now = new Date();
-    const isToday = d.toDateString() === now.toDateString();
-    const yesterday = new Date(now);
-    yesterday.setDate(now.getDate() - 1);
-    const isYesterday = d.toDateString() === yesterday.toDateString();
-    if (isToday) {
-      return d.toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      });
-    } else if (isYesterday) {
-      return "Yesterday";
-    } else {
-      return d.toLocaleDateString([], {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      });
-    }
-  }
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [logDir, setLogDir] = useState("");
@@ -46,9 +48,6 @@ export default function LogsPage() {
   }, []);
 
   // Dark mode detection
-  const isDark =
-    window.matchMedia &&
-    window.matchMedia("(prefers-color-scheme: dark)").matches;
   const bgColor = isDark ? "#222" : "#e3f2fd";
   const textColor = isDark ? "#eee" : "#333";
   const tableBg = isDark ? "#222" : "#f9fafb";

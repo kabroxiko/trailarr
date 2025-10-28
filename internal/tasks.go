@@ -78,7 +78,7 @@ func broadcastTaskStatus(_ map[string]interface{}) {
 	taskStatusClientsMu.Unlock()
 }
 
-var GlobalTaskStates TaskStates
+var GlobalTaskStates = make(TaskStates)
 
 // Note: task_times are stored in the embedded store (TaskTimesStoreKey). Disk file support removed.
 
@@ -127,9 +127,10 @@ func init() {
 		}
 	}
 	tasksMeta = map[TaskID]TaskMeta{
-		"radarr": {ID: "radarr", Name: "Sync with Radarr", Function: wrapWithQueue("radarr", func() error { return SyncMediaType(MediaTypeMovie) }), Order: 1},
-		"sonarr": {ID: "sonarr", Name: "Sync with Sonarr", Function: wrapWithQueue("sonarr", func() error { return SyncMediaType(MediaTypeTV) }), Order: 2},
-		"extras": {ID: "extras", Name: "Search for Missing Extras", Function: wrapWithQueue("extras", func() error { processExtras(context.Background()); return nil }), Order: 3},
+		"healthcheck": {ID: "healthcheck", Name: "Health Check", Function: wrapWithQueue("healthcheck", func() error { runHealthCheckTask(); return nil }), Order: 0},
+		"radarr":      {ID: "radarr", Name: "Sync with Radarr", Function: wrapWithQueue("radarr", func() error { return SyncMediaType(MediaTypeMovie) }), Order: 1},
+		"sonarr":      {ID: "sonarr", Name: "Sync with Sonarr", Function: wrapWithQueue("sonarr", func() error { return SyncMediaType(MediaTypeTV) }), Order: 2},
+		"extras":      {ID: "extras", Name: "Search for Missing Extras", Function: wrapWithQueue("extras", func() error { processExtras(context.Background()); return nil }), Order: 3},
 	}
 }
 
@@ -912,4 +913,51 @@ func wrapWithQueue(taskId TaskID, syncFunc func() error) func() {
 			}
 		})
 	}
+}
+
+// runHealthCheckTask performs provider connectivity checks and records any issues
+// into the configured store key. If no issues are found the health issues key
+// is cleared so the UI badge/count reflects the current state.
+func runHealthCheckTask() {
+	// Build issues similar to buildHealth but persist to store
+	radarrURL, radarrKey, _ := GetProviderUrlAndApiKey("radarr")
+	sonarrURL, sonarrKey, _ := GetProviderUrlAndApiKey("sonarr")
+
+	var issues []HealthMsg
+	if radarrURL == "" || radarrKey == "" {
+		issues = append(issues, HealthMsg{Message: "Radarr not configured (missing URL or API key)", Source: "Radarr", Level: "warning"})
+	} else {
+		if err := testMediaConnection(radarrURL, radarrKey, "radarr"); err != nil {
+			issues = append(issues, HealthMsg{Message: fmt.Sprintf("Radarr connectivity failed: %v", err), Source: "Radarr", Level: "warning"})
+		}
+	}
+
+	if sonarrURL == "" || sonarrKey == "" {
+		issues = append(issues, HealthMsg{Message: "Sonarr not configured (missing URL or API key)", Source: "Sonarr", Level: "warning"})
+	} else {
+		if err := testMediaConnection(sonarrURL, sonarrKey, "sonarr"); err != nil {
+			issues = append(issues, HealthMsg{Message: fmt.Sprintf("Sonarr connectivity failed: %v", err), Source: "Sonarr", Level: "warning"})
+		}
+	}
+
+	client := GetStoreClient()
+	ctx := context.Background()
+	// If no issues, clear the key so the UI stops showing stale problems
+	if len(issues) == 0 {
+		_ = client.Del(ctx, HealthIssuesStoreKey)
+		TrailarrLog(DEBUG, "Tasks", "Health check: no issues found, cleared %s", HealthIssuesStoreKey)
+		return
+	}
+
+	// Persist issues as JSON entries (one per issue).
+	// Replace the existing list so repeated runs don't accumulate duplicates.
+	_ = client.Del(ctx, HealthIssuesStoreKey)
+	for _, h := range issues {
+		if b, err := json.Marshal(h); err == nil {
+			_ = client.RPush(ctx, HealthIssuesStoreKey, b)
+		}
+	}
+	// Keep only recent 100 entries (defensive)
+	_ = client.LTrim(ctx, HealthIssuesStoreKey, -100, -1)
+	TrailarrLog(INFO, "Tasks", "Health check stored %d issue(s) to %s", len(issues), HealthIssuesStoreKey)
 }

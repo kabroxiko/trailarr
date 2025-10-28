@@ -5,11 +5,11 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBookmark } from "@fortawesome/free-regular-svg-icons";
 import { faLanguage } from "@fortawesome/free-solid-svg-icons";
 import ActorRow from "./ActorRow.jsx";
+import { isDark } from "../utils/isDark";
 
 export default function MediaInfoLane({
   media,
   mediaType,
-  darkMode = false,
   cast = [],
   castLoading = false,
   castError = "",
@@ -31,7 +31,8 @@ export default function MediaInfoLane({
   return (
     <div className="media-info-lane-outer" style={{ background }}>
       <div className="media-info-poster">
-        <img className="media-info-poster-img"
+        <img
+          className="media-info-poster-img"
           src={
             mediaType === "tv"
               ? `/mediacover/Series/${media.id}/poster-500.jpg`
@@ -106,7 +107,7 @@ export default function MediaInfoLane({
                   {showAlt && (
                     <div
                       role="tooltip"
-                      className={`media-info-alt-tooltip ${darkMode ? 'dark' : 'light'}`}
+                      className={`media-info-alt-tooltip ${isDark ? "dark" : "light"}`}
                     >
                       {showOriginal && (
                         <div className="media-info-section">
@@ -157,7 +158,9 @@ export default function MediaInfoLane({
             <ActorRow actors={cast.slice(0, 10)} />
           )}
           {!castLoading && !castError && (!cast || cast.length === 0) && (
-            <div className="media-info-muted-text">No cast information available.</div>
+            <div className="media-info-muted-text">
+              No cast information available.
+            </div>
           )}
         </div>
       </div>
@@ -168,7 +171,6 @@ export default function MediaInfoLane({
 MediaInfoLane.propTypes = {
   media: PropTypes.object,
   mediaType: PropTypes.oneOf(["movie", "series", "tv"]),
-  darkMode: PropTypes.bool,
   cast: PropTypes.array,
   castLoading: PropTypes.bool,
   castError: PropTypes.string,

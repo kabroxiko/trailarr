@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
+import { isDark, addDarkModeListener } from "../utils/isDark.js";
 import Toast from "./Toast.jsx";
 import PropTypes from "prop-types";
 import IconButton from "./IconButton.jsx";
 import SectionHeader from "./SectionHeader.jsx";
-import DirectoryPicker from "./DirectoryPicker";
+import DirectoryPicker from "./DirectoryPicker.jsx";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faFolderOpen,
@@ -22,7 +23,7 @@ function mapFoldersToPathMappings(folderPaths, pathMappings) {
   });
 }
 
-export default function SettingsPage({ type }) {
+export default function ProviderSettingsPage({ type }) {
   const [testing, setTesting] = useState(false);
   // Remove testResult state, use toast instead
   // type: 'radarr' or 'sonarr'
@@ -39,10 +40,6 @@ export default function SettingsPage({ type }) {
 
   useEffect(() => {
     const setColors = () => {
-      const isDark =
-        typeof globalThis.matchMedia === "function"
-          ? globalThis.matchMedia("(prefers-color-scheme: dark)").matches
-          : false;
       document.documentElement.style.setProperty(
         "--settings-bg",
         isDark ? "#222" : "#fff",
@@ -85,14 +82,8 @@ export default function SettingsPage({ type }) {
       );
     };
     setColors();
-    const mq =
-      typeof globalThis.matchMedia === "function"
-        ? globalThis.matchMedia("(prefers-color-scheme: dark)")
-        : null;
-    mq?.addEventListener("change", setColors);
-    return () => {
-      mq?.removeEventListener("change", setColors);
-    };
+    const remove = addDarkModeListener(setColors);
+    return remove;
   }, []);
 
   useEffect(() => {
@@ -274,12 +265,10 @@ export default function SettingsPage({ type }) {
           },
         ]}
         error={""}
-        darkMode={false}
       />
       <Toast
         message={toast}
         onClose={() => setToast("")}
-        darkMode={false}
         success={toastSuccess}
       />
       <div
@@ -470,6 +459,7 @@ export default function SettingsPage({ type }) {
                   <tr key={m.from + "-" + i}>
                     <td style={{ textAlign: "left", width: "45%" }}>
                       <input
+                        name={`pathMappingFrom-${i}`}
                         value={m.from}
                         onChange={(e) =>
                           handleMappingChange(i, "from", e.target.value)
@@ -498,6 +488,7 @@ export default function SettingsPage({ type }) {
                         }}
                       >
                         <DirectoryPicker
+                          name={`pathMappingTo-${i}`}
                           value={m.to}
                           onChange={(path) =>
                             handleMappingChange(i, "to", path)
@@ -567,6 +558,6 @@ export default function SettingsPage({ type }) {
   );
 }
 
-SettingsPage.propTypes = {
+ProviderSettingsPage.propTypes = {
   type: PropTypes.oneOf(["radarr", "sonarr"]).isRequired,
 };

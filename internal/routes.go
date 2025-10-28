@@ -2,12 +2,14 @@ package internal
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	iofs "io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	assets "trailarr/web"
@@ -330,12 +332,139 @@ func registerHealthAndTaskRoutes(r *gin.Engine) {
 		respondJSON(c, http.StatusOK, gin.H{"status": "ok"})
 	})
 
+	// Trigger an immediate healthcheck task run (used by UI test button)
+	// This route runs the health check synchronously and returns whether it
+	// succeeded (no issues) or failed (issues found / errors).
+	r.POST("/api/health/execute", handleHealthExecute)
+
+	// Trigger a provider-specific health check (radarr / sonarr)
+	r.POST("/api/health/:id/execute", handleProviderHealthExecute)
+
+	// System status for UI Status page
+	r.GET("/api/system/status", SystemStatusHandler())
+
 	// API endpoint for scheduled/queue status
 	r.GET("/api/tasks/status", GetAllTasksStatus())
 	r.GET("/api/tasks/queue", GetTaskQueueFileHandler())
 	// Debug endpoint: raw store contents and count
 	r.GET("/api/tasks/queue/debug", GetTaskQueueDebugHandler())
 	r.POST("/api/tasks/force", TaskHandler())
+}
+
+// handleHealthExecute runs the health check synchronously and responds with success status.
+func handleHealthExecute(c *gin.Context) {
+	// Run the healthcheck synchronously so the caller knows the result
+	runHealthCheckTask()
+	// After running, inspect persisted issues: empty == success
+	client := GetStoreClient()
+	ctx := context.Background()
+	vals, err := client.LRange(ctx, HealthIssuesStoreKey, 0, -1)
+	if err != nil {
+		respondJSON(c, http.StatusOK, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+	if len(vals) == 0 {
+		respondJSON(c, http.StatusOK, gin.H{"success": true})
+		return
+	}
+	respondJSON(c, http.StatusOK, gin.H{"success": false, "error": "issues found"})
+}
+
+// handleProviderHealthExecute runs a provider-specific connectivity test and updates persisted health issues.
+func handleProviderHealthExecute(c *gin.Context) {
+	id := c.Param("id")
+	provider := strings.ToLower(id)
+	if provider != "radarr" && provider != "sonarr" {
+		respondError(c, http.StatusBadRequest, "Unknown provider")
+		return
+	}
+
+	// Load provider settings
+	url, apiKey, err := GetProviderUrlAndApiKey(provider)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if url == "" || apiKey == "" {
+		respondError(c, http.StatusBadRequest, "Missing provider URL or API key")
+		return
+	}
+
+	// Run a single provider connectivity test
+	if err := testMediaConnection(url, apiKey, provider); err != nil {
+		// Persist a health issue for this provider (append)
+		persistProviderHealthIssue(provider, err)
+		// Match existing pattern for test endpoints: return error text in 200 body
+		respondError(c, http.StatusOK, fmt.Sprintf("%v", err))
+		return
+	}
+
+	// Success: remove any persisted health issues for this provider so UI clears quickly
+	clearProviderHealthIssues(provider)
+	respondJSON(c, http.StatusOK, gin.H{"success": true})
+}
+
+// persistProviderHealthIssue appends a health issue for the provider while removing any prior entries for the same provider.
+func persistProviderHealthIssue(provider string, terr error) {
+	client := GetStoreClient()
+	ctx := context.Background()
+	hm := HealthMsg{
+		Message: fmt.Sprintf("%s connectivity failed: %v", strings.Title(provider), terr),
+		Source:  strings.Title(provider),
+		Level:   "warning",
+	}
+	b, jerr := json.Marshal(hm)
+	if jerr != nil {
+		return
+	}
+
+	// Load existing entries and keep ones that are not from this provider
+	vals, _ := client.LRange(ctx, HealthIssuesStoreKey, 0, -1)
+	var keep []string
+	for _, v := range vals {
+		var ehm HealthMsg
+		if err := json.Unmarshal([]byte(v), &ehm); err == nil {
+			if strings.ToLower(ehm.Source) == provider {
+				// skip existing entries for this provider
+				continue
+			}
+		}
+		keep = append(keep, v)
+	}
+
+	// Replace list with kept entries and append the new issue
+	_ = client.Del(ctx, HealthIssuesStoreKey)
+	for _, v := range keep {
+		_ = client.RPush(ctx, HealthIssuesStoreKey, []byte(v))
+	}
+	_ = client.RPush(ctx, HealthIssuesStoreKey, b)
+	_ = client.LTrim(ctx, HealthIssuesStoreKey, -100, -1)
+}
+
+// clearProviderHealthIssues removes any persisted health issues for the specified provider.
+func clearProviderHealthIssues(provider string) {
+	client := GetStoreClient()
+	ctx := context.Background()
+	vals, _ := client.LRange(ctx, HealthIssuesStoreKey, 0, -1)
+	if len(vals) == 0 {
+		return
+	}
+	var keep []string
+	for _, v := range vals {
+		var hm HealthMsg
+		if err := json.Unmarshal([]byte(v), &hm); err == nil {
+			if strings.ToLower(hm.Source) == provider {
+				// drop entries for this provider
+				continue
+			}
+		}
+		keep = append(keep, v)
+	}
+	// Replace list with kept entries
+	_ = client.Del(ctx, HealthIssuesStoreKey)
+	for _, v := range keep {
+		_ = client.RPush(ctx, HealthIssuesStoreKey, []byte(v))
+	}
 }
 
 func registerEmbeddedStaticRoutes(r *gin.Engine, distFS iofs.FS) {

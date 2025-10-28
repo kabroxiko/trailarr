@@ -5,6 +5,9 @@ SRC_DIR=cmd/trailarr
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
 
+# Derive version from git if available; can be overridden by passing VERSION on the make command line.
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+
 ifeq ($(GOOS),windows)
 	BIN_EXT=.exe
 else
@@ -15,10 +18,12 @@ endif
 
 .PHONY: test test-fast
 
+
 build:
 	go mod tidy
 	go mod vendor
-	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -mod=vendor -o $(BIN_DIR)/$(APP_NAME)$(BIN_EXT) $(SRC_DIR)/main.go
+	# Inject AppVersion into the binary via ldflags so getModuleVersion can return a real app version.
+	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -mod=vendor -ldflags "-X trailarr/internal.AppVersion=$(VERSION)" -o $(BIN_DIR)/$(APP_NAME)$(BIN_EXT) $(SRC_DIR)/main.go
 	ls -l $(BIN_DIR)
 
 run: build

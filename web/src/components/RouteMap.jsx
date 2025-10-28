@@ -5,7 +5,7 @@ import GeneralSettings from "./GeneralSettings";
 import ExtrasSettings from "./ExtrasSettings";
 import HistoryPage from "./HistoryPage";
 import LogsPage from "./LogsPage";
-import SettingsPage from "./SettingsPage";
+import ProviderSettingsPage from "./ProviderSettingsPage";
 import Tasks from "./Tasks";
 import Wanted from "./Wanted";
 
@@ -38,8 +38,7 @@ export const appRoutes = [
     path: "/series",
     dynamic: true,
     render: (props) => {
-      const { series, search, darkMode, getSearchSections, seriesError } =
-        props;
+      const { series, search, getSearchSections, seriesError } = props;
       const { titleMatches, overviewMatches } = getSearchSections(series);
       return (
         <>
@@ -48,7 +47,6 @@ export const appRoutes = [
               {(() =>
                 React.createElement(MediaList, {
                   items: titleMatches,
-                  darkMode,
                   type: "series",
                 }))()}
               <div
@@ -63,15 +61,18 @@ export const appRoutes = [
               >
                 Other Results
               </div>
-                {(() =>
+              {(() =>
                 React.createElement(MediaList, {
                   items: overviewMatches,
-                  darkMode,
                   type: "series",
                 }))()}
             </>
           ) : (
-            (() => React.createElement(MediaList, { items: series, darkMode, type: "series" }))()
+            (() =>
+              React.createElement(MediaList, {
+                items: series,
+                type: "series",
+              }))()
           )}
           {seriesError && (
             <div style={{ color: "red", marginTop: "1em" }}>{seriesError}</div>
@@ -84,15 +85,17 @@ export const appRoutes = [
     path: "/",
     dynamic: true,
     render: (props) => {
-      const { movies, search, darkMode, getSearchSections, moviesError } =
-        props;
+      const { movies, search, getSearchSections, moviesError } = props;
       const { titleMatches, overviewMatches } = getSearchSections(movies);
       return (
         <>
           {search.trim() ? (
             <>
               {(() =>
-    React.createElement(MediaList, { items: titleMatches, darkMode, type: "movie" }))()}
+                React.createElement(MediaList, {
+                  items: titleMatches,
+                  type: "movie",
+                }))()}
               <div
                 style={{
                   margin: "1.5em 0 0.5em 1em",
@@ -105,10 +108,18 @@ export const appRoutes = [
               >
                 Other Results
               </div>
-              {(() => React.createElement(MediaList, { items: overviewMatches, darkMode, type: "movie" }))()}
+              {(() =>
+                React.createElement(MediaList, {
+                  items: overviewMatches,
+                  type: "movie",
+                }))()}
             </>
           ) : (
-            (() => React.createElement(MediaList, { items: movies, darkMode, type: "movie" }))()
+            (() =>
+              React.createElement(MediaList, {
+                items: movies,
+                type: "movie",
+              }))()
           )}
           {moviesError && (
             <div style={{ color: "red", marginTop: "1em" }}>{moviesError}</div>
@@ -122,10 +133,10 @@ export const appRoutes = [
     dynamic: true,
     render: (props) =>
       React.createElement(MediaDetails, {
-          mediaItems: props.movies,
-          loading: props.moviesLoading,
-          mediaType: "movie",
-        }),
+        mediaItems: props.movies,
+        loading: props.moviesLoading,
+        mediaType: "movie",
+      }),
   },
   {
     path: "/series/:id",
@@ -148,7 +159,6 @@ export const appRoutes = [
     render: (props) =>
       React.createElement(Wanted, {
         type: "movie",
-        darkMode: props.darkMode,
         items: props.movies,
       }),
   },
@@ -158,17 +168,16 @@ export const appRoutes = [
     render: (props) =>
       React.createElement(Wanted, {
         type: "series",
-        darkMode: props.darkMode,
         items: props.series,
       }),
   },
   {
     path: "/settings/radarr",
-    element: React.createElement(SettingsPage, { type: "radarr" }),
+    element: React.createElement(ProviderSettingsPage, { type: "radarr" }),
   },
   {
     path: "/settings/sonarr",
-    element: React.createElement(SettingsPage, { type: "sonarr" }),
+    element: React.createElement(ProviderSettingsPage, { type: "sonarr" }),
   },
   {
     path: "/settings/general",

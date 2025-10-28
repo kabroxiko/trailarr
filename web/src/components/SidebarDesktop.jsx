@@ -12,14 +12,15 @@ import {
   faServer,
 } from "@fortawesome/free-solid-svg-icons";
 import "./SidebarDesktop.css";
+import { isDark } from "../utils/isDark";
 
 export default function SidebarDesktop({
-  darkMode,
   selectedSection,
   selectedSettingsSub,
   selectedSystemSub,
   isOpen,
   handleToggle,
+  healthCount = 0,
 }) {
   function renderWantedSubmenu() {
     return (
@@ -28,9 +29,9 @@ export default function SidebarDesktop({
           listStyle: "none",
           padding: 0,
           margin: "8px 0 0 0",
-          background: darkMode ? "#23232a" : "#f3f4f6",
+          background: isDark ? "#23232a" : "#f3f4f6",
           borderRadius: 6,
-          color: darkMode ? "#e5e7eb" : "#222",
+          color: isDark ? "#e5e7eb" : "#222",
           textAlign: "left",
         }}
       >
@@ -41,9 +42,9 @@ export default function SidebarDesktop({
             : "3px solid transparent";
           let color;
           if (selected) {
-            color = darkMode ? "#a855f7" : "#6d28d9";
+            color = isDark ? "#a855f7" : "#6d28d9";
           } else {
-            color = darkMode ? "#e5e7eb" : "#333";
+            color = isDark ? "#e5e7eb" : "#333";
           }
           const fontWeight = selected ? "bold" : "normal";
           const styleLink = {
@@ -86,9 +87,9 @@ export default function SidebarDesktop({
           listStyle: "none",
           padding: 0,
           margin: "8px 0 0 0",
-          background: darkMode ? "#23232a" : "#f3f4f6",
+          background: isDark ? "#23232a" : "#f3f4f6",
           borderRadius: 6,
-          color: darkMode ? "#e5e7eb" : "#222",
+          color: isDark ? "#e5e7eb" : "#222",
           textAlign: "left",
         }}
       >
@@ -99,9 +100,9 @@ export default function SidebarDesktop({
             : "3px solid transparent";
           let color;
           if (selected) {
-            color = darkMode ? "#a855f7" : "#6d28d9";
+            color = isDark ? "#a855f7" : "#6d28d9";
           } else {
-            color = darkMode ? "#e5e7eb" : "#333";
+            color = isDark ? "#e5e7eb" : "#333";
           }
           const fontWeight = selected ? "bold" : "normal";
           const styleLink = {
@@ -144,22 +145,22 @@ export default function SidebarDesktop({
           listStyle: "none",
           padding: 0,
           margin: "8px 0 0 0",
-          background: darkMode ? "#23232a" : "#f3f4f6",
+          background: isDark ? "#23232a" : "#f3f4f6",
           borderRadius: 6,
-          color: darkMode ? "#e5e7eb" : "#222",
+          color: isDark ? "#e5e7eb" : "#222",
           textAlign: "left",
         }}
       >
-        {["Tasks", "Logs"].map((submenu) => {
+        {["Status", "Tasks", "Logs"].map((submenu) => {
           const selected = selectedSystemSub === submenu;
           const borderLeft = selected
             ? "3px solid #a855f7"
             : "3px solid transparent";
           let color;
           if (selected) {
-            color = darkMode ? "#a855f7" : "#6d28d9";
+            color = isDark ? "#a855f7" : "#6d28d9";
           } else {
-            color = darkMode ? "#e5e7eb" : "#333";
+            color = isDark ? "#e5e7eb" : "#333";
           }
           const fontWeight = selected ? "bold" : "normal";
           const styleLink = {
@@ -173,6 +174,11 @@ export default function SidebarDesktop({
             fontWeight,
             cursor: "pointer",
           };
+          const toRoute = (() => {
+            if (submenu === "Status") return "/system/status";
+            if (submenu === "Tasks") return "/system/tasks";
+            return "/system/logs";
+          })();
           return (
             <li
               key={submenu}
@@ -184,14 +190,44 @@ export default function SidebarDesktop({
                 fontWeight,
                 cursor: "pointer",
                 textAlign: "left",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
               }}
             >
               <Link
-                to={submenu === "Tasks" ? "/system/tasks" : "/system/logs"}
-                style={styleLink}
+                to={toRoute}
+                style={{ ...styleLink, flex: 1 }}
               >
                 {submenu}
               </Link>
+              {submenu === "Status" && healthCount > 0 && (
+                (() => {
+                  const display = healthCount > 9 ? "9+" : String(healthCount);
+                  return (
+                    <span
+                      style={{
+                        background: "#ef4444",
+                        color: "#fff",
+                        borderRadius: 6,
+                        width: 20,
+                        height: 20,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: "0.75em",
+                        lineHeight: 1,
+                        marginLeft: 8,
+                        textAlign: "center",
+                        boxSizing: "border-box",
+                      }}
+                      aria-label={`${healthCount} health issues`}
+                    >
+                      {display}
+                    </span>
+                  );
+                })()
+              )}
             </li>
           );
         })}
@@ -210,7 +246,7 @@ export default function SidebarDesktop({
   const firstSubmenuRoute = {
     Wanted: "/wanted/movies",
     Settings: "/settings/general",
-    System: "/system/tasks",
+    System: "/system/status",
   };
   const handleMenuClick = (name) => {
     if (firstSubmenuRoute[name]) {
@@ -224,8 +260,8 @@ export default function SidebarDesktop({
       className="sidebar-desktop"
       style={{
         width: 220,
-        background: darkMode ? "#23232a" : "#fff",
-        borderRight: darkMode ? "1px solid #333" : "1px solid #e5e7eb",
+        background: isDark ? "#23232a" : "#fff",
+        borderRight: isDark ? "1px solid #333" : "1px solid #e5e7eb",
         padding: "0em 0",
         height: "calc(100vh - 64px)",
         boxSizing: "border-box",
@@ -240,12 +276,12 @@ export default function SidebarDesktop({
           {menuItems.map(({ name, icon, route }) => {
             let background, color, fontWeight;
             if (selectedSection === name) {
-              background = darkMode ? "#333" : "#f3f4f6";
-              color = darkMode ? "#a855f7" : "#6d28d9";
+              background = isDark ? "#333" : "#f3f4f6";
+              color = isDark ? "#a855f7" : "#6d28d9";
               fontWeight = "bold";
             } else {
               background = "none";
-              color = darkMode ? "#e5e7eb" : "#333";
+              color = isDark ? "#e5e7eb" : "#333";
               fontWeight = "normal";
             }
             const styleCommon = {
@@ -278,7 +314,7 @@ export default function SidebarDesktop({
                       icon={
                         <FontAwesomeIcon
                           icon={icon}
-                          color={darkMode ? "#e5e7eb" : "#333"}
+                          color={isDark ? "#e5e7eb" : "#333"}
                         />
                       }
                       style={{
@@ -306,7 +342,7 @@ export default function SidebarDesktop({
                     icon={
                       <FontAwesomeIcon
                         icon={icon}
-                        color={darkMode ? "#e5e7eb" : "#333"}
+                        color={isDark ? "#e5e7eb" : "#333"}
                       />
                     }
                     style={{
@@ -333,10 +369,10 @@ export default function SidebarDesktop({
 }
 
 SidebarDesktop.propTypes = {
-  darkMode: PropTypes.bool.isRequired,
   selectedSection: PropTypes.string.isRequired,
   selectedSettingsSub: PropTypes.string,
   selectedSystemSub: PropTypes.string,
   isOpen: PropTypes.func.isRequired,
   handleToggle: PropTypes.func.isRequired,
+  healthCount: PropTypes.number,
 };

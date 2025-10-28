@@ -3,9 +3,9 @@ import IconButton from "./IconButton.jsx";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBars } from "@fortawesome/free-solid-svg-icons";
 import PropTypes from "prop-types";
+import { isDark } from "../utils/isDark";
 
 export default function Header({
-  darkMode,
   search,
   setSearch,
   mobile,
@@ -17,10 +17,10 @@ export default function Header({
       style={{
         width: "100%",
         height: 64,
-        background: darkMode ? "#23232a" : "#fff",
+        background: isDark ? "#23232a" : "#fff",
         display: "flex",
         alignItems: "center",
-        boxShadow: darkMode ? "0 1px 4px #222" : "0 1px 4px #e5e7eb",
+        boxShadow: isDark ? "0 1px 4px #222" : "0 1px 4px #e5e7eb",
         padding: "0 24px",
         position: "fixed",
         top: 0,
@@ -43,7 +43,7 @@ export default function Header({
             icon={
               <FontAwesomeIcon
                 icon={faBars}
-                color={darkMode ? "#e5e7eb" : "#23232a"}
+                color={isDark ? "#e5e7eb" : "#23232a"}
               />
             }
             onClick={onSidebarToggle}
@@ -56,7 +56,7 @@ export default function Header({
             style={{
               fontWeight: "bold",
               fontSize: 22,
-              color: darkMode ? "#e5e7eb" : "#23232a",
+              color: isDark ? "#e5e7eb" : "#23232a",
               letterSpacing: 0.5,
             }}
           >
@@ -78,6 +78,7 @@ export default function Header({
         <div style={{ position: "relative", width: 200 }}>
           <input
             type="search"
+            name="search"
             placeholder="Search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -87,8 +88,8 @@ export default function Header({
               border: "1px solid #e5e7eb",
               width: "100%",
               textAlign: "left",
-              color: darkMode ? "#e5e7eb" : "#222",
-              background: darkMode ? "#23232a" : "#fff",
+              color: isDark ? "#e5e7eb" : "#222",
+              background: isDark ? "#23232a" : "#fff",
               boxSizing: "border-box",
             }}
           />
@@ -99,7 +100,7 @@ export default function Header({
               top: "50%",
               transform: "translateY(-50%)",
               pointerEvents: "none",
-              color: darkMode ? "#e5e7eb" : "#888",
+              color: isDark ? "#e5e7eb" : "#888",
               fontSize: 16,
               display: "flex",
               alignItems: "center",
@@ -136,7 +137,6 @@ export default function Header({
   );
 }
 Header.propTypes = {
-  darkMode: PropTypes.bool.isRequired,
   search: PropTypes.string.isRequired,
   setSearch: PropTypes.func.isRequired,
   mobile: PropTypes.bool.isRequired,

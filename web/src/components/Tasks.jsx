@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { FaArrowsRotate, FaClock } from "react-icons/fa6";
 import "./Tasks.css";
+import { isDarkNow, addDarkModeListener } from "../utils/isDark";
 
 function formatTimeDiff({ from, to, suffix = "", roundType = "ceil" }) {
   if (!from || !to) return "-";
@@ -70,41 +71,41 @@ const iconNoOutline = {
   boxShadow: "none",
 };
 
-const getStyles = (darkMode) => ({
+const getStyles = (isDark) => ({
   table: {
     width: "100%",
     marginBottom: "2em",
     borderCollapse: "collapse",
-    background: darkMode ? "#23272f" : "#f6f7f9",
-    color: darkMode ? "#eee" : "#222",
+    background: isDark ? "#23272f" : "#f6f7f9",
+    color: isDark ? "#eee" : "#222",
     fontSize: "15px",
   },
   th: {
     textAlign: "left",
     padding: "0.75em 0.5em",
     fontWeight: 500,
-    background: darkMode ? "#23272f" : "#f6f7f9",
-    borderBottom: darkMode ? "1px solid #444" : "1px solid #e5e7eb",
-    color: darkMode ? "#eee" : "#222",
+    background: isDark ? "#23272f" : "#f6f7f9",
+    borderBottom: isDark ? "1px solid #444" : "1px solid #e5e7eb",
+    color: isDark ? "#eee" : "#222",
   },
   td: {
     padding: "0.75em 0.5em",
-    borderBottom: darkMode ? "1px solid #444" : "1px solid #e5e7eb",
-    background: darkMode ? "#181a20" : "#fff",
+    borderBottom: isDark ? "1px solid #444" : "1px solid #e5e7eb",
+    background: isDark ? "#181a20" : "#fff",
     textAlign: "left",
-    color: darkMode ? "#eee" : "#222",
+    color: isDark ? "#eee" : "#222",
   },
   header: {
     fontSize: "1.4em",
     fontWeight: 600,
     margin: "0 0 1em 0",
-    color: darkMode ? "#eee" : "#222",
+    color: isDark ? "#eee" : "#222",
   },
   container: {
     padding: "2em",
-    background: darkMode ? "#181a20" : "#f6f7f9",
+    background: isDark ? "#181a20" : "#f6f7f9",
     minHeight: "100vh",
-    color: darkMode ? "#eee" : "#222",
+    color: isDark ? "#eee" : "#222",
   },
 });
 
@@ -156,7 +157,7 @@ export default function Tasks() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(null);
   const [queues, setQueues] = useState([]);
-  const [darkMode, setDarkMode] = useState(false);
+  const [isDark, setIsDark] = useState(false);
   const activeRef = useRef(false);
 
   // Fetch status from API for polling fallback and force execute
@@ -213,12 +214,10 @@ export default function Tasks() {
     if (!location.pathname?.startsWith("/system/tasks")) {
       return;
     }
-    // Detect dark mode
-    const mq = globalThis.matchMedia("(prefers-color-scheme: dark)");
-    setDarkMode(mq.matches);
-    const handler = (e) => setDarkMode(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
+    // Detect dark mode and subscribe to changes
+    setIsDark(isDarkNow());
+    const remove = addDarkModeListener((v) => setIsDark(v));
+    return remove;
   }, [location.pathname]);
 
   useEffect(() => {
@@ -352,7 +351,7 @@ export default function Tasks() {
   // Helper to format interval values for scheduled tasks
   // Unified formatter for intervals and time differences
 
-  const styles = getStyles(darkMode);
+  const styles = getStyles(isDark);
 
   // Debounced loading indicator
   const [showLoading, setShowLoading] = useState(false);
@@ -376,9 +375,7 @@ export default function Tasks() {
   function renderScheduleStatus(scheduled) {
     if (scheduled.interval === 0) {
       return (
-        <span
-          style={{ color: darkMode ? "#888" : "#bbb", fontStyle: "italic" }}
-        >
+        <span style={{ color: isDark ? "#888" : "#bbb", fontStyle: "italic" }}>
           Disabled
         </span>
       );
@@ -387,15 +384,15 @@ export default function Tasks() {
     if (!status) return <span>-</span>;
     if (status === "running")
       return (
-        <span style={{ color: darkMode ? "#66aaff" : "#007bff" }}>Running</span>
+        <span style={{ color: isDark ? "#66aaff" : "#007bff" }}>Running</span>
       );
     if (status === "success")
       return (
-        <span style={{ color: darkMode ? "#4fdc7b" : "#28a745" }}>Success</span>
+        <span style={{ color: isDark ? "#4fdc7b" : "#28a745" }}>Success</span>
       );
     if (status === "failed")
       return (
-        <span style={{ color: darkMode ? "#ff6b6b" : "#dc3545" }}>Failed</span>
+        <span style={{ color: isDark ? "#ff6b6b" : "#dc3545" }}>Failed</span>
       );
     return <span>{status}</span>;
   }
@@ -404,9 +401,7 @@ export default function Tasks() {
   function renderScheduleInterval(scheduled) {
     if (scheduled.interval === 0) {
       return (
-        <span
-          style={{ color: darkMode ? "#888" : "#bbb", fontStyle: "italic" }}
-        >
+        <span style={{ color: isDark ? "#888" : "#bbb", fontStyle: "italic" }}>
           Disabled
         </span>
       );
@@ -418,9 +413,7 @@ export default function Tasks() {
   function renderScheduleNextExecution(scheduled) {
     if (scheduled.interval === 0) {
       return (
-        <span
-          style={{ color: darkMode ? "#888" : "#bbb", fontStyle: "italic" }}
-        >
+        <span style={{ color: isDark ? "#888" : "#bbb", fontStyle: "italic" }}>
           Disabled
         </span>
       );
@@ -437,9 +430,9 @@ export default function Tasks() {
   function getForceIconStyle(scheduled) {
     let color;
     if (scheduled.status === "running") {
-      color = darkMode ? "#66aaff" : "#007bff";
+      color = isDark ? "#66aaff" : "#007bff";
     } else {
-      color = darkMode ? "#aaa" : "#888";
+      color = isDark ? "#aaa" : "#888";
     }
     return {
       cursor: scheduled.status === "running" ? "not-allowed" : "pointer",
@@ -569,7 +562,7 @@ export default function Tasks() {
                     return (
                       <span
                         title="Success"
-                        style={{ color: darkMode ? "#4fdc7b" : "#28a745" }}
+                        style={{ color: isDark ? "#4fdc7b" : "#28a745" }}
                       >
                         &#x2714;
                       </span>
@@ -578,7 +571,7 @@ export default function Tasks() {
                     return (
                       <span
                         title="Running"
-                        style={{ color: darkMode ? "#66aaff" : "#007bff" }}
+                        style={{ color: isDark ? "#66aaff" : "#007bff" }}
                       >
                         &#x25D4;
                       </span>
@@ -587,7 +580,7 @@ export default function Tasks() {
                     return (
                       <span
                         title="Failed"
-                        style={{ color: darkMode ? "#ff6b6b" : "#dc3545" }}
+                        style={{ color: isDark ? "#ff6b6b" : "#dc3545" }}
                       >
                         &#x2716;
                       </span>
@@ -597,7 +590,7 @@ export default function Tasks() {
                       <FaClock
                         title="Queued"
                         style={{
-                          color: darkMode ? "#ffb300" : "#e6b800",
+                          color: isDark ? "#ffb300" : "#e6b800",
                           verticalAlign: "middle",
                         }}
                       />

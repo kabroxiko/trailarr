@@ -7,7 +7,6 @@ import "./ExtrasList.mobile.css";
 
 function ExtrasList({
   extrasByType,
-  darkMode,
   media,
   mediaType,
   setExtras,
@@ -106,7 +105,6 @@ function ExtrasList({
             idx={idx}
             type={type}
             typeExtras={typeExtras}
-            darkMode={darkMode}
             media={media}
             mediaType={mediaType}
             setExtras={setExtras}
@@ -128,7 +126,6 @@ function ExtrasList({
       <Toast
         message={toastMsg}
         onClose={() => setToastMsg("")}
-        darkMode={darkMode}
         success={toastSuccess}
       />
       {extrasByType["Trailers"] &&
@@ -144,7 +141,6 @@ function ExtrasList({
 
 ExtrasList.propTypes = {
   extrasByType: PropTypes.object.isRequired,
-  darkMode: PropTypes.bool,
   media: PropTypes.object,
   mediaType: PropTypes.string,
   setExtras: PropTypes.func,

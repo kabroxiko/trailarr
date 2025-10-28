@@ -1,8 +1,9 @@
 import React from "react";
 import PropTypes from "prop-types";
+import { isDark } from "../utils/isDark";
 
 // Compact MediaCard for use in MediaList (tiles)
-function MediaCard({ media, mediaType, darkMode = false }) {
+function MediaCard({ media, mediaType }) {
   if (!media) return null;
   const poster =
     mediaType === "series"
@@ -94,14 +95,14 @@ function MediaCard({ media, mediaType, darkMode = false }) {
       >
         <div
           style={{
-            color: darkMode ? "#fff" : "#222",
+            color: isDark ? "#fff" : "#222",
             fontWeight: 600,
             fontSize: 14,
           }}
         >
           {media.title}
         </div>
-        <div style={{ color: darkMode ? "#ddd" : "#666", fontSize: 12 }}>
+        <div style={{ color: isDark ? "#ddd" : "#666", fontSize: 12 }}>
           {media.year || media.airDate || ""}
         </div>
       </div>
@@ -124,7 +125,6 @@ MediaCard.propTypes = {
     airDate: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   }).isRequired,
   mediaType: PropTypes.string.isRequired,
-  darkMode: PropTypes.bool,
 };
 
 export default MediaCard;

@@ -12,6 +12,7 @@ import { useParams } from "react-router-dom";
 import PropTypes from "prop-types";
 import { getExtras } from "../api";
 import { searchYoutubeStream } from "../api.youtube.sse";
+import { isDark } from "../utils/isDark.js";
 
 YoutubeModal.propTypes = {
   open: PropTypes.bool.isRequired,
@@ -34,8 +35,15 @@ function YoutubeModal({ open, videoId, onClose }) {
   if (!open || !videoId) return null;
   return (
     <dialog open aria-modal="true" className="md-youtube-modal-backdrop">
-      <div className="md-youtube-modal-content" aria-label="YouTube modal dialog">
-        <button onClick={onClose} className="md-youtube-modal-close" aria-label="Close">
+      <div
+        className="md-youtube-modal-content"
+        aria-label="YouTube modal dialog"
+      >
+        <button
+          onClick={onClose}
+          className="md-youtube-modal-close"
+          aria-label="Close"
+        >
           ×
         </button>
         <YoutubePlayer videoId={videoId} />
@@ -152,7 +160,9 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
   const media = mediaItems.find((m) => String(m.id) === id);
 
   // Mobile detection local to this component (affects skeleton layout)
-  const [isMobile, setIsMobile] = useState(globalThis.window ? window.innerWidth < 900 : false);
+  const [isMobile, setIsMobile] = useState(
+    globalThis.window ? window.innerWidth < 900 : false,
+  );
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 900);
     window.addEventListener("resize", onResize);
@@ -253,21 +263,6 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
   const [error, setError] = useState("");
   const [modalMsg, setModalMsg] = useState("");
   const [showModal, setShowModal] = useState(false);
-  const prefersDark =
-    globalThis.window.matchMedia &&
-    globalThis.window.matchMedia("(prefers-color-scheme: dark)").matches;
-  const [darkMode, setDarkMode] = useState(prefersDark);
-  useEffect(() => {
-    const listener = (e) => setDarkMode(e.matches);
-    globalThis.window
-      .matchMedia("(prefers-color-scheme: dark)")
-      .addEventListener("change", listener);
-    return () =>
-      globalThis.window
-        .matchMedia("(prefers-color-scheme: dark)")
-        .removeEventListener("change", listener);
-  }, []);
-
   useEffect(() => {
     if (!media) return;
     setSearchLoading(true);
@@ -313,40 +308,46 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
   }, [media]);
 
   const renderSkeleton = () => {
-      return (
-        <Container className={`md-skeleton-container ${darkMode ? "md-dark" : ""} ${isMobile ? "md-mobile" : ""}`}>
-          <div className={`md-skeleton-main ${darkMode ? "md-dark" : ""} ${isMobile ? "md-mobile" : ""}`}>
-            {!isMobile && <div className={`md-skel-poster ${darkMode ? "md-dark" : ""}`} />}
-            <div className="md-skel-info" style={{ flex: 1 }}>
-              <div className="md-skel-title" />
-              <div className="md-skel-sub" />
-              <div className="md-skel-actions">
-                <div className="md-skel-action" />
-                <div className="md-skel-action" />
-              </div>
-              <div className="md-skel-line" />
-              <div className="md-skel-paragraph" />
-              <div className="md-skel-paragraph" style={{ width: "90%" }} />
-              <div className="md-skel-paragraph" style={{ width: "80%" }} />
+    return (
+      <Container
+        className={`md-skeleton-container ${isDark ? "md-dark" : ""} ${isMobile ? "md-mobile" : ""}`}
+      >
+        <div
+          className={`md-skeleton-main ${isDark ? "md-dark" : ""} ${isMobile ? "md-mobile" : ""}`}
+        >
+          {!isMobile && (
+            <div className={`md-skel-poster ${isDark ? "md-dark" : ""}`} />
+          )}
+          <div className="md-skel-info" style={{ flex: 1 }}>
+            <div className="md-skel-title" />
+            <div className="md-skel-sub" />
+            <div className="md-skel-actions">
+              <div className="md-skel-action" />
+              <div className="md-skel-action" />
             </div>
+            <div className="md-skel-line" />
+            <div className="md-skel-paragraph" />
+            <div className="md-skel-paragraph" style={{ width: "90%" }} />
+            <div className="md-skel-paragraph" style={{ width: "80%" }} />
           </div>
+        </div>
 
-          {/* Extras skeleton */}
-          <div className="md-extras-skeleton">
-            {["group-a", "group-b", "group-c"].map((gKey) => (
-              <div key={gKey} className="md-extras-group">
-                <div className="md-extras-group-title" />
-                <div className="md-extras-cards">
-                  {["s1", "s2", "s3", "s4"].map((sKey) => (
-                    <div key={sKey} className="md-extras-card-skel" />
-                  ))}
-                </div>
+        {/* Extras skeleton */}
+        <div className="md-extras-skeleton">
+          {["group-a", "group-b", "group-c"].map((gKey) => (
+            <div key={gKey} className="md-extras-group">
+              <div className="md-extras-group-title" />
+              <div className="md-extras-cards">
+                {["s1", "s2", "s3", "s4"].map((sKey) => (
+                  <div key={sKey} className="md-extras-card-skel" />
+                ))}
               </div>
-            ))}
-          </div>
-        </Container>
-      );
-    };
+            </div>
+          ))}
+        </div>
+      </Container>
+    );
+  };
 
   if (loading) return renderSkeleton();
   if (!media) {
@@ -401,7 +402,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
     <Container
       style={{
         minHeight: "100vh",
-        background: darkMode ? "#18181b" : "#f7f8fa",
+        background: isDark ? "#18181b" : "#f7f8fa",
         fontFamily: "Roboto, Arial, sans-serif",
         padding: 0,
       }}
@@ -469,24 +470,22 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
               globalThis.window.innerWidth > 900,
           },
         ]}
-        darkMode={darkMode}
       />
       <MediaInfoLane
         media={{ ...media, mediaType }}
         mediaType={mediaType}
-        darkMode={darkMode}
         error={error}
         cast={cast}
         castLoading={castLoading}
         castError={castError}
       />
-      <Toast message={error} onClose={() => setError("")} darkMode={darkMode} />
+      <Toast message={error} onClose={() => setError("")} />
       {/* Grouped extras by type, with 'Trailers' first */}
       {Object.keys(extrasByType).length > 0 && (
         <div
           style={{
             width: "100%",
-            background: darkMode ? "#23232a" : "#f3e8ff",
+            background: isDark ? "#23232a" : "#f3e8ff",
             overflow: "hidden",
             padding: "10px 10px", // Increased left/right padding
             margin: 0,
@@ -494,7 +493,6 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
         >
           <ExtrasList
             extrasByType={extrasByType}
-            darkMode={darkMode}
             media={media}
             mediaType={mediaType}
             setExtras={setExtras}

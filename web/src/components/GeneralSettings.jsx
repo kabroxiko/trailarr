@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
+import { isDark, addDarkModeListener } from "../utils/isDark";
 import IconButton from "./IconButton.jsx";
 import SectionHeader from "./SectionHeader.jsx";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -21,9 +22,6 @@ export default function GeneralSettings() {
   const [toastSuccess, setToastSuccess] = useState(true);
   useEffect(() => {
     const setColors = () => {
-      const isDark = globalThis.matchMedia(
-        "(prefers-color-scheme: dark)",
-      ).matches;
       document.documentElement.style.setProperty(
         "--settings-bg",
         isDark ? "#222" : "#fff",
@@ -50,14 +48,8 @@ export default function GeneralSettings() {
       );
     };
     setColors();
-    globalThis
-      .matchMedia("(prefers-color-scheme: dark)")
-      .addEventListener("change", setColors);
-    return () => {
-      globalThis
-        .matchMedia("(prefers-color-scheme: dark)")
-        .removeEventListener("change", setColors);
-    };
+    const remove = addDarkModeListener(setColors);
+    return remove;
   }, []);
   useEffect(() => {
     fetch("/api/settings/general")
@@ -147,12 +139,10 @@ export default function GeneralSettings() {
           },
         ]}
         error={""}
-        darkMode={false}
       />
       <Toast
         message={toast}
         onClose={() => setToast("")}
-        darkMode={false}
         success={toastSuccess}
       />
       <div

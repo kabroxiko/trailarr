@@ -40,14 +40,36 @@ function getSelectedSystemSub(path) {
   return "";
 }
 
-export default function Sidebar({ darkMode, mobile, open, onClose, onToggle }) {
+export default function Sidebar({ mobile, open, onClose }) {
   const location = useLocation();
   const path = location.pathname;
   const selectedSection = getSelectedSection(path);
+  const [healthCount, setHealthCount] = React.useState(0);
+
+  // Fetch minimal system status to show counters (e.g. health issue count) in the sidebar
+  React.useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch("/api/system/status");
+        if (!res.ok) return;
+        const json = await res.json();
+        if (cancelled) return;
+        const hc = Array.isArray(json?.health) ? json.health.length : 0;
+        setHealthCount(hc);
+      } catch (e) {
+        // Log errors - sidebar counters are non-critical
+        // eslint-disable-next-line no-console
+        console.error("Failed to load system status for sidebar:", e);
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [location.pathname]);
   const selectedSettingsSub = getSelectedSettingsSub(path);
   const selectedSystemSub = getSelectedSystemSub(path);
-  // onToggle may be unused depending on consumer; reference to avoid linter errors
-  void onToggle;
 
   // Local state for submenu expansion
   const [openMenus, setOpenMenus] = React.useState({});
@@ -78,7 +100,6 @@ export default function Sidebar({ darkMode, mobile, open, onClose, onToggle }) {
   if (mobile) {
     return (
       <SidebarMobile
-        darkMode={darkMode}
         open={open}
         onClose={onClose}
         selectedSection={selectedSection}
@@ -86,25 +107,24 @@ export default function Sidebar({ darkMode, mobile, open, onClose, onToggle }) {
         selectedSystemSub={selectedSystemSub}
         isOpen={isOpen}
         handleToggle={handleToggle}
+        healthCount={healthCount}
       />
     );
   }
   return (
     <SidebarDesktop
-      darkMode={darkMode}
       selectedSection={selectedSection}
       selectedSettingsSub={selectedSettingsSub}
       selectedSystemSub={selectedSystemSub}
       isOpen={isOpen}
       handleToggle={handleToggle}
+      healthCount={healthCount}
     />
   );
 }
 
 Sidebar.propTypes = {
-  darkMode: PropTypes.bool.isRequired,
   mobile: PropTypes.bool,
   open: PropTypes.bool,
   onClose: PropTypes.func,
-  onToggle: PropTypes.func,
 };

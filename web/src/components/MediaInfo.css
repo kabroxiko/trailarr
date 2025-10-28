@@ -71,7 +71,7 @@
   object-fit: cover;
   border-radius: 4px;
   background: #222;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.22);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
 }
 
 .media-info-title {
@@ -118,7 +118,7 @@
   background: #fff;
   color: #111;
   border: 1px solid #ddd;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
   padding: 8px;
   border-radius: 8px;
   min-width: 200px;

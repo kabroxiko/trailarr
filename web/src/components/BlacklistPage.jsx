@@ -5,6 +5,7 @@ import ExtraCard from "./ExtraCard.jsx";
 import YoutubePlayer from "./YoutubePlayer.jsx";
 import Container from "./Container.jsx";
 import SectionHeader from "./SectionHeader.jsx";
+import { isDark } from "../utils/isDark";
 
 // Helper to normalize reason string for grouping (moved to outer scope)
 function normalizeReason(reason) {
@@ -23,11 +24,7 @@ function normalizeReason(reason) {
     return "The uploader has not made this video available in your country.";
   }
   // 3. Age-restricted video
-  if (
-    reason.includes(
-      "Sign in to confirm your age.",
-    )
-  ) {
+  if (reason.includes("Sign in to confirm your age.")) {
     return "Sign in to confirm your age.";
   }
   // 4. Did not get any data blocks
@@ -47,28 +44,9 @@ function normalizeReason(reason) {
 function BlacklistGroupItem({
   item,
   idx,
-  darkMode,
   setYoutubeModal,
   setBlacklist,
 }) {
-  BlacklistGroupItem.propTypes = {
-    item: PropTypes.shape({
-      extraTitle: PropTypes.string,
-      extraType: PropTypes.string,
-      youtubeId: PropTypes.string,
-      reason: PropTypes.string,
-      message: PropTypes.string,
-      Status: PropTypes.string,
-      status: PropTypes.string,
-      mediaId: PropTypes.string,
-      mediaTitle: PropTypes.string,
-      mediaType: PropTypes.string,
-    }).isRequired,
-    idx: PropTypes.number.isRequired,
-    darkMode: PropTypes.bool,
-    setYoutubeModal: PropTypes.func.isRequired,
-    setBlacklist: PropTypes.func.isRequired,
-  };
   const extra = {
     ExtraTitle: item.extraTitle || "",
     ExtraType: item.extraType || "",
@@ -82,18 +60,15 @@ function BlacklistGroupItem({
     title: item.mediaTitle || "",
   };
   const mediaType = item.mediaType || "";
-  // Use a more stable unique key for this card
   const uniqueKey = `${extra.YoutubeId || ""}-${media.id || ""}-${mediaType}`;
-  // Extract href logic for clarity
   let mediaHref = "";
-  if (mediaType === "movie") {
-    mediaHref = `/movies/${media.id}`;
-  } else if (mediaType === "tv") {
-    mediaHref = `/series/${media.id}`;
-  }
+  if (mediaType === "movie") mediaHref = `/movies/${media.id}`;
+  else if (mediaType === "tv") mediaHref = `/series/${media.id}`;
+
   const handleDownloaded = () => {
     setBlacklist((prev) => markBlacklistItemDownloaded(prev, extra.YoutubeId));
   };
+
   return (
     <div
       key={uniqueKey}
@@ -107,7 +82,6 @@ function BlacklistGroupItem({
         extra={extra}
         idx={idx}
         typeExtras={[]}
-        darkMode={darkMode}
         media={media}
         mediaType={mediaType}
         // Pass the page-level setter so ExtraCard's unban handler can refresh
@@ -128,7 +102,7 @@ function BlacklistGroupItem({
             style={{
               marginTop: 8,
               fontSize: "0.97em",
-              color: darkMode ? "#f3f4f6" : "#23232a",
+              color: isDark ? "#f3f4f6" : "#23232a",
               textDecoration: "none",
               textAlign: "center",
               wordBreak: "break-word",
@@ -145,7 +119,7 @@ function BlacklistGroupItem({
             style={{
               marginTop: 8,
               fontSize: "0.97em",
-              color: darkMode ? "#f3f4f6" : "#23232a",
+              color: isDark ? "#f3f4f6" : "#23232a",
               background: "none",
               border: "none",
               textDecoration: "none",
@@ -163,6 +137,25 @@ function BlacklistGroupItem({
     </div>
   );
 }
+
+BlacklistGroupItem.propTypes = {
+  item: PropTypes.shape({
+    extraTitle: PropTypes.string,
+    extraType: PropTypes.string,
+    youtubeId: PropTypes.string,
+    reason: PropTypes.string,
+    message: PropTypes.string,
+    Status: PropTypes.string,
+    status: PropTypes.string,
+    mediaId: PropTypes.string,
+    mediaTitle: PropTypes.string,
+    mediaType: PropTypes.string,
+  }).isRequired,
+  idx: PropTypes.number.isRequired,
+  setYoutubeModal: PropTypes.func.isRequired,
+  setBlacklist: PropTypes.func.isRequired,
+};
+
 // Helper to mark a blacklist item as downloaded
 function markBlacklistItemDownloaded(prev, youtubeId) {
   if (!prev) return prev;
@@ -178,6 +171,7 @@ function markBlacklistItemDownloaded(prev, youtubeId) {
   for (const k in prev) updated[k] = update(prev[k]);
   return updated;
 }
+
 // Helper to update blacklist items with queue status
 function updateBlacklistWithQueue(prev, queue) {
   if (!prev) return prev;
@@ -210,7 +204,7 @@ function preloadImages(urls) {
   );
 }
 
-function BlacklistPage({ darkMode }) {
+export default function BlacklistPage() {
   const [blacklist, setBlacklist] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -227,16 +221,10 @@ function BlacklistPage({ darkMode }) {
       })
       .then((data) => {
         setBlacklist(data);
-        // Collect image URLs but do NOT block rendering on them. Preload in
-        // background to improve perceived load time — waiting for all images
-        // to finish makes the page feel slow when some external thumbnails
-        // are slow or 404.
         const items = Array.isArray(data) ? data : Object.values(data).flat();
         const urls = items
           .map((item) => item.thumbnail || item.poster || item.image || null)
           .filter(Boolean);
-        // Kick off background preloads but don't await them. Limit to a small
-        // number to avoid hammering external hosts on large blacklists.
         if (urls.length > 0) {
           const MAX_PRELOAD = 40;
           preloadImages(urls.slice(0, MAX_PRELOAD)).catch(() => {});
@@ -257,9 +245,6 @@ function BlacklistPage({ darkMode }) {
       globalThis.location.host +
       "/ws/download-queue";
     const ws = new globalThis.WebSocket(wsUrl);
-    BlacklistPage.propTypes = {
-      darkMode: PropTypes.bool,
-    };
     wsRef.current = ws;
     ws.onopen = () => {
       console.debug("[WebSocket] Connected to download queue (BlacklistPage)");
@@ -309,7 +294,7 @@ function BlacklistPage({ darkMode }) {
                 width: 220,
                 minHeight: 280,
                 borderRadius: 12,
-                background: darkMode ? "#23232a" : "#f3f4f6",
+                background: isDark ? "#23232a" : "#f3f4f6",
                 padding: 12,
                 boxSizing: "border-box",
                 display: "flex",
@@ -321,11 +306,25 @@ function BlacklistPage({ darkMode }) {
                 style={{
                   height: 140,
                   borderRadius: 8,
-                  background: darkMode ? "#1f2937" : "#e5e7eb",
+                  background: isDark ? "#1f2937" : "#e5e7eb",
                 }}
               />
-              <div style={{ height: 14, width: "70%", borderRadius: 6, background: darkMode ? "#111827" : "#e9ecef" }} />
-              <div style={{ height: 12, width: "50%", borderRadius: 6, background: darkMode ? "#111827" : "#e9ecef" }} />
+              <div
+                style={{
+                  height: 14,
+                  width: "70%",
+                  borderRadius: 6,
+                  background: isDark ? "#111827" : "#e9ecef",
+                }}
+              />
+              <div
+                style={{
+                  height: 12,
+                  width: "50%",
+                  borderRadius: 6,
+                  background: isDark ? "#111827" : "#e9ecef",
+                }}
+              />
               <div style={{ flex: 1 }} />
             </div>
           ))}
@@ -337,13 +336,11 @@ function BlacklistPage({ darkMode }) {
   if (!blacklist || (Array.isArray(blacklist) && blacklist.length === 0))
     return <div style={{ padding: 32 }}>No blacklisted extras found.</div>;
 
-  // If the blacklist is an object, convert to array for display
+  // Normalize to array for rendering
   let items = null;
-  if (Array.isArray(blacklist)) {
-    items = blacklist;
-  } else if (blacklist && typeof blacklist === "object") {
+  if (Array.isArray(blacklist)) items = blacklist;
+  else if (blacklist && typeof blacklist === "object")
     items = Object.values(blacklist);
-  }
   if (!Array.isArray(items)) {
     return (
       <div style={{ padding: 32, color: "red" }}>
@@ -363,18 +360,16 @@ function BlacklistPage({ darkMode }) {
     groups[normReason].push(item);
   }
 
-  // If all groups are empty, show a message
   const totalItems = Object.values(groups).reduce(
     (acc, arr) => acc + arr.length,
     0,
   );
-  if (totalItems === 0) {
+  if (totalItems === 0)
     return <div style={{ padding: 32 }}>No blacklisted extras found.</div>;
-  }
 
   const gridStyle = {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, 220px)", // desktop: fixed card width
+    gridTemplateColumns: "repeat(auto-fill, 220px)",
     gap: 24,
     padding: 32,
     margin: 0,
@@ -389,12 +384,11 @@ function BlacklistPage({ darkMode }) {
       style={{
         minHeight: "calc(100vh - 64px)",
         padding: 0,
-        background: darkMode ? "#18181b" : "#fff",
-        color: darkMode ? "#f3f4f6" : "#18181b",
+        background: isDark ? "#18181b" : "#fff",
+        color: isDark ? "#f3f4f6" : "#18181b",
       }}
     >
       {Object.entries(groups).map(([reason, groupItems]) => {
-        // Only shrink if reason contains this phrase
         let displayReason = reason;
         if (
           reason.includes("Did not get any data blocks") &&
@@ -402,21 +396,19 @@ function BlacklistPage({ darkMode }) {
         ) {
           displayReason = reason.slice(0, 1000) + "...";
         }
-        // Use a stable key based on the group reason
         const groupKey = reason.replaceAll(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
         return (
           <div
             key={groupKey}
             style={{
               marginBottom: 40,
-              background: darkMode ? "#23232a" : "#f3f4f6",
+              background: isDark ? "#23232a" : "#f3f4f6",
               borderRadius: 12,
-              boxShadow: darkMode ? "0 2px 8px #0004" : "0 2px 8px #0001",
+              boxShadow: isDark ? "0 2px 8px #0004" : "0 2px 8px #0001",
               padding: 12,
             }}
           >
             <SectionHeader
-              darkMode={darkMode}
               style={{
                 fontWeight: 600,
                 fontSize: "1.1em",
@@ -434,16 +426,9 @@ function BlacklistPage({ darkMode }) {
             >
               {groupItems.map((item, idx) => (
                 <BlacklistGroupItem
-                  key={
-                    (item.youtubeId || "") +
-                    "-" +
-                    (item.mediaId || "") +
-                    "-" +
-                    (item.mediaType || "")
-                  }
+                  key={`${item.youtubeId || ""}-${item.mediaId || ""}-${item.mediaType || ""}`}
                   item={item}
                   idx={idx}
-                  darkMode={darkMode}
                   setYoutubeModal={setYoutubeModal}
                   setBlacklist={setBlacklist}
                 />
@@ -452,7 +437,7 @@ function BlacklistPage({ darkMode }) {
           </div>
         );
       })}
-      {/* Render YouTube modal only once at the page level */}
+
       {youtubeModal.open && youtubeModal.videoId && (
         <div
           style={{
@@ -505,5 +490,3 @@ function BlacklistPage({ darkMode }) {
     </Container>
   );
 }
-
-export default BlacklistPage;

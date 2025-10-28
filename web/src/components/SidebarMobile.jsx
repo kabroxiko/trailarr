@@ -11,9 +11,9 @@ import {
   faBan,
   faServer,
 } from "@fortawesome/free-solid-svg-icons";
+import { isDark } from "../utils/isDark";
 
 export default function SidebarMobile({
-  darkMode,
   open,
   onClose,
   selectedSection,
@@ -21,6 +21,7 @@ export default function SidebarMobile({
   selectedSystemSub,
   isOpen,
   handleToggle,
+  healthCount = 0,
 }) {
   function renderWantedSubmenu() {
     return (
@@ -29,9 +30,9 @@ export default function SidebarMobile({
           listStyle: "none",
           padding: 0,
           margin: "8px 0 0 0",
-          background: darkMode ? "#23232a" : "#f3f4f6",
+          background: isDark ? "#23232a" : "#f3f4f6",
           borderRadius: 6,
-          color: darkMode ? "#e5e7eb" : "#222",
+          color: isDark ? "#e5e7eb" : "#222",
           textAlign: "left",
         }}
       >
@@ -42,9 +43,9 @@ export default function SidebarMobile({
             : "3px solid transparent";
           let color;
           if (selected) {
-            color = darkMode ? "#a855f7" : "#6d28d9";
+            color = isDark ? "#a855f7" : "#6d28d9";
           } else {
-            color = darkMode ? "#e5e7eb" : "#333";
+            color = isDark ? "#e5e7eb" : "#333";
           }
           const fontWeight = selected ? "bold" : "normal";
           const styleLink = {
@@ -91,9 +92,9 @@ export default function SidebarMobile({
           listStyle: "none",
           padding: 0,
           margin: "8px 0 0 0",
-          background: darkMode ? "#23232a" : "#f3f4f6",
+          background: isDark ? "#23232a" : "#f3f4f6",
           borderRadius: 6,
-          color: darkMode ? "#e5e7eb" : "#222",
+          color: isDark ? "#e5e7eb" : "#222",
           textAlign: "left",
         }}
       >
@@ -104,9 +105,9 @@ export default function SidebarMobile({
             : "3px solid transparent";
           let color;
           if (selected) {
-            color = darkMode ? "#a855f7" : "#6d28d9";
+            color = isDark ? "#a855f7" : "#6d28d9";
           } else {
-            color = darkMode ? "#e5e7eb" : "#333";
+            color = isDark ? "#e5e7eb" : "#333";
           }
           const fontWeight = selected ? "bold" : "normal";
           const styleLink = {
@@ -153,22 +154,22 @@ export default function SidebarMobile({
           listStyle: "none",
           padding: 0,
           margin: "8px 0 0 0",
-          background: darkMode ? "#23232a" : "#f3f4f6",
+          background: isDark ? "#23232a" : "#f3f4f6",
           borderRadius: 6,
-          color: darkMode ? "#e5e7eb" : "#222",
+          color: isDark ? "#e5e7eb" : "#222",
           textAlign: "left",
         }}
       >
-        {["Tasks", "Logs"].map((submenu) => {
+        {["Status", "Tasks", "Logs"].map((submenu) => {
           const selected = selectedSystemSub === submenu;
           const borderLeft = selected
             ? "3px solid #a855f7"
             : "3px solid transparent";
           let color;
           if (selected) {
-            color = darkMode ? "#a855f7" : "#6d28d9";
+            color = isDark ? "#a855f7" : "#6d28d9";
           } else {
-            color = darkMode ? "#e5e7eb" : "#333";
+            color = isDark ? "#e5e7eb" : "#333";
           }
           const fontWeight = selected ? "bold" : "normal";
           const styleLink = {
@@ -182,28 +183,66 @@ export default function SidebarMobile({
             fontWeight,
             cursor: "pointer",
           };
-          return (
-            <li
-              key={submenu}
-              style={{
-                padding: "0.5em 1em",
-                borderLeft,
-                background: "none",
-                color,
-                fontWeight,
-                cursor: "pointer",
-                textAlign: "left",
-              }}
-            >
-              <Link
-                to={submenu === "Tasks" ? "/system/tasks" : "/system/logs"}
-                style={styleLink}
-                onClick={onClose}
+            return (
+              <li
+                key={submenu}
+                style={{
+                  padding: "0.5em 1em",
+                  borderLeft,
+                  background: "none",
+                  color,
+                  fontWeight,
+                  cursor: "pointer",
+                  textAlign: "left",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
               >
-                {submenu}
-              </Link>
-            </li>
-          );
+                {(() => {
+                  let route;
+                  if (submenu === "Status") {
+                    route = "/system/status";
+                  } else if (submenu === "Tasks") {
+                    route = "/system/tasks";
+                  } else {
+                    route = "/system/logs";
+                  }
+                  return (
+                    <Link to={route} style={{ ...styleLink, flex: 1 }} onClick={onClose}>
+                      {submenu}
+                    </Link>
+                  );
+                })()}
+                {submenu === "Status" && healthCount > 0 && (
+                  (() => {
+                    const display = healthCount > 9 ? "9+" : String(healthCount);
+                    return (
+                      <span
+                        style={{
+                          background: "#ef4444",
+                          color: "#fff",
+                          borderRadius: 6,
+                          width: 20,
+                          height: 20,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "0.75em",
+                          lineHeight: 1,
+                          marginLeft: 8,
+                          textAlign: "center",
+                          boxSizing: "border-box",
+                        }}
+                        aria-label={`${healthCount} health issues`}
+                      >
+                        {display}
+                      </span>
+                    );
+                  })()
+                )}
+              </li>
+            );
         })}
       </ul>
     );
@@ -242,7 +281,7 @@ export default function SidebarMobile({
       <div
         className={`sidebar-mobile${open ? " open" : ""}`}
         style={{
-          "--sidebar-bg": darkMode ? "#23232a" : "#fff",
+          "--sidebar-bg": isDark ? "#23232a" : "#fff",
           position: "fixed",
           zIndex: 1001,
         }}
@@ -252,12 +291,12 @@ export default function SidebarMobile({
             {menuItems.map(({ name, icon, route }) => {
               let background, color, fontWeight;
               if (selectedSection === name) {
-                background = darkMode ? "#333" : "#f3f4f6";
-                color = darkMode ? "#a855f7" : "#6d28d9";
+                background = isDark ? "#333" : "#f3f4f6";
+                color = isDark ? "#a855f7" : "#6d28d9";
                 fontWeight = "bold";
               } else {
                 background = "none";
-                color = darkMode ? "#e5e7eb" : "#333";
+                color = isDark ? "#e5e7eb" : "#333";
                 fontWeight = "normal";
               }
               const styleCommon = {
@@ -283,7 +322,7 @@ export default function SidebarMobile({
                         icon={
                           <FontAwesomeIcon
                             icon={icon}
-                            color={darkMode ? "#e5e7eb" : "#333"}
+                            color={isDark ? "#e5e7eb" : "#333"}
                           />
                         }
                         style={{
@@ -310,7 +349,7 @@ export default function SidebarMobile({
                       icon={
                         <FontAwesomeIcon
                           icon={icon}
-                          color={darkMode ? "#e5e7eb" : "#333"}
+                          color={isDark ? "#e5e7eb" : "#333"}
                         />
                       }
                       style={{
@@ -342,7 +381,6 @@ export default function SidebarMobile({
 }
 
 SidebarMobile.propTypes = {
-  darkMode: PropTypes.bool.isRequired,
   open: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,
   selectedSection: PropTypes.string.isRequired,
@@ -350,4 +388,5 @@ SidebarMobile.propTypes = {
   selectedSystemSub: PropTypes.string,
   isOpen: PropTypes.func.isRequired,
   handleToggle: PropTypes.func.isRequired,
+  healthCount: PropTypes.number,
 };
