@@ -439,7 +439,15 @@ export default function BlacklistPage() {
       })}
 
       {youtubeModal.open && youtubeModal.videoId && (
-        <div
+        <dialog
+          open
+          aria-modal="true"
+          className="blacklist-youtube-backdrop"
+          tabIndex={0}
+          onClick={() => setYoutubeModal({ open: false, videoId: "" })}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" || e.key === "Enter") setYoutubeModal({ open: false, videoId: "" });
+          }}
           style={{
             position: "fixed",
             top: 0,
@@ -454,6 +462,7 @@ export default function BlacklistPage() {
           }}
         >
           <div
+            onClick={(e) => e.stopPropagation()}
             style={{
               position: "relative",
               background: "#18181b",
@@ -466,26 +475,10 @@ export default function BlacklistPage() {
               overflow: "visible",
             }}
           >
-            <button
-              onClick={() => setYoutubeModal({ open: false, videoId: "" })}
-              style={{
-                position: "absolute",
-                top: 8,
-                right: 12,
-                zIndex: 2,
-                fontSize: 28,
-                color: "#fff",
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-              }}
-              aria-label="Close"
-            >
-              ×
-            </button>
+            {/* Removed visible close button; clicking backdrop will close the modal */}
             <YoutubePlayer videoId={youtubeModal.videoId} />
           </div>
-        </div>
+        </dialog>
       )}
     </Container>
   );

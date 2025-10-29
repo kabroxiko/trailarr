@@ -24,7 +24,7 @@ import {
   getSeriesWanted,
 } from "./api";
 import ErrorBoundary from "./components/ErrorBoundary";
-import { isDark, addDarkModeListener } from "./utils/isDark";
+import { isDark } from "./utils/isDark";
 
 // Small helper element to avoid repeating Suspense + ErrorBoundary
 // Use a minimal fallback (null) so the inner component's own skeleton
@@ -271,7 +271,7 @@ function App() {
         style={{
           display: "flex",
           width: "100vw",
-          height: "calc(100vh - 64px)",
+          height: "100%",
           position: "relative",
         }}
       >

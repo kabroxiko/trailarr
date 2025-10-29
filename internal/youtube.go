@@ -257,8 +257,6 @@ type YtdlpFlagsConfig struct {
 	WriteSubs          bool    `yaml:"writesubs" json:"writesubs"`
 	WriteAutoSubs      bool    `yaml:"writeautosubs" json:"writeautosubs"`
 	EmbedSubs          bool    `yaml:"embedsubs" json:"embedsubs"`
-	RemuxVideo         string  `yaml:"remuxvideo" json:"remuxvideo"`
-	SubFormat          string  `yaml:"subformat" json:"subformat"`
 	SubLangs           string  `yaml:"sublangs" json:"sublangs"`
 	RequestedFormats   string  `yaml:"requestedformats" json:"requestedformats"`
 	Timeout            float64 `yaml:"timeout" json:"timeout"`
@@ -672,22 +670,19 @@ func GetDownloadStatusHandler(c *gin.Context) {
 
 func DefaultYtdlpFlagsConfig() YtdlpFlagsConfig {
 	return YtdlpFlagsConfig{
-		Quiet:              false,
-		NoProgress:         false,
-		WriteSubs:          true,
-		WriteAutoSubs:      true,
-		EmbedSubs:          true,
-		RemuxVideo:         "mkv",
-		SubFormat:          "srt",
-		SubLangs:           "es.*",
-		RequestedFormats:   "best[height<=1080]",
-		Timeout:            3.0,
-		SleepInterval:      5.0,
-		MaxDownloads:       5,
-		LimitRate:          "30M",
-		SleepRequests:      3.0,
-		MaxSleepInterval:   120.0,
-		CookiesFromBrowser: "chrome",
+		Quiet:            false,
+		NoProgress:       false,
+		WriteSubs:        true,
+		WriteAutoSubs:    true,
+		EmbedSubs:        true,
+		SubLangs:         "es.*",
+		RequestedFormats: "best[height<=1080]",
+		Timeout:          3.0,
+		SleepInterval:    5.0,
+		MaxDownloads:     5,
+		LimitRate:        "30M",
+		SleepRequests:    3.0,
+		MaxSleepInterval: 120.0,
 	}
 }
 
@@ -954,6 +949,7 @@ func performDownload(info *downloadInfo, youtubeId string) (*ExtraDownloadMetada
 		args = buildYtDlpArgs(info, youtubeId, false)
 		output, err = ytDlpRunner.CombinedOutput(YtDlpCmd, args, info.TempDir)
 	}
+	TrailarrLog(DEBUG, "YouTube", "yt-dlp command executed: %s %s", YtDlpCmd, strings.Join(args, " "))
 
 	if len(output) > 0 {
 		for _, line := range strings.Split(string(output), "\n") {
@@ -997,14 +993,8 @@ func isImpersonationErrorNative(output string) bool {
 func buildYtDlpArgs(info *downloadInfo, youtubeId string, impersonate bool) []string {
 	cfg, _ := GetYtdlpFlagsConfig()
 	args := []string{
-		"--no-progress",
-		"--quiet",
-		"--write-subs",
-		"--write-auto-subs",
-		"--embed-subs",
-		"--sub-format", cfg.SubFormat,
-		"--sub-langs", cfg.SubLangs,
-		"--remux-video", cfg.RemuxVideo,
+		"--cookies", CookiesFile,
+		"--remux-video", "mkv",
 		"--format", cfg.RequestedFormats,
 		"--output", info.TempFile,
 		"--max-downloads", fmt.Sprintf("%d", cfg.MaxDownloads),
@@ -1014,13 +1004,29 @@ func buildYtDlpArgs(info *downloadInfo, youtubeId string, impersonate bool) []st
 		"--max-sleep-interval", fmt.Sprintf("%.0f", cfg.MaxSleepInterval),
 		"--socket-timeout", fmt.Sprintf("%.0f", cfg.Timeout),
 	}
-
+	if cfg.Quiet {
+		args = append(args, "--quiet")
+	}
+	if cfg.NoProgress {
+		args = append(args, "--no-progress")
+	}
+	if cfg.WriteSubs {
+		args = append(args, "--write-subs")
+		args = append(args, "--sub-format", "srt")
+		if cfg.WriteAutoSubs {
+			args = append(args, "--write-auto-subs")
+		}
+		if cfg.EmbedSubs {
+			args = append(args, "--embed-subs")
+		}
+		if cfg.SubLangs != "" {
+			args = append(args, "--sub-langs", cfg.SubLangs)
+		}
+	}
 	if impersonate {
 		args = append(args, "--impersonate", "chrome")
 	}
 
-	// args = append(args, "--cookies-from-browser", "chrome")
-	args = append(args, "--cookies", CookiesFile)
 	args = append(args, "--", youtubeId)
 	return args
 }

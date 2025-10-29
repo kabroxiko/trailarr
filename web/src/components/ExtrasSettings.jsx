@@ -27,8 +27,6 @@ const YTDLP_FLAGS = [
   { key: "writesubs", label: "Write Subs", type: "boolean" },
   { key: "writeautosubs", label: "Write Auto Subs", type: "boolean" },
   { key: "embedsubs", label: "Embed Subs", type: "boolean" },
-  { key: "remuxvideo", label: "Remux Video", type: "string" },
-  { key: "subformat", label: "Subtitle Format", type: "string" },
   { key: "sublangs", label: "Subtitle Languages", type: "string" },
   { key: "requestedformats", label: "Requested Formats", type: "string" },
   { key: "timeout", label: "Timeout (s)", type: "number" },
@@ -40,18 +38,8 @@ const YTDLP_FLAGS = [
 ];
 
 export default function ExtrasSettings() {
-  // Read the current preference at render-time. For runtime change handling
-  // we register a listener below which will re-apply CSS variables.
   useEffect(() => {
     const setColors = () => {
-      document.documentElement.style.setProperty(
-        "--settings-bg",
-        isDark ? "#222" : "#fff",
-      );
-      document.documentElement.style.setProperty(
-        "--settings-text",
-        isDark ? "#eee" : "#222",
-      );
       document.documentElement.style.setProperty(
         "--save-lane-bg",
         isDark ? "#333" : "#e5e7eb",
@@ -89,6 +77,7 @@ export default function ExtrasSettings() {
     const remove = addDarkModeListener(() => setColors());
     return remove;
   }, [isDark]);
+
   const [settings, setSettings] = useState({});
   const [ytFlags, setYtFlags] = useState({});
   const [saving, setSaving] = useState(false);
@@ -100,6 +89,10 @@ export default function ExtrasSettings() {
   const [plexTypes, setPlexTypes] = useState([]);
   const [mapping, setMapping] = useState({});
 
+  // When writesubs is disabled we keep dependent values (writeautosubs, embedsubs, sublangs)
+  // so users don't lose their input when toggling the option off. Inputs will be disabled
+  // via the render logic but their values remain in state.
+
   useEffect(() => {
     Promise.all([
       axios.get("/api/tmdb/extratypes"),
@@ -109,44 +102,29 @@ export default function ExtrasSettings() {
     ])
       .then(([tmdbRes, plexRes, mapRes, ytRes]) => {
         setTmdbTypes(tmdbRes.data.tmdbExtraTypes);
-        // Backend returns an array (mapp) of { key,label,value }
         if (!Array.isArray(plexRes.data)) {
-          setError(
-            "Server response missing mapp array in /api/settings/extratypes",
-          );
+          setError("Server response missing mapp array in /api/settings/extratypes");
           return;
         }
         const mapp = plexRes.data;
         setPlexTypes(mapp);
-        // Build settings object from mapp array
         const settingsFromMapp = {};
         for (const entry of mapp) {
-          if (entry?.key) {
-            settingsFromMapp[entry.key] = !!entry.value;
-          }
+          if (entry?.key) settingsFromMapp[entry.key] = !!entry.value;
         }
         const initialMapping = { ...mapRes.data.mapping };
         for (const type of tmdbRes.data.tmdbExtraTypes) {
-          if (!initialMapping[type]) {
-            initialMapping[type] = "Other";
-          }
+          if (!initialMapping[type]) initialMapping[type] = "Other";
         }
         setMapping(initialMapping);
         setSettings(settingsFromMapp);
         setYtFlags(ytRes.data);
       })
-      .catch(() => {
-        setError("Failed to load settings");
-      });
+      .catch(() => setError("Failed to load settings"));
   }, [isDark]);
 
-  const handleMappingChange = (newMapping) => {
-    setMapping(newMapping);
-  };
-
-  const handleYtFlagChange = (key, value) => {
-    setYtFlags((prev) => ({ ...prev, [key]: value }));
-  };
+  const handleMappingChange = (newMapping) => setMapping(newMapping);
+  const handleYtFlagChange = (key, value) => setYtFlags((p) => ({ ...p, [key]: value }));
 
   const handleSave = async () => {
     setSaving(true);
@@ -159,11 +137,11 @@ export default function ExtrasSettings() {
       await axios.post("/api/settings/ytdlpflags", ytFlags);
       setToast("All settings saved successfully!");
       setToastSuccess(true);
-      setSaving(false);
     } catch {
       setError("Failed to save one or more settings");
       setToast("Failed to save one or more settings");
       setToastSuccess(false);
+    } finally {
       setSaving(false);
     }
   };
@@ -177,79 +155,43 @@ export default function ExtrasSettings() {
       setYtError("Max Sleep Interval must not be lower than Sleep Interval.");
       return;
     }
-    axios
-      .post("/api/settings/ytdlpflags", ytFlags)
-      .then(() => {
-        // success
-      })
-      .catch(() => {
-        setYtError("Failed to save yt-dlp flags");
-      });
+    axios.post("/api/settings/ytdlpflags", ytFlags).catch(() => {
+      setYtError("Failed to save yt-dlp flags");
+    });
   };
 
-  // Save lane logic
   const isChanged =
-    EXTRA_TYPES.some(
-      ({ key }) => settings[key] !== undefined && settings[key] !== false,
-    ) || Object.keys(ytFlags).length > 0;
+    EXTRA_TYPES.some(({ key }) => settings[key] !== undefined && settings[key] !== false) ||
+    Object.keys(ytFlags).length > 0;
 
   return (
     <Container>
-      {/* Save lane */}
       <ActionLane
         buttons={[
           {
-            icon: saving ? (
-              <FontAwesomeIcon icon={faSpinner} spin />
-            ) : (
-              <FontAwesomeIcon icon={faSave} />
-            ),
+            icon: saving ? <FontAwesomeIcon icon={faSpinner} spin /> : <FontAwesomeIcon icon={faSave} />,
             label: "Save",
             onClick: handleSave,
             disabled: saving || !isChanged,
             loading: saving,
-            showLabel:
-              globalThis.window === undefined
-                ? true
-                : globalThis.window.innerWidth > 900,
+            showLabel: globalThis.window === undefined ? true : globalThis.window.innerWidth > 900,
           },
         ]}
         error={error}
       />
-      <Toast
-        message={toast}
-        onClose={() => setToast("")}
-        success={toastSuccess}
-      />
-      <div
-        style={{
-          marginTop: "4.5rem",
-          background: "var(--settings-bg, #fff)",
-          color: "var(--settings-text, #222)",
-          borderRadius: 12,
-          boxShadow: "0 1px 4px #0001",
-          padding: "2rem",
-        }}
-      >
+      <Toast message={toast} onClose={() => setToast("")} success={toastSuccess} />
+
+      <div style={{ marginTop: "4.5rem", color: "var(--settings-text, #222)", borderRadius: 12, boxShadow: "0 1px 4px #0001", padding: "2rem" }}>
         <SectionHeader>Extra Types</SectionHeader>
         <div style={{ marginBottom: "2em" }}>
           <Select
             isMulti
-            options={EXTRA_TYPES.map(({ key, label }) => ({
-              value: key,
-              label,
-            }))}
-            value={EXTRA_TYPES.filter(({ key }) => settings[key]).map(
-              ({ key, label }) => ({ value: key, label }),
-            )}
+            options={EXTRA_TYPES.map(({ key, label }) => ({ value: key, label }))}
+            value={EXTRA_TYPES.filter(({ key }) => settings[key]).map(({ key, label }) => ({ value: key, label }))}
             onChange={(selected) => {
-              const newSettings = { ...settings };
-              for (const { key } of EXTRA_TYPES) {
-                newSettings[key] = false;
-              }
-              for (const { value } of selected) {
-                newSettings[value] = true;
-              }
+              const newSettings = {};
+              for (const { key } of EXTRA_TYPES) newSettings[key] = false;
+              for (const { value } of selected) newSettings[value] = true;
               setSettings(newSettings);
             }}
             styles={{
@@ -265,52 +207,14 @@ export default function ExtrasSettings() {
                 padding: "0 4px",
                 maxWidth: 480,
               }),
-              valueContainer: (base) => ({
-                ...base,
-                padding: "2px 4px",
-              }),
-              indicatorsContainer: (base) => ({
-                ...base,
-                height: 32,
-              }),
-              multiValue: (base) => ({
-                ...base,
-                background: isDark ? "#333" : "#e5e7eb",
-                color: isDark ? "#fff" : "#222",
-                borderRadius: 6,
-                fontSize: 13,
-                height: 24,
-                margin: "2px 2px",
-                display: "flex",
-                alignItems: "center",
-              }),
-              multiValueLabel: (base) => ({
-                ...base,
-                color: isDark ? "#fff" : "#222",
-                fontWeight: 500,
-                fontSize: 13,
-                padding: "0 6px",
-              }),
-              multiValueRemove: (base) => ({
-                ...base,
-                color: isDark ? "#a855f7" : "#6d28d9",
-                fontSize: 13,
-                height: 24,
-                ":hover": {
-                  background: isDark ? "#a855f7" : "#6d28d9",
-                  color: "#fff",
-                },
-              }),
-              menu: (base) => ({
-                ...base,
-                background: isDark ? "#23232a" : "#fff",
-                color: isDark ? "#fff" : "#222",
-                borderRadius: 8,
-                fontSize: 13,
-              }),
+              valueContainer: (base) => ({ ...base, padding: "2px 4px" }),
+              indicatorsContainer: (base) => ({ ...base, height: 32 }),
+              multiValue: (base) => ({ ...base, background: isDark ? "#333" : "#e5e7eb", color: isDark ? "#fff" : "#222", borderRadius: 6, fontSize: 13, height: 24, margin: "2px 2px", display: "flex", alignItems: "center" }),
+              multiValueLabel: (base) => ({ ...base, color: isDark ? "#fff" : "#222", fontWeight: 500, fontSize: 13, padding: "0 6px" }),
+              multiValueRemove: (base) => ({ ...base, color: isDark ? "#a855f7" : "#6d28d9", fontSize: 13, height: 24, ":hover": { background: isDark ? "#a855f7" : "#6d28d9", color: "#fff" } }),
+              menu: (base) => ({ ...base, background: isDark ? "#23232a" : "#fff", color: isDark ? "#fff" : "#222", borderRadius: 8, fontSize: 13 }),
               option: (base, state) => ({
                 ...base,
-                // SonarLint: extract nested ternaries
                 background: (() => {
                   if (state.isSelected) return isDark ? "#a855f7" : "#6d28d9";
                   if (state.isFocused) return isDark ? "#333" : "#eee";
@@ -334,96 +238,51 @@ export default function ExtrasSettings() {
             menuPortalTarget={document.body}
           />
         </div>
-        {/* Mapping config UI integration */}
-        <ExtrasTypeMappingConfig
-          mapping={mapping}
-          onMappingChange={handleMappingChange}
-          tmdbTypes={tmdbTypes}
-          plexTypes={plexTypes}
-        />
-        <hr
-          style={{ margin: "2em 0", borderColor: isDark ? "#444" : "#eee" }}
-        />
+
+        <ExtrasTypeMappingConfig mapping={mapping} onMappingChange={handleMappingChange} tmdbTypes={tmdbTypes} plexTypes={plexTypes} />
+
+        <hr style={{ margin: "2em 0", borderColor: isDark ? "#444" : "#eee" }} />
+
         <SectionHeader>yt-dlp Download Flags</SectionHeader>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleYtSave();
-          }}
-        >
-          {YTDLP_FLAGS.map(({ key, label, type }) => (
-            <div
-              key={key}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                marginBottom: 16,
-              }}
-            >
-              {type === "boolean" ? (
-                <>
-                  <input
-                    type="checkbox"
-                    id={key}
-                    checked={!!ytFlags[key]}
-                    onChange={() => handleYtFlagChange(key, !ytFlags[key])}
-                    style={{
-                      marginRight: 12,
-                      accentColor: isDark ? "#2563eb" : "#6d28d9",
-                    }}
-                  />
-                  <label htmlFor={key} style={{ fontSize: 16 }}>
-                    {label}
-                  </label>
-                </>
-              ) : (
-                <>
-                  <label
-                    htmlFor={key}
-                    style={{
-                      fontSize: 16,
-                      minWidth: 180,
-                      textAlign: "left",
-                      width: 180,
-                    }}
-                  >
-                    {label}
-                  </label>
-                  <input
-                    type={type === "number" ? "number" : "text"}
-                    id={key}
-                    value={ytFlags[key] ?? ""}
-                    onChange={(e) =>
-                      handleYtFlagChange(
-                        key,
-                        type === "number"
-                          ? Number(e.target.value)
-                          : e.target.value,
-                      )
-                    }
-                    style={{
-                      marginLeft: 12,
-                      width: 120,
-                      minWidth: 80,
-                      maxWidth: 160,
-                      padding: "0.15em 0.5em",
-                      fontSize: 13,
-                      border: "1px solid",
-                      borderColor: isDark ? "#444" : "#ccc",
-                      borderRadius: 4,
-                      background: isDark ? "#23232a" : "#fff",
-                      color: isDark ? "#e5e7eb" : "#222",
-                    }}
-                  />
-                </>
-              )}
-            </div>
-          ))}
+        <form onSubmit={(e) => { e.preventDefault(); handleYtSave(); }}>
+          {YTDLP_FLAGS.map(({ key, label, type }) => {
+            const dependentOnWriteSubs = key === "writeautosubs" || key === "embedsubs" || key === "sublangs";
+            const disabledDueToWriteSubs = dependentOnWriteSubs && ytFlags.writesubs === false;
+            return (
+              <div key={key} style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
+                {type === "boolean" ? (
+                  <>
+                    <input
+                      type="checkbox"
+                      id={key}
+                      checked={!!ytFlags[key]}
+                      onChange={() => handleYtFlagChange(key, !ytFlags[key])}
+                      disabled={disabledDueToWriteSubs}
+                      style={{ marginRight: 12, accentColor: isDark ? "#2563eb" : "#6d28d9" }}
+                    />
+                    <label htmlFor={key} style={{ fontSize: 16 }}>{label}</label>
+                  </>
+                ) : (
+                  <>
+                    <label htmlFor={key} style={{ fontSize: 16, minWidth: 180, textAlign: "left", width: 180 }}>{label}</label>
+                    <input
+                      type={type === "number" ? "number" : "text"}
+                      id={key}
+                      value={ytFlags[key] ?? ""}
+                      onChange={(e) => handleYtFlagChange(key, type === "number" ? Number(e.target.value) : e.target.value)}
+                      disabled={disabledDueToWriteSubs}
+                      style={{ marginLeft: 12, width: 120, minWidth: 80, maxWidth: 160, padding: "0.15em 0.5em", fontSize: 13, border: "1px solid", borderColor: isDark ? "#444" : "#ccc", borderRadius: 4, background: isDark ? "#23232a" : "#fff", color: isDark ? "#e5e7eb" : "#222" }}
+                    />
+                  </>
+                )}
+              </div>
+            );
+          })}
         </form>
-        {ytError && (
-          <div style={{ color: "red", marginBottom: 12 }}>{ytError}</div>
-        )}
+
+        {ytError && <div style={{ color: "red", marginBottom: 12 }}>{ytError}</div>}
       </div>
     </Container>
   );
-}
+
+  }

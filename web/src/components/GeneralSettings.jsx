@@ -23,14 +23,6 @@ export default function GeneralSettings() {
   useEffect(() => {
     const setColors = () => {
       document.documentElement.style.setProperty(
-        "--settings-bg",
-        isDark ? "#222" : "#fff",
-      );
-      document.documentElement.style.setProperty(
-        "--settings-text",
-        isDark ? "#eee" : "#222",
-      );
-      document.documentElement.style.setProperty(
         "--save-lane-bg",
         isDark ? "#333" : "#e5e7eb",
       );
@@ -148,8 +140,7 @@ export default function GeneralSettings() {
       <div
         style={{
           marginTop: "4.5rem",
-          background: "var(--settings-bg, #fff)",
-          color: "var(--settings-text, #222)",
+          color: isDark ? "#f3f4f6" : "#23232a",
           borderRadius: 12,
           boxShadow: "0 1px 4px #0001",
           padding: "2rem",
@@ -242,7 +233,7 @@ export default function GeneralSettings() {
                         icon={faPlug}
                         style={{
                           fontSize: 22,
-                          color: "var(--settings-text, #222)",
+                          color: isDark ? "#f3f4f6" : "#23232a",
                           transition: "color 0.2s",
                           position: "absolute",
                           left: 0,

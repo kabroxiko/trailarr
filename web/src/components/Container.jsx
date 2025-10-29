@@ -1,4 +1,6 @@
 import React from "react";
+import PropTypes from "prop-types";
+import { isDark } from "../utils/isDark";
 
 export default function Container({ children, style = {}, ...props }) {
   const defaultStyle = {
@@ -6,10 +8,10 @@ export default function Container({ children, style = {}, ...props }) {
     margin: 0,
     height: "100%",
     padding: "0",
-    background: "var(--settings-bg, #fff)",
+    background: isDark ? "#23232a" : "#f3f4f6",
     borderRadius: 0,
     boxShadow: "0 2px 12px #0002",
-    color: "var(--settings-text, #222)",
+    color: isDark ? "#f3f4f6" : "#23232a",
     boxSizing: "border-box",
     overflowX: "hidden",
     overflowY: "auto",
@@ -22,3 +24,8 @@ export default function Container({ children, style = {}, ...props }) {
     </div>
   );
 }
+
+Container.propTypes = {
+  children: PropTypes.node,
+  style: PropTypes.object,
+};

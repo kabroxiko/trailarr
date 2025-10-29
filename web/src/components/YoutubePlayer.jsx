@@ -1,15 +1,17 @@
 import React, { useEffect, useRef, useState } from "react";
+import PropTypes from "prop-types";
 
 // Loads the YouTube IFrame API if not already loaded
 let ytApiPromise = null;
 function loadYouTubeAPI() {
-  if (window.YT && window.YT.Player) return Promise.resolve();
+  if (globalThis?.YT?.Player) return Promise.resolve();
   if (ytApiPromise) return ytApiPromise;
   ytApiPromise = new Promise((resolve) => {
-    if (window.YT && window.YT.Player) return resolve();
+    if (globalThis?.YT?.Player) return resolve();
     const tag = document.createElement("script");
     tag.src = "https://www.youtube.com/iframe_api";
-    window.onYouTubeIframeAPIReady = () => resolve();
+    // expose the readiness callback on globalThis (preferred over window)
+    globalThis.onYouTubeIframeAPIReady = () => resolve();
     document.body.appendChild(tag);
   });
   return ytApiPromise;
@@ -32,16 +34,16 @@ export default function YoutubePlayer({ videoId, onReady }) {
         setError("No videoId provided.");
         return;
       }
-      if (window.YT && window.YT.Player && playerRef.current) {
+    if (globalThis?.YT?.Player && playerRef.current) {
         playerCreated = true;
         try {
-          ytPlayer.current = new window.YT.Player(playerRef.current, {
+          ytPlayer.current = new globalThis.YT.Player(playerRef.current, {
             videoId,
             events: {
-              onReady: (event) => {
-                event.target.playVideo();
-                if (onReady) onReady(event);
-              },
+                onReady: (event) => {
+                  event.target.playVideo();
+                  if (onReady) onReady(event);
+                },
               onError: (e) => {
                 // YouTube error 150: embedding not allowed
                 if (e.data === 150) {
@@ -63,9 +65,9 @@ export default function YoutubePlayer({ videoId, onReady }) {
           setError("Failed to create YouTube Player: " + err.message);
           console.error("Failed to create YouTube Player", err);
         }
-      } else {
-        pollId = setTimeout(tryCreatePlayer, 50);
-      }
+        } else {
+          pollId = setTimeout(tryCreatePlayer, 50);
+        }
     }
     loadYouTubeAPI().then(() => {
       console.log("YouTube IFrame API loaded");
@@ -136,3 +138,8 @@ export default function YoutubePlayer({ videoId, onReady }) {
     </div>
   );
 }
+
+YoutubePlayer.propTypes = {
+  videoId: PropTypes.string.isRequired,
+  onReady: PropTypes.func,
+};

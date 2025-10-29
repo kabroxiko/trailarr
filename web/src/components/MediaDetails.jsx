@@ -34,18 +34,27 @@ function handleExtrasQueueUpdate(msg, mediaId, setExtras, setError) {
 function YoutubeModal({ open, videoId, onClose }) {
   if (!open || !videoId) return null;
   return (
-    <dialog open aria-modal="true" className="md-youtube-modal-backdrop">
+    <dialog
+      open
+      aria-modal="true"
+      aria-label="YouTube modal dialog"
+      className="md-youtube-modal-backdrop"
+      tabIndex={0}
+      onClick={(e) => {
+        // Close when clicking the backdrop (dialog itself), but not when clicking
+        // inside the content area.
+        if (e.target === e.currentTarget) onClose();
+      }}
+      onKeyDown={(e) => {
+        // Allow keyboard users to close the dialog when it has focus
+        if (e.key === "Escape" || e.key === "Enter") onClose();
+      }}
+    >
       <div
         className="md-youtube-modal-content"
-        aria-label="YouTube modal dialog"
+        onClick={(e) => e.stopPropagation()}
       >
-        <button
-          onClick={onClose}
-          className="md-youtube-modal-close"
-          aria-label="Close"
-        >
-          ×
-        </button>
+        {/* Visible close button removed; backdrop click handles close */}
         <YoutubePlayer videoId={videoId} />
       </div>
     </dialog>
@@ -211,7 +220,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
   }, [media, mediaType]);
   // Scroll to top when id (route) changes
   useEffect(() => {
-    setTimeout(() => {
+    const tid = setTimeout(() => {
       // Try window scroll
       globalThis.window.scrollTo({ top: 0, left: 0, behavior: "auto" });
       // Try scrolling main container if present
@@ -232,6 +241,7 @@ export default function MediaDetails({ mediaItems, loading, mediaType }) {
         }
       }
     }, 0);
+    return () => clearTimeout(tid);
   }, [id]);
   const [youtubeModal, setYoutubeModal] = useState({
     open: false,

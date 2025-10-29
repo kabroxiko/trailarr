@@ -14,7 +14,7 @@ import PropTypes from "prop-types";
 
 // Small presentational component for a single health row.
 // Extracted to avoid defining functions inside the main render (Sonar S6844).
-const HealthRow = React.memo(function HealthRow({ h, idx, moreInfo, executeHealthcheck, retryState }) {
+const HealthRow = React.memo(function HealthRow({ h, idx, moreInfo, executeHealthcheck }) {
   const src = (h.source || "").toLowerCase();
   let settingsHref = "/settings";
   if (src.includes("radarr")) settingsHref = "/settings/radarr";
@@ -57,7 +57,9 @@ export default function StatusPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [retrying, setRetrying] = useState({}); // map of row idx -> {status,msg}
+  // Track transient retry status in a ref since the UI does not read the value
+  // directly; this avoids unused-state SonarLint complaints.
+  const retryingRef = React.useRef({}); // map of row idx -> {status,msg}
   const [toastMessage, setToastMessage] = useState("");
   const [toastSuccess, setToastSuccess] = useState(false);
 
@@ -104,8 +106,8 @@ export default function StatusPage() {
   // retryConnection removed — unused helper
 
   const executeHealthcheck = async (h, idx) => {
-    try {
-      setRetrying((r) => ({ ...r, [idx]: { status: "pending", msg: "" } }));
+  try {
+  retryingRef.current = { ...retryingRef.current, [idx]: { status: "pending", msg: "" } };
       // If we can determine a provider from the health message (Radarr/Sonarr)
       // call the provider-specific health execute endpoint so only that check runs.
       const src = (h.source || "").toLowerCase();
@@ -128,7 +130,7 @@ export default function StatusPage() {
         throw new Error(errMsg);
       }
       // success
-      setRetrying((r) => ({ ...r, [idx]: { status: "success", msg: "OK" } }));
+  retryingRef.current = { ...retryingRef.current, [idx]: { status: "success", msg: "OK" } };
       setToastMessage("Healthcheck successful");
       setToastSuccess(true);
       // remove matching health issue locally so UI clears immediately
@@ -145,13 +147,17 @@ export default function StatusPage() {
       });
       // refresh health only, don't show global loading
       await fetchStatus(true);
-      setTimeout(() => setRetrying((r) => ({ ...r, [idx]: undefined })), 1500);
+      setTimeout(() => {
+        retryingRef.current = { ...retryingRef.current, [idx]: undefined };
+      }, 1500);
     } catch (err) {
       const msg = err?.message ? err.message : String(err);
-      setRetrying((r) => ({ ...r, [idx]: { status: "error", msg } }));
+  retryingRef.current = { ...retryingRef.current, [idx]: { status: "error", msg } };
       setToastMessage("Healthcheck failed: " + msg);
       setToastSuccess(false);
-      setTimeout(() => setRetrying((r) => ({ ...r, [idx]: undefined })), 3000);
+      setTimeout(() => {
+        retryingRef.current = { ...retryingRef.current, [idx]: undefined };
+      }, 3000);
     }
   };
 
@@ -213,7 +219,6 @@ export default function StatusPage() {
                       idx={idx}
                       moreInfo={moreInfo}
                       executeHealthcheck={executeHealthcheck}
-                      retryState={retrying[idx]}
                     />
                   ))}
                 </tbody>
@@ -354,5 +359,4 @@ HealthRow.propTypes = {
   idx: PropTypes.number.isRequired,
   moreInfo: PropTypes.object.isRequired,
   executeHealthcheck: PropTypes.func.isRequired,
-  retryState: PropTypes.object,
 };

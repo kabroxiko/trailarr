@@ -58,9 +58,8 @@ export default function Sidebar({ mobile, open, onClose }) {
         const hc = Array.isArray(json?.health) ? json.health.length : 0;
         setHealthCount(hc);
       } catch (e) {
-        // Log errors - sidebar counters are non-critical
-        // eslint-disable-next-line no-console
-        console.error("Failed to load system status for sidebar:", e);
+  // Log errors - sidebar counters are non-critical
+  console.error("Failed to load system status for sidebar:", e);
       }
     }
     load();
